@@ -45,8 +45,10 @@ USER_AGENT = "Mozilla/5.0 (HausCheckHAOS; private research tool) AppleWebKit/537
 MIN_IMAGE_WIDTH = 400
 MIN_IMAGE_HEIGHT = 250
 MIN_IMAGE_PIXELS = 180_000
+WILLHABEN_AUTO_BASE = "https://www.willhaben.at/iad/immobilien/haus-kaufen/haus-angebote"
+WILLHABEN_DEFAULT_AREA_ID = "60351"
 
-app = FastAPI(title=APP_NAME, version="0.4.0")
+app = FastAPI(title=APP_NAME, version="0.4.1")
 
 
 @app.on_event("startup")
@@ -219,6 +221,33 @@ def criteria_summary(profile: dict[str, object]) -> str:
     return "".join(f"<span class='pill'>{part}</span>" for part in parts) or "<span class='pill'>keine zentralen Kriterien gesetzt</span>"
 
 
+def build_willhaben_auto_url(profile: dict[str, object]) -> str:
+    """Build a broad Willhaben search URL from central criteria.
+
+    Current scope intentionally uses areaId=60351 and does not depend on lat/lon/sfId.
+    Radius search will be added later as optional source-template mode.
+    """
+    max_price = optional_int(str(profile.get("max_price_eur") or "")) or optional_int(str(profile.get("soft_max_price_eur") or "")) or 400000
+    min_living = optional_float(str(profile.get("min_living_area_m2") or "")) or 120
+    params = [
+        ("sort", "1"),
+        ("rows", "30"),
+        ("page", "1"),
+        ("areaId", WILLHABEN_DEFAULT_AREA_ID),
+        ("PRICE_TO", str(int(max_price))),
+        ("ESTATE_SIZE/LIVING_AREA_FROM", str(int(min_living))),
+    ]
+    query = "&".join(f"{key}={value}" for key, value in params)
+    return f"{WILLHABEN_AUTO_BASE}?{query}"
+
+
+def resolve_search_url(profile: dict[str, object]) -> str:
+    search_url = str(profile.get("search_url") or "").strip()
+    if search_url:
+        return search_url
+    return build_willhaben_auto_url(profile)
+
+
 def evaluate_candidate(profile: dict[str, object], parsed: ParsedListing) -> tuple[str, list[str]]:
     reasons: list[str] = []
     hard_reject = False
@@ -336,7 +365,7 @@ def dashboard() -> HTMLResponse:
       <div class="card">
         <h2>Status</h2>
         <p><span class="pill">{len(houses)} Hausakten</span><span class="pill">{len(profiles)} Suchprofile</span></p>
-        <p class="muted">v0.4.0: zentrale Suchfilter + Portal-URL als technische Quelle.</p>
+        <p class="muted">v0.4.1: Willhaben-Suche wird automatisch aus zentralen Kriterien erzeugt.</p>
         {profile_buttons}
       </div>
     </div>
@@ -375,7 +404,7 @@ def search_profiles_page() -> HTMLResponse:
         rows.append(
             f"""
             <tr>
-              <td>{esc(profile.get('name'))}<br>{criteria_summary(profile)}</td>
+              <td>{esc(profile.get('name'))}<br>{criteria_summary(profile)}<br><span class="muted">Quelle: {esc(resolve_search_url(profile))}</span></td>
               <td>{esc(profile.get('source_name'))}</td>
               <td><span class="pill good">{new_count} neu</span><span class="pill warn">{review_count} prüfen</span><span class="pill bad">{filtered_count} gefiltert</span><span class="pill">{imported_count} importiert</span></td>
               <td>{esc(profile.get('last_run_at') or 'noch nie')}</td>
@@ -386,16 +415,16 @@ def search_profiles_page() -> HTMLResponse:
     body = f"""
     <div class="card">
       <h2>Zentrales Suchprofil anlegen</h2>
-      <p class="muted">Die Kriterien sind die Wahrheit. Die Willhaben-URL ist nur die technische Quelle, damit nicht das ganze Portal durchsucht werden muss.</p>
+      <p class="muted">Willhaben wird automatisch aus den Kriterien erzeugt. Die URL ist nur optional für Spezialfälle, z. B. später Umkreissuche.</p>
       <form method="post" action="search/profiles">
         <label>Name</label>
         <input name="name" placeholder="z. B. Wies/Eibiswald bis 380k" required>
-        <label>Willhaben-Suchergebnis-URL</label>
-        <input name="search_url" placeholder="https://www.willhaben.at/iad/immobilien/..." required>
+        <label>Willhaben-Suchergebnis-URL optional</label>
+        <input name="search_url" placeholder="leer lassen = automatische Willhaben-Suche areaId=60351">
         <div class="grid">
           <div><label>Zielpreis bis €</label><input name="soft_max_price_eur" type="number" value="380000"></div>
           <div><label>Harte Grenze bis €</label><input name="max_price_eur" type="number" value="400000"></div>
-          <div><label>Mindestwohnfläche m²</label><input name="min_living_area_m2" type="number" step="0.1" value="130"></div>
+          <div><label>Mindestwohnfläche m²</label><input name="min_living_area_m2" type="number" step="0.1" value="120"></div>
           <div><label>Wunsch-Grundstück m²</label><input name="min_plot_area_m2" type="number" step="0.1" value="700"></div>
           <div><label>HWB Warnung ab</label><input name="hwb_warn" type="number" step="0.1" value="200"></div>
           <div><label>HWB kritisch ab</label><input name="hwb_reject" type="number" step="0.1" value="300"></div>
@@ -408,6 +437,7 @@ def search_profiles_page() -> HTMLResponse:
         <select name="oil_policy"><option value="review" selected>prüfen / nur Ausnahme</option><option value="reject">ausschließen</option><option value="allow">zulassen</option></select>
         <button type="submit">Suchprofil speichern</button>
       </form>
+      <p class="muted">Automatische Willhaben-Quelle: areaId=60351, sort=1, rows=30, page=1, PRICE_TO und ESTATE_SIZE/LIVING_AREA_FROM aus den Kriterien.</p>
     </div>
     <div class="card">
       <h2>Gespeicherte Profile</h2>
@@ -428,8 +458,9 @@ async def run_search_profile(profile_id: str, max_results: int = 40) -> int:
     profile = get_search_profile(profile_id)
     if not profile:
         raise HTTPException(status_code=404, detail="Suchprofil nicht gefunden")
-    raw_html = await fetch_html(str(profile["search_url"]))
-    links = extract_listing_links(raw_html, str(profile["search_url"]))[: max(1, min(max_results, 80))]
+    search_url = resolve_search_url(profile)
+    raw_html = await fetch_html(search_url)
+    links = extract_listing_links(raw_html, search_url)[: max(1, min(max_results, 80))]
     async with httpx.AsyncClient(timeout=30, follow_redirects=True, headers={"User-Agent": USER_AGENT}) as client:
         for link in links:
             if source_url_exists(link):
@@ -450,7 +481,7 @@ async def run_search_profile(profile_id: str, max_results: int = 40) -> int:
 @app.post("/search/profiles")
 def create_profile(
     name: str = Form(...),
-    search_url: str = Form(...),
+    search_url: str | None = Form(None),
     max_price_eur: str | None = Form(None),
     soft_max_price_eur: str | None = Form(None),
     min_living_area_m2: str | None = Form(None),
@@ -461,13 +492,8 @@ def create_profile(
     hwb_reject: str | None = Form(None),
     oil_policy: str | None = Form("review"),
 ) -> RedirectResponse:
-    if not search_url.startswith(("http://", "https://")):
-        raise HTTPException(status_code=400, detail="Ungültige URL")
-    if "willhaben.at" not in search_url.lower():
-        raise HTTPException(status_code=400, detail="Aktuell werden nur Willhaben-Suchprofile unterstützt")
-    profile = create_search_profile({
+    profile_data = {
         "name": name.strip(),
-        "search_url": search_url.strip(),
         "source_name": "willhaben.at",
         "max_price_eur": optional_int(max_price_eur),
         "soft_max_price_eur": optional_int(soft_max_price_eur),
@@ -478,7 +504,17 @@ def create_profile(
         "hwb_warn": optional_float(hwb_warn),
         "hwb_reject": optional_float(hwb_reject),
         "oil_policy": oil_policy or "review",
-    })
+    }
+    raw_url = (search_url or "").strip()
+    if raw_url:
+        if not raw_url.startswith(("http://", "https://")):
+            raise HTTPException(status_code=400, detail="Ungültige URL")
+        if "willhaben.at" not in raw_url.lower():
+            raise HTTPException(status_code=400, detail="Aktuell werden nur Willhaben-Suchprofile unterstützt")
+        profile_data["search_url"] = raw_url
+    else:
+        profile_data["search_url"] = build_willhaben_auto_url(profile_data)
+    profile = create_search_profile(profile_data)
     return RedirectResponse(f"profiles/{profile['id']}", status_code=303)
 
 
@@ -515,11 +551,12 @@ def profile_detail(profile_id: str) -> HTMLResponse:
             </tr>
             """
         )
+    source_url = resolve_search_url(profile)
     body = f"""
     <div class="card">
       <h2>{esc(profile.get('name'))}</h2>
       <p>{criteria_summary(profile)}</p>
-      <p class="muted"><a href="{esc(profile.get('search_url'))}" target="_blank">Original-Suche öffnen</a></p>
+      <p class="muted"><a href="{esc(source_url)}" target="_blank">Willhaben-Suchquelle öffnen</a></p>
       <p><span class="pill">{len(candidates)} Kandidaten</span><span class="pill">Letzter Lauf: {esc(profile.get('last_run_at') or 'noch nie')}</span></p>
       <form method="post" action="{profile_id}/run" style="display:inline"><button type="submit">Suchprofil jetzt starten</button></form>
       <a class="button secondary" href="../../search">Zurück</a>
