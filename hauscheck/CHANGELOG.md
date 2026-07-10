@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.1
+
+- Willhaben-Such-URL ist beim Suchprofil nicht mehr Pflicht
+- automatische Willhaben-Quelle wird aus zentralen Kriterien erzeugt
+- Standardquelle nutzt `areaId=60351`, `sort=1`, `rows=30`, `page=1`
+- `PRICE_TO` wird aus der harten Preisgrenze gesetzt
+- `ESTATE_SIZE/LIVING_AREA_FROM` wird aus der Mindestwohnfläche gesetzt
+- manuelle Willhaben-URL bleibt optional für Spezialfälle wie spätere Umkreissuche
+
 ## 0.4.0
 
 - Suchprofile um zentrale Kriterien erweitert
