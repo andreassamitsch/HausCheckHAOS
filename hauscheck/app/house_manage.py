@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import re
 import shutil
 import uuid
@@ -127,11 +126,20 @@ def delete_house_full(house_id: str) -> None:
         pass
 
 
+def image_items(house_id: str) -> list[dict[str, Any]]:
+    items = [
+        item
+        for item in list_media(house_id)
+        if item.get("kind") == "image" and item.get("download_status") == "downloaded" and item.get("local_path")
+    ]
+    return sorted(items, key=lambda item: item.get("created_at") or "")
+
+
 def first_local_image_id(house_id: str) -> str | None:
-    for item in list_media(house_id):
-        if item.get("kind") == "image" and item.get("download_status") == "downloaded" and item.get("local_path"):
-            return str(item.get("id"))
-    return None
+    items = image_items(house_id)
+    if not items:
+        return None
+    return str(items[0].get("id"))
 
 
 def dashboard_preview_html(house: dict[str, Any]) -> str:
@@ -144,21 +152,42 @@ def dashboard_preview_html(house: dict[str, Any]) -> str:
     return '<div class="muted">Noch kein Bild</div>'
 
 
-def gallery_slider_html(house_id: str) -> str:
-    items = []
-    for item in list_media(house_id):
-        if item.get("kind") == "image" and item.get("download_status") == "downloaded":
-            mid = esc(item.get("id"))
-            items.append(
-                f"""
-                <a class="gallery-slide" href="../media/{mid}" target="_blank">
-                  <img src="../media/{mid}" alt="Bild">
-                </a>
-                """
-            )
+def hero_gallery_html(house_id: str) -> str:
+    items = image_items(house_id)
+    if not items:
+        return ""
+    slides = []
+    for item in items[:12]:
+        mid = esc(item.get("id"))
+        slides.append(
+            f"""
+            <a class="hero-slide" href="../media/{mid}" target="_blank" title="Bild groß öffnen">
+              <img src="../media/{mid}" alt="Bild">
+            </a>
+            """
+        )
+    return f"""
+    <div class="hero-gallery-card">
+      <div class="hero-gallery">{''.join(slides)}</div>
+      <div class="muted hero-hint">Seitlich wischen · Bild antippen zum groß Öffnen</div>
+    </div>
+    """
+
+
+def image_grid_html(house_id: str) -> str:
+    items = image_items(house_id)
     if not items:
         return "<p class='muted'>Noch keine heruntergeladenen Bilder.</p>"
-    return f"<div class='gallery-slider'>{''.join(items)}</div>"
+    links = []
+    for item in items:
+        mid = esc(item.get("id"))
+        links.append(f"<a href='../media/{mid}' target='_blank'><img class='thumb' src='../media/{mid}' alt='Bild'></a>")
+    return "".join(links)
+
+
+# alter Name bleibt für Runtime-Patches/Kompatibilität erhalten
+def gallery_slider_html(house_id: str) -> str:
+    return hero_gallery_html(house_id)
 
 
 def edit_house_form_html(house: dict[str, Any]) -> str:
@@ -220,13 +249,39 @@ def expose_upload_html(house_id: str) -> str:
     return f"""
     <div class="card compact-card">
       <h2>Exposé PDF</h2>
-      <p class="muted">PDF hochladen. HausCheck liest Textdaten aus und ergänzt erkannte Werte wie Adresse, Preis, Flächen, HWB, fGEE, Heizung und Baujahr. Bilder aus PDFs werden soweit technisch möglich extrahiert.</p>
+      <p class="muted">PDF hochladen. HausCheck liest Textdaten aus und ergänzt erkannte Werte wie Preis, Flächen, HWB, fGEE, Heizung und Baujahr. Adressen aus PDFs werden nur als Hinweis in der Feldherkunft gespeichert, damit keine Makleradresse versehentlich übernommen wird.</p>
       <form method="post" action="{hid}/expose" enctype="multipart/form-data" data-loading="Exposé wird hochgeladen und ausgewertet …">
         <input type="file" name="file" accept=".pdf,application/pdf" required>
         <button type="submit">Exposé hochladen & auslesen</button>
       </form>
     </div>
     """
+
+
+def collect_pdf_address_hints(text: str) -> list[dict[str, Any]]:
+    hints: list[dict[str, Any]] = []
+    patterns = [
+        r"((?:[A-ZÄÖÜ][A-Za-zÄÖÜäöüß\-]+(?:straße|gasse|weg|platz|allee|ring|dorf|berg|siedlung))\s+\d+[A-Za-z]?,?\s*[0-9]{4}\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß\- ]{2,60})",
+        r"([0-9]{4}\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß\- ]{2,60})",
+    ]
+    blocked_context = re.compile(r"makler|anbieter|kontakt|impressum|büro|office|kanzlei|immobilien|gmbh|kg|e\.u\.", re.IGNORECASE)
+    for reg in patterns:
+        for match in re.finditer(reg, text):
+            start = max(0, match.start() - 120)
+            end = min(len(text), match.end() + 120)
+            context = text[start:end].replace("\n", " ")
+            hint = match.group(1).strip()
+            confidence = "niedrig" if blocked_context.search(context) else "mittel"
+            hints.append({
+                "field_name": "pdf_address_hint",
+                "value": hint,
+                "source_label": "Exposé PDF Adresshinweis - nicht automatisch übernommen",
+                "source_text_snippet": context[:300],
+                "confidence": confidence,
+            })
+            if len(hints) >= 5:
+                return hints
+    return hints
 
 
 def parse_pdf_facts(text: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -265,17 +320,9 @@ def parse_pdf_facts(text: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     if heating_match:
         add("heating", heating_match.group(1).strip()[:120], "Exposé PDF Heizung", heating_match.group(0), "derived")
 
-    # Adresshinweis: exakte Adressen können im PDF stehen, werden aber als abgeleitet markiert.
-    addr_patterns = [
-        r"((?:[A-ZÄÖÜ][A-Za-zÄÖÜäöüß\-]+(?:straße|gasse|weg|platz|allee|ring|dorf|berg|siedlung))\s+\d+[A-Za-z]?,?\s*[0-9]{4}\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß\- ]{2,60})",
-        r"([0-9]{4}\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß\- ]{2,60})",
-    ]
-    for reg in addr_patterns:
-        match = re.search(reg, text)
-        if match:
-            add("location_text", match.group(1).strip(), "Exposé PDF Adress-/Ortsangabe", match.group(0), "derived")
-            facts["address_status"] = "hint" if not re.search(r"\d+[A-Za-z]?,?\s*[0-9]{4}", match.group(1)) else "exact"
-            break
+    # Adresse wird bewusst nicht automatisch in die Hausakte geschrieben.
+    # Viele Exposés enthalten Makler-/Büroadressen; diese werden nur als Hinweis gespeichert.
+    evidence.extend(collect_pdf_address_hints(text))
 
     return facts, evidence
 
@@ -375,7 +422,7 @@ def register_house_management(app: FastAPI) -> None:
             facts, evidence = parse_pdf_facts(text)
             if facts:
                 update_house_details(house_id, facts)
-            evidence.append({"field_name": "expose_pdf", "value": filename, "source_label": "Exposé PDF", "source_text_snippet": f"PDF ausgelesen. Extrahierte Bilder: {image_count}", "confidence": "derived"})
+            evidence.append({"field_name": "expose_pdf", "value": filename, "source_label": "Exposé PDF", "source_text_snippet": f"PDF ausgelesen. Extrahierte Bilder: {image_count}. Adresse wurde nicht automatisch übernommen.", "confidence": "derived"})
             add_evidence(house_id, None, evidence)
         except Exception as exc:
             add_evidence(house_id, None, [{"field_name": "expose_pdf", "value": filename, "source_label": "Exposé PDF", "source_text_snippet": f"PDF konnte nicht vollständig ausgelesen werden: {str(exc)[:300]}", "confidence": "unknown"}])
