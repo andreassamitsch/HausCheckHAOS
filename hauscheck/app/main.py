@@ -73,7 +73,6 @@ def num(value: object, suffix: str = "") -> str:
 
 
 def layout(title: str, body: str, home_href: str = "./") -> HTMLResponse:
-    """Render page with relative links so it works through Home Assistant Ingress."""
     return HTMLResponse(
         f"""
 <!doctype html>
@@ -115,13 +114,6 @@ def layout(title: str, body: str, home_href: str = "./") -> HTMLResponse:
     )
 
 
-def first_local_image(house_id: str, prefix: str = "") -> str | None:
-    for media in list_media(house_id):
-        if media.get("kind") == "image" and media.get("download_status") == "downloaded" and media.get("local_path"):
-            return f"{prefix}media/{media['id']}"
-    return None
-
-
 def media_hash(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
 
@@ -138,6 +130,22 @@ def is_too_small_for_gallery(width: int | None, height: int | None) -> bool:
     if width is None or height is None:
         return False
     return width < MIN_IMAGE_WIDTH or height < MIN_IMAGE_HEIGHT or (width * height) < MIN_IMAGE_PIXELS
+
+
+def image_meta(content: bytes) -> dict[str, object]:
+    width, height = image_dimensions(content)
+    return {"content_hash": media_hash(content), "width": width, "height": height, "file_size_bytes": len(content)}
+
+
+def binary_meta(content: bytes) -> dict[str, object]:
+    return {"content_hash": media_hash(content), "file_size_bytes": len(content)}
+
+
+def first_local_image(house_id: str) -> str | None:
+    for media in list_media(house_id):
+        if media.get("kind") == "image" and media.get("download_status") == "downloaded" and media.get("local_path"):
+            return f"media/{media['id']}"
+    return None
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -192,7 +200,7 @@ def import_form() -> HTMLResponse:
         <input name="url" placeholder="https://www.willhaben.at/iad/immobilien/d/..." required>
         <button type="submit">Importieren</button>
       </form>
-      <p class="muted">Aktuell: Direktlink-Import mit Willhaben-Parser, Medienfilter und generischem Fallback.</p>
+      <p class="muted">Direktlink-Import mit Willhaben-Parser, Medienfilter und generischem Fallback.</p>
     </div>
     <div class="card">
       <h2>Manuell anlegen</h2>
@@ -274,16 +282,7 @@ def manual_create(
     living_area_m2: float | None = Form(None),
     plot_area_m2: float | None = Form(None),
 ) -> RedirectResponse:
-    house = create_house(
-        {
-            "title": title,
-            "location_text": location_text,
-            "price_eur": price_eur,
-            "living_area_m2": living_area_m2,
-            "plot_area_m2": plot_area_m2,
-            "address_status": "unknown",
-        }
-    )
+    house = create_house({"title": title, "location_text": location_text, "price_eur": price_eur, "living_area_m2": living_area_m2, "plot_area_m2": plot_area_m2, "address_status": "unknown"})
     return RedirectResponse(f"houses/{house['id']}", status_code=303)
 
 
@@ -296,10 +295,7 @@ def house_detail(house_id: str) -> HTMLResponse:
     media = list_media(house_id)
     evidence = list_evidence(house_id)
 
-    source_rows = "".join(
-        f"<tr><td>{esc(src.get('source_name'))}</td><td><a href='{esc(src.get('source_url'))}' target='_blank'>Direktlink</a></td><td>{esc(src.get('parser_status'))}</td></tr>"
-        for src in sources
-    )
+    source_rows = "".join(f"<tr><td>{esc(src.get('source_name'))}</td><td><a href='{esc(src.get('source_url'))}' target='_blank'>Direktlink</a></td><td>{esc(src.get('parser_status'))}</td></tr>" for src in sources)
     media_items = []
     for item in media:
         if item.get("kind") == "image" and item.get("download_status") == "downloaded":
@@ -310,23 +306,10 @@ def house_detail(house_id: str) -> HTMLResponse:
     skipped_count = len([m for m in media if m.get("download_status") == "skipped"])
     downloaded_count = len([m for m in media if m.get("download_status") == "downloaded"])
 
-    evidence_rows = "".join(
-        f"<tr><td>{esc(ev.get('field_name'))}</td><td>{esc(ev.get('value_text'))}</td><td>{esc(ev.get('confidence'))}</td><td>{esc(ev.get('source_text_snippet'))}</td></tr>"
-        for ev in evidence[:30]
-    )
-
-    failed_rows = "".join(
-        f"<tr><td>{esc(m.get('kind'))}</td><td>{esc(m.get('original_url'))}</td><td class='danger'>{esc(m.get('download_error'))}</td></tr>"
-        for m in media
-        if m.get("download_status") == "failed"
-    )
+    evidence_rows = "".join(f"<tr><td>{esc(ev.get('field_name'))}</td><td>{esc(ev.get('value_text'))}</td><td>{esc(ev.get('confidence'))}</td><td>{esc(ev.get('source_text_snippet'))}</td></tr>" for ev in evidence[:30])
+    failed_rows = "".join(f"<tr><td>{esc(m.get('kind'))}</td><td>{esc(m.get('original_url'))}</td><td class='danger'>{esc(m.get('download_error'))}</td></tr>" for m in media if m.get("download_status") == "failed")
     failed_html = f"<h3>Fehlgeschlagene Medien</h3><table><tr><th>Typ</th><th>URL</th><th>Fehler</th></tr>{failed_rows}</table>" if failed_rows else ""
-
-    skipped_rows = "".join(
-        f"<tr><td>{esc(m.get('kind'))}</td><td>{esc(m.get('width'))}×{esc(m.get('height'))}</td><td>{esc(m.get('download_error'))}</td></tr>"
-        for m in media
-        if m.get("download_status") == "skipped"
-    )
+    skipped_rows = "".join(f"<tr><td>{esc(m.get('kind'))}</td><td>{esc(m.get('width'))}×{esc(m.get('height'))}</td><td>{esc(m.get('download_error'))}</td></tr>" for m in media if m.get("download_status") == "skipped")
     skipped_html = f"<h3>Übersprungene Medien</h3><table><tr><th>Typ</th><th>Größe</th><th>Grund</th></tr>{skipped_rows}</table>" if skipped_rows else ""
 
     body = f"""
@@ -342,42 +325,20 @@ def house_detail(house_id: str) -> HTMLResponse:
         <span class="pill">Heizung: {esc(house.get('heating') or 'unbekannt')}</span>
       </p>
       <p><span class="pill">Adresse: {esc(house.get('address_status'))}</span><span class="pill">Status: {esc(house.get('status'))}</span></p>
-      <p>
-        <span class="pill">{downloaded_count} geladen</span>
-        <span class="pill">{pending_count} offen</span>
-        <span class="pill">{skipped_count} übersprungen</span>
-        <span class="pill">{failed_count} Fehler</span>
-      </p>
-      <form method="post" action="{house_id}/download-media" style="display:inline">
-        <button type="submit">Medien herunterladen</button>
-      </form>
-      <form method="post" action="{house_id}/cleanup-media" style="display:inline">
-        <button class="secondary" type="submit">Medien bereinigen</button>
-      </form>
+      <p><span class="pill">{downloaded_count} geladen</span><span class="pill">{pending_count} offen</span><span class="pill">{skipped_count} übersprungen</span><span class="pill">{failed_count} Fehler</span></p>
+      <form method="post" action="{house_id}/download-media" style="display:inline"><button type="submit">Medien herunterladen</button></form>
+      <form method="post" action="{house_id}/cleanup-media" style="display:inline"><button class="secondary" type="submit">Medien bereinigen</button></form>
       <a class="button secondary" href="{house_id}/briefing">Analysebriefing</a>
     </div>
-
     <div class="card">
       <h2>Bilder</h2>
       <div class="gallery">{media_html}</div>
       <h3>Manuell hochladen</h3>
-      <form method="post" action="{house_id}/upload" enctype="multipart/form-data">
-        <input type="file" name="file" required>
-        <button type="submit">Hochladen</button>
-      </form>
-      {skipped_html}
-      {failed_html}
+      <form method="post" action="{house_id}/upload" enctype="multipart/form-data"><input type="file" name="file" required><button type="submit">Hochladen</button></form>
+      {skipped_html}{failed_html}
     </div>
-
-    <div class="card">
-      <h2>Quellen</h2>
-      <table><tr><th>Portal</th><th>Link</th><th>Status</th></tr>{source_rows}</table>
-    </div>
-
-    <div class="card">
-      <h2>Feldherkunft</h2>
-      <table><tr><th>Feld</th><th>Wert</th><th>Sicherheit</th><th>Snippet</th></tr>{evidence_rows}</table>
-    </div>
+    <div class="card"><h2>Quellen</h2><table><tr><th>Portal</th><th>Link</th><th>Status</th></tr>{source_rows}</table></div>
+    <div class="card"><h2>Feldherkunft</h2><table><tr><th>Feld</th><th>Wert</th><th>Sicherheit</th><th>Snippet</th></tr>{evidence_rows}</table></div>
     """
     return layout(str(house.get("title") or "Hausakte"), body, home_href="../")
 
@@ -389,16 +350,6 @@ def safe_filename_from_url(url: str, fallback: str) -> str:
     if "." not in name:
         name = f"{name}.jpg"
     return name[:180]
-
-
-def media_payload_update(content: bytes) -> dict[str, object]:
-    width, height = image_dimensions(content)
-    return {
-        "content_hash": media_hash(content),
-        "width": width,
-        "height": height,
-        "file_size_bytes": len(content),
-    }
 
 
 @app.post("/houses/{house_id}/download-media")
@@ -416,47 +367,20 @@ async def download_media(house_id: str) -> RedirectResponse:
                 response.raise_for_status()
                 content = response.content
                 kind = item.get("kind") or "image"
-                meta = media_payload_update(content) if kind == "image" else {"content_hash": media_hash(content), "file_size_bytes": len(content)}
-
+                meta = image_meta(content) if kind == "image" else binary_meta(content)
                 if kind == "image" and is_too_small_for_gallery(meta.get("width"), meta.get("height")):
-                    update_media(
-                        item["id"],
-                        {
-                            **meta,
-                            "mime_type": response.headers.get("content-type"),
-                            "download_status": "skipped",
-                            "download_error": f"zu kleines Bild / vermutlich Logo oder UI-Grafik ({meta.get('width')}x{meta.get('height')})",
-                        },
-                    )
+                    update_media(item["id"], {**meta, "mime_type": response.headers.get("content-type"), "download_status": "skipped", "download_error": f"zu kleines Bild / vermutlich Logo oder UI-Grafik ({meta.get('width')}x{meta.get('height')})"})
                     continue
-
                 duplicate = find_media_by_hash(house_id, kind, str(meta["content_hash"]))
                 if duplicate and duplicate.get("id") != item.get("id"):
-                    update_media(
-                        item["id"],
-                        {
-                            **meta,
-                            "mime_type": response.headers.get("content-type"),
-                            "download_status": "skipped",
-                            "download_error": f"Duplikat von Medium {duplicate.get('id')}",
-                        },
-                    )
+                    update_media(item["id"], {**meta, "mime_type": response.headers.get("content-type"), "download_status": "skipped", "download_error": f"Duplikat von Medium {duplicate.get('id')}"})
                     continue
-
                 kind_dir = "pdfs" if kind == "pdf" else "images"
-                filename = f"{item['id']}_{safe_filename_from_url(url, f'{item['id']}.bin')}"
+                fallback_name = f"{item['id']}.bin"
+                filename = f"{item['id']}_{safe_filename_from_url(url, fallback_name)}"
                 target = hdir / kind_dir / filename
                 target.write_bytes(content)
-                update_media(
-                    item["id"],
-                    {
-                        **meta,
-                        "local_path": str(target),
-                        "mime_type": response.headers.get("content-type"),
-                        "download_status": "downloaded",
-                        "download_error": None,
-                    },
-                )
+                update_media(item["id"], {**meta, "local_path": str(target), "mime_type": response.headers.get("content-type"), "download_status": "downloaded", "download_error": None})
             except Exception as exc:
                 update_media(item["id"], {"download_status": "failed", "download_error": str(exc)[:500]})
     return RedirectResponse(f"../{house_id}", status_code=303)
@@ -467,28 +391,19 @@ def cleanup_media(house_id: str) -> RedirectResponse:
     if not get_house(house_id):
         raise HTTPException(status_code=404, detail="Hausakte nicht gefunden")
     seen_hashes: dict[str, str] = {}
-    items = sorted(
-        [m for m in list_media(house_id) if m.get("kind") == "image" and m.get("download_status") == "downloaded" and m.get("local_path")],
-        key=lambda item: item.get("created_at") or "",
-    )
+    items = sorted([m for m in list_media(house_id) if m.get("kind") == "image" and m.get("download_status") == "downloaded" and m.get("local_path")], key=lambda item: item.get("created_at") or "")
     for item in items:
         try:
             path = Path(str(item["local_path"]))
             path.relative_to(PROJECTS_DIR)
             content = path.read_bytes()
-            meta = media_payload_update(content)
+            meta = image_meta(content)
             content_hash = str(meta["content_hash"])
             if is_too_small_for_gallery(meta.get("width"), meta.get("height")):
-                update_media(
-                    item["id"],
-                    {**meta, "download_status": "skipped", "download_error": f"zu kleines Bild / vermutlich Logo oder UI-Grafik ({meta.get('width')}x{meta.get('height')})"},
-                )
+                update_media(item["id"], {**meta, "download_status": "skipped", "download_error": f"zu kleines Bild / vermutlich Logo oder UI-Grafik ({meta.get('width')}x{meta.get('height')})"})
                 continue
             if content_hash in seen_hashes:
-                update_media(
-                    item["id"],
-                    {**meta, "download_status": "skipped", "download_error": f"Duplikat von Medium {seen_hashes[content_hash]}"},
-                )
+                update_media(item["id"], {**meta, "download_status": "skipped", "download_error": f"Duplikat von Medium {seen_hashes[content_hash]}"})
                 continue
             seen_hashes[content_hash] = str(item["id"])
             update_media(item["id"], meta)
@@ -508,17 +423,8 @@ async def upload_media(house_id: str, file: UploadFile = File(...)) -> RedirectR
     content = await file.read()
     target = project_dir(house_id) / sub / filename
     target.write_bytes(content)
-    meta = media_payload_update(content) if kind == "image" else {"content_hash": media_hash(content), "file_size_bytes": len(content)}
-    add_media(
-        house_id,
-        {
-            **meta,
-            "kind": kind,
-            "local_path": str(target),
-            "mime_type": file.content_type,
-            "download_status": "downloaded",
-        },
-    )
+    meta = image_meta(content) if kind == "image" else binary_meta(content)
+    add_media(house_id, {**meta, "kind": kind, "local_path": str(target), "mime_type": file.content_type, "download_status": "downloaded"})
     return RedirectResponse(f"../{house_id}", status_code=303)
 
 
@@ -546,10 +452,7 @@ def briefing(house_id: str) -> PlainTextResponse:
     media = list_media(house_id)
     evidence = list_evidence(house_id)
     source_links = "\n".join(f"- {s.get('source_name')}: {s.get('source_url')}" for s in sources)
-    evidence_lines = "\n".join(
-        f"- {e.get('field_name')}: {e.get('value_text')} ({e.get('confidence')}) – {e.get('source_text_snippet')}"
-        for e in evidence[:50]
-    )
+    evidence_lines = "\n".join(f"- {e.get('field_name')}: {e.get('value_text')} ({e.get('confidence')}) – {e.get('source_text_snippet')}" for e in evidence[:50])
     local_images = len([m for m in media if m.get("kind") == "image" and m.get("download_status") == "downloaded"])
     pending = len([m for m in media if m.get("download_status") == "pending"])
     skipped = len([m for m in media if m.get("download_status") == "skipped"])
