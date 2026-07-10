@@ -4,7 +4,7 @@
 
 Nach der Installation das Add-on starten und über den Home-Assistant-Ingress öffnen.
 
-## Aktueller Funktionsumfang v0.5.0
+## Aktueller Funktionsumfang v0.5.1
 
 - Hausakten-Dashboard
 - Direktlink-Import
@@ -20,7 +20,7 @@ Nach der Installation das Add-on starten und über den Home-Assistant-Ingress ö
 - optionale manuelle Willhaben-Such-URL für Spezialfälle, z. B. Umkreis
 - persistente Kandidatenliste mit Einzelimport
 - Kandidaten-Vorprüfung anhand Preis, Wohnfläche, Grundstück und HWB
-- Vorschaubild je Kandidat
+- Vorschaubild je Kandidat bevorzugt aus der Portal-/Willhaben-Übersicht
 - mobilfreundliche Kandidaten-Karten statt breiter Tabelle
 - Ladeanzeige mit Spinner und Aktionstext
 - Deduplizierung über Willhaben-Inserat-ID
@@ -45,6 +45,12 @@ Portalquelle = automatisch erzeugt oder optional manuell
 HausCheck-Filter = finale Kontrolle
 HausCheck-Score = schnelle Priorisierung
 ```
+
+## Vorschaubilder
+
+HausCheck versucht das Vorschaubild direkt aus der Portal-/Willhaben-Übersicht zu übernehmen. Das entspricht eher dem Bild, das auch auf der Suchergebnisseite sichtbar ist.
+
+Wenn dort kein Bild erkannt wird, bleibt die Detailseite als Fallback.
 
 ## Regelbasierte Erstbewertung
 
