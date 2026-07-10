@@ -18,17 +18,25 @@ from app.storage import (
     add_evidence,
     add_media,
     create_house,
+    create_search_profile,
     create_source,
     find_media_by_hash,
     get_house,
     get_media,
+    get_search_profile,
     init_storage,
     list_evidence,
     list_houses,
     list_media,
+    list_search_candidates,
+    list_search_profiles,
     list_sources,
+    mark_candidates_imported,
     project_dir,
+    source_url_exists,
     update_media,
+    update_search_profile_run,
+    upsert_search_candidate,
 )
 
 APP_NAME = "HausCheck Pro"
@@ -37,7 +45,7 @@ MIN_IMAGE_WIDTH = 400
 MIN_IMAGE_HEIGHT = 250
 MIN_IMAGE_PIXELS = 180_000
 
-app = FastAPI(title=APP_NAME, version="0.2.0")
+app = FastAPI(title=APP_NAME, version="0.3.0")
 
 
 @app.on_event("startup")
@@ -148,18 +156,10 @@ def first_local_image(house_id: str) -> str | None:
     return None
 
 
-def existing_source_urls() -> set[str]:
-    urls: set[str] = set()
-    for house in list_houses():
-        for source in list_sources(str(house["id"])):
-            if source.get("source_url"):
-                urls.add(str(source["source_url"]))
-    return urls
-
-
 @app.get("/", response_class=HTMLResponse)
 def dashboard() -> HTMLResponse:
     houses = list_houses()
+    profiles = list_search_profiles()
     cards = []
     for house in houses:
         img = first_local_image(house["id"])
@@ -180,18 +180,23 @@ def dashboard() -> HTMLResponse:
             </div>
             """
         )
+    profile_buttons = "".join(
+        f"<a class='button secondary' href='search/profiles/{p['id']}'>{esc(p.get('name'))}</a>"
+        for p in profiles[:6]
+    )
     body = f"""
     <div class="grid">
       <div class="card">
         <h2>Neue Hausakte</h2>
-        <p class="muted">Direktlink importieren oder Objekt manuell anlegen.</p>
+        <p class="muted">Direktlink importieren oder Suchprofile verwalten.</p>
         <a class="button" href="import">Inserat importieren</a>
-        <a class="button secondary" href="search">Suchlauf starten</a>
+        <a class="button secondary" href="search">Suchprofile</a>
       </div>
       <div class="card">
         <h2>Status</h2>
-        <p><span class="pill">{len(houses)} Hausakten</span></p>
-        <p class="muted">v0.2.0: Willhaben-Suchergebnis-URL einlesen und Kandidaten importieren.</p>
+        <p><span class="pill">{len(houses)} Hausakten</span><span class="pill">{len(profiles)} Suchprofile</span></p>
+        <p class="muted">v0.3.0: gespeicherte Suchprofile und persistente Kandidatenliste.</p>
+        {profile_buttons}
       </div>
     </div>
     <h2>Hausakten</h2>
@@ -228,22 +233,55 @@ def import_form() -> HTMLResponse:
 
 
 @app.get("/search", response_class=HTMLResponse)
-def search_form() -> HTMLResponse:
-    body = """
+def search_profiles_page() -> HTMLResponse:
+    profiles = list_search_profiles()
+    rows = []
+    for profile in profiles:
+        candidates = list_search_candidates(str(profile["id"]))
+        new_count = len([c for c in candidates if c.get("status") != "imported" and not source_url_exists(str(c.get("source_url")))])
+        imported_count = len(candidates) - new_count
+        rows.append(
+            f"""
+            <tr>
+              <td>{esc(profile.get('name'))}</td>
+              <td>{esc(profile.get('source_name'))}</td>
+              <td><span class="pill">{len(candidates)} Kandidaten</span><span class="pill">{new_count} neu</span><span class="pill">{imported_count} importiert</span></td>
+              <td>{esc(profile.get('last_run_at') or 'noch nie')}</td>
+              <td>
+                <a class="button" href="search/profiles/{profile['id']}">Öffnen</a>
+                <form method="post" action="search/profiles/{profile['id']}/run" style="display:inline"><button class="secondary" type="submit">Starten</button></form>
+              </td>
+            </tr>
+            """
+        )
+    body = f"""
     <div class="card">
-      <h2>Suchlauf MVP</h2>
-      <p class="muted">Füge eine gefilterte Willhaben-Suchergebnis-URL ein. HausCheck extrahiert daraus echte Inserat-Direktlinks.</p>
-      <form method="post" action="search/willhaben">
+      <h2>Suchprofile</h2>
+      <p class="muted">Speichere gefilterte Willhaben-Suchergebnis-URLs dauerhaft. Kandidaten bleiben erhalten und können später importiert werden.</p>
+      <form method="post" action="search/profiles">
+        <label>Name</label>
+        <input name="name" placeholder="z. B. Wies/Eibiswald bis 380k" required>
         <label>Willhaben-Suchergebnis-URL</label>
-        <input name="url" placeholder="https://www.willhaben.at/iad/immobilien/haus-kaufen/steiermark/deutschlandsberg/..." required>
+        <input name="search_url" placeholder="https://www.willhaben.at/iad/immobilien/..." required>
+        <button type="submit">Suchprofil speichern</button>
+      </form>
+    </div>
+    <div class="card">
+      <h2>Gespeicherte Profile</h2>
+      <table><tr><th>Name</th><th>Quelle</th><th>Kandidaten</th><th>Letzter Lauf</th><th>Aktion</th></tr>{''.join(rows) if rows else '<tr><td colspan="5" class="muted">Noch keine Suchprofile gespeichert.</td></tr>'}</table>
+    </div>
+    <div class="card">
+      <h2>Ad-hoc Suchlauf</h2>
+      <form method="post" action="search/run">
+        <label>Willhaben-Suchergebnis-URL</label>
+        <input name="url" placeholder="https://www.willhaben.at/iad/immobilien/..." required>
         <label>Maximale Treffer</label>
         <input name="max_results" type="number" min="1" max="100" value="40">
-        <button type="submit">Suchseite auslesen</button>
+        <button type="submit">Einmalig auslesen</button>
       </form>
-      <p class="muted">Dieser Schritt speichert noch keine Objekte automatisch. Du entscheidest pro Kandidat, ob importiert wird.</p>
     </div>
     """
-    return layout("Suchlauf", body, home_href="../")
+    return layout("Suchprofile", body, home_href="../")
 
 
 async def fetch_html(url: str) -> str:
@@ -253,7 +291,81 @@ async def fetch_html(url: str) -> str:
         return response.text
 
 
-@app.post("/search/willhaben", response_class=HTMLResponse)
+async def run_search_profile(profile_id: str, max_results: int = 80) -> int:
+    profile = get_search_profile(profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Suchprofil nicht gefunden")
+    raw_html = await fetch_html(str(profile["search_url"]))
+    links = extract_listing_links(raw_html, str(profile["search_url"]))[: max(1, min(max_results, 150))]
+    for link in links:
+        status = "imported" if source_url_exists(link) else "new"
+        upsert_search_candidate(profile_id, link, title_from_listing_url(link), status=status)
+    update_search_profile_run(profile_id, len(links))
+    return len(links)
+
+
+@app.post("/search/profiles")
+def create_profile(name: str = Form(...), search_url: str = Form(...)) -> RedirectResponse:
+    if not search_url.startswith(("http://", "https://")):
+        raise HTTPException(status_code=400, detail="Ungültige URL")
+    if "willhaben.at" not in search_url.lower():
+        raise HTTPException(status_code=400, detail="Aktuell werden nur Willhaben-Suchprofile unterstützt")
+    profile = create_search_profile(name.strip(), search_url.strip(), "willhaben.at")
+    return RedirectResponse(f"profiles/{profile['id']}", status_code=303)
+
+
+@app.get("/search/profiles/{profile_id}", response_class=HTMLResponse)
+def profile_detail(profile_id: str) -> HTMLResponse:
+    profile = get_search_profile(profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Suchprofil nicht gefunden")
+    candidates = list_search_candidates(profile_id)
+    rows = []
+    for idx, cand in enumerate(candidates, start=1):
+        imported = cand.get("status") == "imported" or source_url_exists(str(cand.get("source_url")))
+        status = "importiert" if imported else "neu"
+        action = ""
+        if not imported:
+            action = f"""
+            <form method="post" action="../../import" style="display:inline">
+              <input type="hidden" name="url" value="{esc(cand.get('source_url'))}">
+              <button type="submit">Importieren</button>
+            </form>
+            """
+        rows.append(
+            f"""
+            <tr>
+              <td>{idx}</td>
+              <td>{esc(cand.get('title') or title_from_listing_url(str(cand.get('source_url'))))}<br><a href="{esc(cand.get('source_url'))}" target="_blank">Direktlink öffnen</a></td>
+              <td><span class="pill">{status}</span></td>
+              <td>{esc(cand.get('first_seen_at'))}</td>
+              <td>{action}</td>
+            </tr>
+            """
+        )
+    body = f"""
+    <div class="card">
+      <h2>{esc(profile.get('name'))}</h2>
+      <p class="muted"><a href="{esc(profile.get('search_url'))}" target="_blank">Original-Suche öffnen</a></p>
+      <p><span class="pill">{len(candidates)} Kandidaten</span><span class="pill">Letzter Lauf: {esc(profile.get('last_run_at') or 'noch nie')}</span></p>
+      <form method="post" action="{profile_id}/run" style="display:inline"><button type="submit">Suchprofil jetzt starten</button></form>
+      <a class="button secondary" href="../../search">Zurück</a>
+    </div>
+    <div class="card">
+      <h2>Kandidaten</h2>
+      <table><tr><th>#</th><th>Kandidat</th><th>Status</th><th>Erstmals gesehen</th><th>Aktion</th></tr>{''.join(rows) if rows else '<tr><td colspan="5" class="muted">Noch keine Kandidaten. Starte das Suchprofil.</td></tr>'}</table>
+    </div>
+    """
+    return layout("Suchprofil", body, home_href="../../../")
+
+
+@app.post("/search/profiles/{profile_id}/run")
+async def run_profile_route(profile_id: str) -> RedirectResponse:
+    await run_search_profile(profile_id)
+    return RedirectResponse(f"../{profile_id}", status_code=303)
+
+
+@app.post("/search/run", response_class=HTMLResponse)
 async def search_willhaben(url: str = Form(...), max_results: int = Form(40)) -> HTMLResponse:
     if not url.startswith(("http://", "https://")):
         raise HTTPException(status_code=400, detail="Ungültige URL")
@@ -262,13 +374,12 @@ async def search_willhaben(url: str = Form(...), max_results: int = Form(40)) ->
 
     raw_html = await fetch_html(url)
     links = extract_listing_links(raw_html, url)[: max(1, min(max_results, 100))]
-    known = existing_source_urls()
-
     rows = []
     for index, link in enumerate(links, start=1):
-        known_badge = "<span class='pill'>bereits importiert</span>" if link in known else "<span class='pill'>neu</span>"
+        imported = source_url_exists(link)
+        known_badge = "<span class='pill'>bereits importiert</span>" if imported else "<span class='pill'>neu</span>"
         import_button = ""
-        if link not in known:
+        if not imported:
             import_button = f"""
             <form method="post" action="../import" style="display:inline">
               <input type="hidden" name="url" value="{esc(link)}">
@@ -288,15 +399,15 @@ async def search_willhaben(url: str = Form(...), max_results: int = Form(40)) ->
 
     body = f"""
     <div class="card">
-      <h2>Suchlauf Ergebnis</h2>
+      <h2>Ad-hoc Suchlauf Ergebnis</h2>
       <p><span class="pill">{len(links)} Direktlinks gefunden</span></p>
       <p class="muted">Quelle: <a href="{esc(url)}" target="_blank">Willhaben-Suche öffnen</a></p>
-      <a class="button secondary" href="../search">Neue Suchseite prüfen</a>
+      <a class="button secondary" href="../search">Zurück zu Suchprofilen</a>
     </div>
     <div class="card">
       <table>
         <tr><th>#</th><th>Kandidat</th><th>Status</th><th>Aktion</th></tr>
-        {''.join(rows) if rows else '<tr><td colspan="4" class="muted">Keine Inserat-Direktlinks erkannt. Möglicherweise blockiert Willhaben die Suchseite oder die Seite wurde dynamisch geladen.</td></tr>'}
+        {''.join(rows) if rows else '<tr><td colspan="4" class="muted">Keine Inserat-Direktlinks erkannt.</td></tr>'}
       </table>
     </div>
     """
@@ -344,6 +455,7 @@ async def import_url(url: str = Form(...)) -> RedirectResponse:
         },
     )
     add_evidence(house["id"], source["id"], parsed.evidence)
+    mark_candidates_imported(parsed.source_url, house["id"])
 
     for image_url in parsed.image_urls:
         add_media(house["id"], {"source_id": source["id"], "kind": "image", "original_url": image_url, "download_status": "pending"})
