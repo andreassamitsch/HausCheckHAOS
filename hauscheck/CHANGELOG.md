@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.2
+
+- Willhaben-Bild-URL-Erkennung auf Galerie-Kandidaten fokussiert
+- Bild-URLs werden normalisiert und doppelte URLs werden vermieden
+- Medien erhalten Content-Hash, Bildbreite, Bildhöhe und Dateigröße
+- Doppelte Bildinhalte werden beim Download übersprungen
+- kleine Logos, Icons und UI-Grafiken werden als `skipped` markiert
+- Button „Medien bereinigen“ für bereits importierte Objekte ergänzt
+- Medienübersicht zeigt geladene, offene, übersprungene und fehlerhafte Medien
+
 ## 0.1.1
 
 - Links und Formularziele für Home-Assistant-Ingress auf relative Pfade umgestellt
