@@ -4,14 +4,14 @@
 
 Nach der Installation das Add-on starten und über den Home-Assistant-Ingress öffnen.
 
-## Aktueller Funktionsumfang v0.4.4
+## Aktueller Funktionsumfang v0.4.5
 
 - Hausakten-Dashboard
 - Direktlink-Import
 - konservativer Willhaben-Parser
 - SQLite-Datenbank unter `/share/hauscheck/hauscheck.db`
 - lokale Medienablage unter `/share/hauscheck/projects/`
-- Bild-URL-Erkennung und Download
+- Bild-URL-Erkennung und automatischer Bilddownload beim Import
 - Medienfilter gegen Logos, Icons und Duplikate
 - manuelle Medien-Uploads
 - Analysebriefing pro Hausakte
@@ -20,6 +20,8 @@ Nach der Installation das Add-on starten und über den Home-Assistant-Ingress ö
 - optionale manuelle Willhaben-Such-URL für Spezialfälle, z. B. Umkreis
 - persistente Kandidatenliste mit Einzelimport
 - Kandidaten-Vorprüfung anhand Preis, Wohnfläche, Grundstück und HWB
+- Vorschaubild je Kandidat
+- Deduplizierung über Willhaben-Inserat-ID
 
 ## Zentrale Suchprofile verwenden
 
@@ -27,7 +29,8 @@ Nach der Installation das Add-on starten und über den Home-Assistant-Ingress ö
 2. Name, zentrale Kriterien und Willhaben-PLZ/areaIds speichern.
 3. Die Willhaben-URL kann leer bleiben.
 4. Profil öffnen und **Suchprofil jetzt starten** klicken.
-5. Kandidaten prüfen und einzeln importieren.
+5. Kandidaten anhand Vorschaubild und Fakten prüfen.
+6. Kandidaten einzeln importieren. Bilder werden beim Import automatisch geladen.
 
 Die zentrale Logik lautet:
 
@@ -61,14 +64,9 @@ Mehrere PLZ/areaIds können kommagetrennt eingetragen werden:
 8551,8552,8544,8553
 ```
 
+Die frühere Maske „Regionen / Orte“ wurde entfernt. Für Willhaben steuert jetzt **PLZ / areaId** die Suche. Die lokale Textprüfung über Orte war zu unzuverlässig und wird später sauber über Portaladapter/Geo-Daten ersetzt.
+
 Die Umkreissuche mit `lat`, `lon` und `sfId` ist noch nicht automatisiert. Dafür kann vorerst weiterhin eine manuelle Willhaben-URL als Vorlage eingetragen werden.
-
-Beispiele für Suchprofile:
-
-- Wies/Eibiswald bis 380k, Grenzfälle bis 400k
-- Oberhaag/Obergreith mit Grundstück ab 700 m²
-- Deutschlandsberg größere Grundstücke
-- Preisgrenze 400k als Beobachtung
 
 ## Kandidatenstatus
 
@@ -76,6 +74,12 @@ Beispiele für Suchprofile:
 - `prüfen`: nicht ausgeschlossen, aber mit Warnung
 - `gefiltert`: harte Kriterien nicht erfüllt
 - `importiert`: bereits als Hausakte vorhanden
+
+## Import und Medien
+
+Beim Import aus der Kandidatenliste oder per Direktlink werden Bilder und PDFs automatisch geladen.
+
+Der Button **Medien erneut herunterladen** bleibt als Retry-Funktion erhalten, falls einzelne Medien beim ersten Versuch fehlschlagen.
 
 Wichtig:
 
