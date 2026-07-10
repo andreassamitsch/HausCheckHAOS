@@ -4,7 +4,7 @@
 
 Nach der Installation das Add-on starten und über den Home-Assistant-Ingress öffnen.
 
-## Aktueller Funktionsumfang v0.5.2
+## Aktueller Funktionsumfang v0.5.3
 
 - Hausakten-Dashboard
 - Direktlink-Import
@@ -26,6 +26,7 @@ Nach der Installation das Add-on starten und über den Home-Assistant-Ingress ö
 - Deduplizierung über Willhaben-Inserat-ID
 - regelbasierte Erstbewertung / Score je Kandidat und Hausakte
 - geschützte ChatGPT/API/MCP-Bridge für externe Analyse
+- Home-Assistant-Proxy für Nabu-Casa-Zugriff über `/api/hauscheck/...`
 
 ## Zentrale Suchprofile verwenden
 
@@ -46,13 +47,80 @@ Portalquelle = automatisch erzeugt oder optional manuell
 HausCheck-Filter = finale Kontrolle
 HausCheck-Score = schnelle Priorisierung
 ChatGPT-Bridge = externe Analyse / Bildanalyse
+Home-Assistant-Proxy = Nabu-Casa-Zugriff
 ```
 
-## ChatGPT-/MCP-Bridge
+## Nabu-Casa-Zugriff über Home Assistant Proxy
+
+Zusätzlich zum Add-on enthält das Repository eine Custom Integration:
+
+```text
+custom_components/hauscheck_proxy/
+```
+
+Diese Integration registriert Home-Assistant-API-Endpunkte:
+
+```text
+GET  /api/hauscheck/health
+GET  /api/hauscheck/houses
+GET  /api/hauscheck/houses/{house_id}
+GET  /api/hauscheck/search-profiles
+GET  /api/hauscheck/search-profiles/{profile_id}/candidates
+GET  /api/hauscheck/mcp
+POST /api/hauscheck/mcp
+```
+
+Dadurch kann der Zugriff über deine Nabu-Casa-URL laufen:
+
+```text
+https://<deine-instanz>.ui.nabu.casa/api/hauscheck/health
+```
+
+Nach außen gilt die Home-Assistant-Authentifizierung, also z. B. ein Long-Lived Access Token. Nach innen leitet der Proxy mit dem HausCheck-`api_token` an das Add-on weiter.
+
+### Installation der Custom Integration
+
+1. Ordner kopieren:
+
+```text
+custom_components/hauscheck_proxy
+→ /config/custom_components/hauscheck_proxy
+```
+
+2. In den HausCheck-Add-on-Optionen einen langen `api_token` setzen.
+
+3. In `configuration.yaml` ergänzen:
+
+```yaml
+hauscheck_proxy:
+  base_url: http://127.0.0.1:8088
+  token: "DEIN_HAUSCHECK_API_TOKEN"
+  timeout: 120
+```
+
+4. Home Assistant neu starten.
+
+5. Mit lokalem HA-Zugriff testen:
+
+```bash
+curl -H "Authorization: Bearer HA_LONG_LIVED_TOKEN" \
+http://HOMEASSISTANT-IP:8123/api/hauscheck/health
+```
+
+6. Danach über Nabu Casa testen:
+
+```bash
+curl -H "Authorization: Bearer HA_LONG_LIVED_TOKEN" \
+https://<deine-instanz>.ui.nabu.casa/api/hauscheck/health
+```
+
+Wenn `127.0.0.1:8088` aus Home Assistant nicht erreichbar ist, muss `base_url` auf die erreichbare interne Adresse des Add-ons angepasst werden.
+
+## ChatGPT-/MCP-Bridge im Add-on
 
 Die Bridge ist standardmäßig deaktiviert. Sie wird erst aktiv, wenn in den Add-on-Optionen ein `api_token` gesetzt ist.
 
-Geschützte Endpunkte:
+Interne Add-on-Endpunkte:
 
 ```text
 GET  /api/chatgpt/health
@@ -64,7 +132,7 @@ POST /mcp
 GET  /mcp
 ```
 
-Authentifizierung:
+Authentifizierung intern:
 
 ```text
 Authorization: Bearer <api_token>
@@ -87,8 +155,6 @@ get_candidates
 ```
 
 `get_house_images` liefert lokale Hausbilder als Bildinhalte zurück. Damit ist eine Bildanalyse durch ein angebundenes Modell grundsätzlich möglich.
-
-Wichtig: Damit ChatGPT außerhalb deines Heimnetzes darauf zugreifen kann, braucht der Add-on-Endpunkt eine erreichbare HTTPS-Adresse oder einen sicheren Tunnel.
 
 ## Vorschaubilder
 
