@@ -96,6 +96,15 @@ def init_storage() -> None:
                 source_name TEXT NOT NULL DEFAULT 'willhaben.at',
                 search_url TEXT NOT NULL,
                 enabled INTEGER NOT NULL DEFAULT 1,
+                max_price_eur INTEGER,
+                soft_max_price_eur INTEGER,
+                min_living_area_m2 REAL,
+                min_plot_area_m2 REAL,
+                regions TEXT,
+                exclude_roads TEXT,
+                hwb_warn REAL,
+                hwb_reject REAL,
+                oil_policy TEXT,
                 last_run_at TEXT,
                 last_found_count INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL,
@@ -109,6 +118,11 @@ def init_storage() -> None:
                 title TEXT,
                 status TEXT NOT NULL DEFAULT 'new',
                 imported_house_id TEXT,
+                price_eur INTEGER,
+                living_area_m2 REAL,
+                plot_area_m2 REAL,
+                energy_hwb REAL,
+                filter_reasons TEXT,
                 first_seen_at TEXT NOT NULL,
                 last_seen_at TEXT NOT NULL,
                 UNIQUE(profile_id, source_url),
@@ -116,22 +130,39 @@ def init_storage() -> None:
             );
             """
         )
-        ensure_media_columns(con)
+        ensure_columns(con, "media_assets", {
+            "content_hash": "TEXT",
+            "width": "INTEGER",
+            "height": "INTEGER",
+            "file_size_bytes": "INTEGER",
+        })
+        ensure_columns(con, "search_profiles", {
+            "max_price_eur": "INTEGER",
+            "soft_max_price_eur": "INTEGER",
+            "min_living_area_m2": "REAL",
+            "min_plot_area_m2": "REAL",
+            "regions": "TEXT",
+            "exclude_roads": "TEXT",
+            "hwb_warn": "REAL",
+            "hwb_reject": "REAL",
+            "oil_policy": "TEXT",
+        })
+        ensure_columns(con, "search_candidates", {
+            "price_eur": "INTEGER",
+            "living_area_m2": "REAL",
+            "plot_area_m2": "REAL",
+            "energy_hwb": "REAL",
+            "filter_reasons": "TEXT",
+        })
         con.commit()
 
 
-def ensure_media_columns(con: sqlite3.Connection) -> None:
-    rows = con.execute("PRAGMA table_info(media_assets)").fetchall()
+def ensure_columns(con: sqlite3.Connection, table: str, additions: dict[str, str]) -> None:
+    rows = con.execute(f"PRAGMA table_info({table})").fetchall()
     existing = {row[1] for row in rows}
-    additions = {
-        "content_hash": "TEXT",
-        "width": "INTEGER",
-        "height": "INTEGER",
-        "file_size_bytes": "INTEGER",
-    }
     for column, definition in additions.items():
         if column not in existing:
-            con.execute(f"ALTER TABLE media_assets ADD COLUMN {column} {definition}")
+            con.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
 
 def connect() -> sqlite3.Connection:
@@ -392,7 +423,7 @@ def list_evidence(house_id: str) -> list[dict[str, Any]]:
     return [row_to_dict(row) or {} for row in rows]
 
 
-def create_search_profile(name: str, search_url: str, source_name: str = "willhaben.at") -> dict[str, Any]:
+def create_search_profile(data: dict[str, Any]) -> dict[str, Any]:
     profile_id = str(uuid.uuid4())[:8]
     timestamp = now_iso()
     with connect() as con:
@@ -400,11 +431,47 @@ def create_search_profile(name: str, search_url: str, source_name: str = "willha
             """
             INSERT INTO search_profiles (
                 id, name, source_name, search_url, enabled,
+                max_price_eur, soft_max_price_eur, min_living_area_m2, min_plot_area_m2,
+                regions, exclude_roads, hwb_warn, hwb_reject, oil_policy,
                 last_run_at, last_found_count, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, 1, NULL, 0, ?, ?)
+            ) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, ?, ?)
             """,
-            (profile_id, name, source_name, search_url, timestamp, timestamp),
+            (
+                profile_id,
+                data.get("name") or "Suchprofil",
+                data.get("source_name") or "willhaben.at",
+                data.get("search_url") or "",
+                data.get("max_price_eur"),
+                data.get("soft_max_price_eur"),
+                data.get("min_living_area_m2"),
+                data.get("min_plot_area_m2"),
+                data.get("regions"),
+                data.get("exclude_roads"),
+                data.get("hwb_warn"),
+                data.get("hwb_reject"),
+                data.get("oil_policy"),
+                timestamp,
+                timestamp,
+            ),
         )
+        con.commit()
+    return get_search_profile(profile_id) or {}
+
+
+def update_search_profile(profile_id: str, data: dict[str, Any]) -> dict[str, Any]:
+    allowed = {
+        "name", "search_url", "enabled", "max_price_eur", "soft_max_price_eur",
+        "min_living_area_m2", "min_plot_area_m2", "regions", "exclude_roads",
+        "hwb_warn", "hwb_reject", "oil_policy",
+    }
+    fields = {k: v for k, v in data.items() if k in allowed}
+    if not fields:
+        return get_search_profile(profile_id) or {}
+    fields["updated_at"] = now_iso()
+    sql = ", ".join(f"{key} = ?" for key in fields)
+    values = list(fields.values()) + [profile_id]
+    with connect() as con:
+        con.execute(f"UPDATE search_profiles SET {sql} WHERE id = ?", values)
         con.commit()
     return get_search_profile(profile_id) or {}
 
@@ -435,8 +502,18 @@ def update_search_profile_run(profile_id: str, found_count: int) -> None:
         con.commit()
 
 
-def upsert_search_candidate(profile_id: str, source_url: str, title: str | None, status: str = "new", imported_house_id: str | None = None) -> dict[str, Any]:
+def upsert_search_candidate(
+    profile_id: str,
+    source_url: str,
+    title: str | None,
+    status: str = "new",
+    imported_house_id: str | None = None,
+    facts: dict[str, Any] | None = None,
+    filter_reasons: list[str] | None = None,
+) -> dict[str, Any]:
     timestamp = now_iso()
+    facts = facts or {}
+    reasons_text = json.dumps(filter_reasons or [], ensure_ascii=False)
     with connect() as con:
         existing = con.execute(
             "SELECT * FROM search_candidates WHERE profile_id = ? AND source_url = ?",
@@ -446,10 +523,29 @@ def upsert_search_candidate(profile_id: str, source_url: str, title: str | None,
             con.execute(
                 """
                 UPDATE search_candidates
-                SET title = COALESCE(?, title), status = ?, imported_house_id = COALESCE(?, imported_house_id), last_seen_at = ?
+                SET title = COALESCE(?, title),
+                    status = ?,
+                    imported_house_id = COALESCE(?, imported_house_id),
+                    price_eur = COALESCE(?, price_eur),
+                    living_area_m2 = COALESCE(?, living_area_m2),
+                    plot_area_m2 = COALESCE(?, plot_area_m2),
+                    energy_hwb = COALESCE(?, energy_hwb),
+                    filter_reasons = ?,
+                    last_seen_at = ?
                 WHERE id = ?
                 """,
-                (title, status, imported_house_id, timestamp, existing["id"]),
+                (
+                    title,
+                    status,
+                    imported_house_id,
+                    facts.get("price_eur"),
+                    facts.get("living_area_m2"),
+                    facts.get("plot_area_m2"),
+                    facts.get("energy_hwb"),
+                    reasons_text,
+                    timestamp,
+                    existing["id"],
+                ),
             )
             con.commit()
             return get_search_candidate(existing["id"]) or {}
@@ -459,10 +555,25 @@ def upsert_search_candidate(profile_id: str, source_url: str, title: str | None,
             """
             INSERT INTO search_candidates (
                 id, profile_id, source_url, title, status, imported_house_id,
+                price_eur, living_area_m2, plot_area_m2, energy_hwb, filter_reasons,
                 first_seen_at, last_seen_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (candidate_id, profile_id, source_url, title, status, imported_house_id, timestamp, timestamp),
+            (
+                candidate_id,
+                profile_id,
+                source_url,
+                title,
+                status,
+                imported_house_id,
+                facts.get("price_eur"),
+                facts.get("living_area_m2"),
+                facts.get("plot_area_m2"),
+                facts.get("energy_hwb"),
+                reasons_text,
+                timestamp,
+                timestamp,
+            ),
         )
         con.commit()
     return get_search_candidate(candidate_id) or {}
