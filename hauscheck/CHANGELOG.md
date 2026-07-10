@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.3
+
+- Home-Assistant-Proxy als Custom Integration `hauscheck_proxy` ergänzt
+- Proxy-Endpunkte unter `/api/hauscheck/...` registriert
+- Nabu-Casa-fähiger Zugriff über die Home-Assistant-API vorbereitet
+- Proxy nutzt Home-Assistant-Authentifizierung nach außen und den HausCheck-`api_token` nach innen
+- neue HA-Endpunkte: `/api/hauscheck/health`, `/api/hauscheck/houses`, `/api/hauscheck/houses/{house_id}`, `/api/hauscheck/search-profiles`, `/api/hauscheck/search-profiles/{profile_id}/candidates`, `/api/hauscheck/mcp`
+- Add-on-Version auf 0.5.3 erhöht
+
 ## 0.5.2
 
 - Variante C vorbereitet: ChatGPT/Home-Assistant-Bridge über API und MCP
