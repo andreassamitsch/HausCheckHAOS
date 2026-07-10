@@ -48,7 +48,7 @@ MIN_IMAGE_PIXELS = 180_000
 WILLHABEN_AUTO_BASE = "https://www.willhaben.at/iad/immobilien/haus-kaufen/haus-angebote"
 WILLHABEN_DEFAULT_AREA_ID = "60351"
 
-app = FastAPI(title=APP_NAME, version="0.4.1")
+app = FastAPI(title=APP_NAME, version="0.4.2")
 
 
 @app.on_event("startup")
@@ -83,20 +83,41 @@ def num(value: object, suffix: str = "") -> str:
         return f"{esc(value)}{suffix}"
 
 
+def normalize_number_text(value: str | None) -> str:
+    """Normalize German/user-entered or DB numeric strings safely.
+
+    Important: SQLite returns REAL values as e.g. 120.0. Older code removed every dot
+    and accidentally converted 120.0 to 1200. This function distinguishes decimal
+    dots from German thousands separators like 400.000.
+    """
+    if value is None:
+        return ""
+    text = str(value).strip().replace(" ", "")
+    if not text:
+        return ""
+    if "," in text:
+        return text.replace(".", "").replace(",", ".")
+    if re.fullmatch(r"\d{1,3}(?:\.\d{3})+", text):
+        return text.replace(".", "")
+    return text
+
+
 def optional_int(value: str | None) -> int | None:
-    if value is None or str(value).strip() == "":
+    normalized = normalize_number_text(value)
+    if not normalized:
         return None
     try:
-        return int(float(str(value).replace(".", "").replace(",", ".")))
+        return int(float(normalized))
     except ValueError:
         return None
 
 
 def optional_float(value: str | None) -> float | None:
-    if value is None or str(value).strip() == "":
+    normalized = normalize_number_text(value)
+    if not normalized:
         return None
     try:
-        return float(str(value).replace(".", "").replace(",", "."))
+        return float(normalized)
     except ValueError:
         return None
 
@@ -365,7 +386,7 @@ def dashboard() -> HTMLResponse:
       <div class="card">
         <h2>Status</h2>
         <p><span class="pill">{len(houses)} Hausakten</span><span class="pill">{len(profiles)} Suchprofile</span></p>
-        <p class="muted">v0.4.1: Willhaben-Suche wird automatisch aus zentralen Kriterien erzeugt.</p>
+        <p class="muted">v0.4.2: Zahlenparser-Fix für Wohnfläche/Preis aus SQLite.</p>
         {profile_buttons}
       </div>
     </div>
