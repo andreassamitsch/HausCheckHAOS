@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import html
+import json
 import re
 from io import BytesIO
 from pathlib import Path
@@ -12,7 +13,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
 from PIL import Image, UnidentifiedImageError
 
-from app.parser import extract_listing_links, parse_listing, title_from_listing_url
+from app.parser import ParsedListing, extract_listing_links, parse_listing, title_from_listing_url
 from app.storage import (
     PROJECTS_DIR,
     add_evidence,
@@ -45,7 +46,7 @@ MIN_IMAGE_WIDTH = 400
 MIN_IMAGE_HEIGHT = 250
 MIN_IMAGE_PIXELS = 180_000
 
-app = FastAPI(title=APP_NAME, version="0.3.0")
+app = FastAPI(title=APP_NAME, version="0.4.0")
 
 
 @app.on_event("startup")
@@ -80,6 +81,24 @@ def num(value: object, suffix: str = "") -> str:
         return f"{esc(value)}{suffix}"
 
 
+def optional_int(value: str | None) -> int | None:
+    if value is None or str(value).strip() == "":
+        return None
+    try:
+        return int(float(str(value).replace(".", "").replace(",", ".")))
+    except ValueError:
+        return None
+
+
+def optional_float(value: str | None) -> float | None:
+    if value is None or str(value).strip() == "":
+        return None
+    try:
+        return float(str(value).replace(".", "").replace(",", "."))
+    except ValueError:
+        return None
+
+
 def layout(title: str, body: str, home_href: str = "./") -> HTMLResponse:
     return HTMLResponse(
         f"""
@@ -100,7 +119,9 @@ def layout(title: str, body: str, home_href: str = "./") -> HTMLResponse:
     .card h2, .card h3 {{ margin-top: 0; }}
     .muted {{ color: #aab4bd; }}
     .pill {{ display: inline-block; padding: 3px 8px; border-radius: 999px; background: #243342; margin: 2px 4px 2px 0; font-size: 12px; }}
-    .warn {{ color: #ffd27a; }}
+    .pill.good {{ background: #245c3a; }}
+    .pill.warn {{ background: #6b5422; color: #fff3c4; }}
+    .pill.bad {{ background: #6b2d2d; color: #ffd5d5; }}
     .danger {{ color: #ff9c9c; }}
     a {{ color: #8fd3ff; }}
     input, textarea, select {{ width: 100%; box-sizing: border-box; padding: 10px; margin: 6px 0 12px; border-radius: 10px; border: 1px solid #3a4856; background: #0f151b; color: #eef2f4; }}
@@ -156,6 +177,129 @@ def first_local_image(house_id: str) -> str | None:
     return None
 
 
+def reasons_from_json(value: object) -> list[str]:
+    if not value:
+        return []
+    try:
+        data = json.loads(str(value))
+        return [str(item) for item in data] if isinstance(data, list) else []
+    except json.JSONDecodeError:
+        return []
+
+
+def status_pill(status: str | None) -> str:
+    status = status or "new"
+    if status == "imported":
+        return "<span class='pill good'>importiert</span>"
+    if status == "filtered":
+        return "<span class='pill bad'>gefiltert</span>"
+    if status == "review":
+        return "<span class='pill warn'>prüfen</span>"
+    return "<span class='pill good'>neu</span>"
+
+
+def criteria_summary(profile: dict[str, object]) -> str:
+    parts = []
+    if profile.get("soft_max_price_eur"):
+        parts.append(f"Zielpreis bis {money(profile.get('soft_max_price_eur'))}")
+    if profile.get("max_price_eur"):
+        parts.append(f"hart bis {money(profile.get('max_price_eur'))}")
+    if profile.get("min_living_area_m2"):
+        parts.append(f"ab {num(profile.get('min_living_area_m2'), ' m² Wfl.')}")
+    if profile.get("min_plot_area_m2"):
+        parts.append(f"Grund ab {num(profile.get('min_plot_area_m2'), ' m²')}")
+    if profile.get("hwb_warn"):
+        parts.append(f"HWB Warnung > {num(profile.get('hwb_warn'))}")
+    if profile.get("hwb_reject"):
+        parts.append(f"HWB kritisch > {num(profile.get('hwb_reject'))}")
+    if profile.get("regions"):
+        parts.append(f"Regionen: {esc(profile.get('regions'))}")
+    if profile.get("exclude_roads"):
+        parts.append(f"Ausschluss prüfen: {esc(profile.get('exclude_roads'))}")
+    return "".join(f"<span class='pill'>{part}</span>" for part in parts) or "<span class='pill'>keine zentralen Kriterien gesetzt</span>"
+
+
+def evaluate_candidate(profile: dict[str, object], parsed: ParsedListing) -> tuple[str, list[str]]:
+    reasons: list[str] = []
+    hard_reject = False
+    review = False
+
+    max_price = optional_int(str(profile.get("max_price_eur") or ""))
+    soft_max = optional_int(str(profile.get("soft_max_price_eur") or ""))
+    min_living = optional_float(str(profile.get("min_living_area_m2") or ""))
+    min_plot = optional_float(str(profile.get("min_plot_area_m2") or ""))
+    hwb_warn = optional_float(str(profile.get("hwb_warn") or ""))
+    hwb_reject = optional_float(str(profile.get("hwb_reject") or ""))
+    oil_policy = str(profile.get("oil_policy") or "review")
+
+    if parsed.price_eur is not None and max_price and parsed.price_eur > max_price:
+        hard_reject = True
+        reasons.append(f"Preis {parsed.price_eur} über harter Grenze {max_price}")
+    elif parsed.price_eur is not None and soft_max and parsed.price_eur > soft_max:
+        review = True
+        reasons.append(f"Preis über Zielgrenze {soft_max}, aber noch im Grenzbereich")
+    elif parsed.price_eur is None:
+        review = True
+        reasons.append("Preis nicht sicher erkannt")
+
+    if parsed.living_area_m2 is not None and min_living and parsed.living_area_m2 < min_living:
+        hard_reject = True
+        reasons.append(f"Wohnfläche {parsed.living_area_m2:g} m² unter Mindestwert {min_living:g} m²")
+    elif parsed.living_area_m2 is None and min_living:
+        review = True
+        reasons.append("Wohnfläche nicht sicher erkannt")
+
+    if parsed.plot_area_m2 is not None and min_plot and parsed.plot_area_m2 < min_plot:
+        review = True
+        reasons.append(f"Grundstück {parsed.plot_area_m2:g} m² unter Wunschwert {min_plot:g} m²")
+    elif parsed.plot_area_m2 is None and min_plot:
+        review = True
+        reasons.append("Grundstück nicht sicher erkannt")
+
+    if parsed.energy_hwb is not None and hwb_reject and parsed.energy_hwb > hwb_reject:
+        hard_reject = True
+        reasons.append(f"HWB {parsed.energy_hwb:g} über kritischer Grenze {hwb_reject:g}")
+    elif parsed.energy_hwb is not None and hwb_warn and parsed.energy_hwb > hwb_warn:
+        review = True
+        reasons.append(f"HWB {parsed.energy_hwb:g} über Warnschwelle {hwb_warn:g}")
+
+    heating_text = (parsed.heating or "").lower()
+    if any(marker in heating_text for marker in ["öl", "oel", "oil"]):
+        if oil_policy == "reject":
+            hard_reject = True
+            reasons.append("Ölheizung laut Profil ausgeschlossen")
+        elif oil_policy == "review":
+            review = True
+            reasons.append("Ölheizung prüfen")
+
+    region_tokens = [token.strip().lower() for token in str(profile.get("regions") or "").split(",") if token.strip()]
+    location_text = (parsed.location_text or "").lower()
+    if region_tokens and location_text and not any(token in location_text for token in region_tokens):
+        review = True
+        reasons.append("Ort/Lage passt nicht eindeutig zu den Profilregionen")
+
+    text_blob = " ".join([parsed.title or "", parsed.description or "", parsed.location_text or ""]).lower()
+    for road in [token.strip().lower() for token in str(profile.get("exclude_roads") or "").split(",") if token.strip()]:
+        if road and road in text_blob:
+            review = True
+            reasons.append(f"Ausschlussstraße/Problembegriff erwähnt: {road}")
+
+    if hard_reject:
+        return "filtered", reasons
+    if review:
+        return "review", reasons
+    return "new", reasons or ["zentrale Kriterien aktuell erfüllt"]
+
+
+def facts_from_parsed(parsed: ParsedListing) -> dict[str, object]:
+    return {
+        "price_eur": parsed.price_eur,
+        "living_area_m2": parsed.living_area_m2,
+        "plot_area_m2": parsed.plot_area_m2,
+        "energy_hwb": parsed.energy_hwb,
+    }
+
+
 @app.get("/", response_class=HTMLResponse)
 def dashboard() -> HTMLResponse:
     houses = list_houses()
@@ -180,22 +324,19 @@ def dashboard() -> HTMLResponse:
             </div>
             """
         )
-    profile_buttons = "".join(
-        f"<a class='button secondary' href='search/profiles/{p['id']}'>{esc(p.get('name'))}</a>"
-        for p in profiles[:6]
-    )
+    profile_buttons = "".join(f"<a class='button secondary' href='search/profiles/{p['id']}'>{esc(p.get('name'))}</a>" for p in profiles[:6])
     body = f"""
     <div class="grid">
       <div class="card">
         <h2>Neue Hausakte</h2>
-        <p class="muted">Direktlink importieren oder Suchprofile verwalten.</p>
+        <p class="muted">Direktlink importieren oder zentrale Suchprofile verwalten.</p>
         <a class="button" href="import">Inserat importieren</a>
         <a class="button secondary" href="search">Suchprofile</a>
       </div>
       <div class="card">
         <h2>Status</h2>
         <p><span class="pill">{len(houses)} Hausakten</span><span class="pill">{len(profiles)} Suchprofile</span></p>
-        <p class="muted">v0.3.0: gespeicherte Suchprofile und persistente Kandidatenliste.</p>
+        <p class="muted">v0.4.0: zentrale Suchfilter + Portal-URL als technische Quelle.</p>
         {profile_buttons}
       </div>
     </div>
@@ -217,17 +358,6 @@ def import_form() -> HTMLResponse:
       </form>
       <p class="muted">Direktlink-Import mit Willhaben-Parser, Medienfilter und generischem Fallback.</p>
     </div>
-    <div class="card">
-      <h2>Manuell anlegen</h2>
-      <form method="post" action="manual">
-        <label>Titel</label><input name="title" required>
-        <label>Ort/Lage</label><input name="location_text">
-        <label>Preis €</label><input name="price_eur" type="number">
-        <label>Wohnfläche m²</label><input name="living_area_m2" type="number" step="0.1">
-        <label>Grundstück m²</label><input name="plot_area_m2" type="number" step="0.1">
-        <button type="submit">Hausakte anlegen</button>
-      </form>
-    </div>
     """
     return layout("Inserat importieren", body, home_href="../")
 
@@ -238,47 +368,50 @@ def search_profiles_page() -> HTMLResponse:
     rows = []
     for profile in profiles:
         candidates = list_search_candidates(str(profile["id"]))
-        new_count = len([c for c in candidates if c.get("status") != "imported" and not source_url_exists(str(c.get("source_url")))])
-        imported_count = len(candidates) - new_count
+        new_count = len([c for c in candidates if c.get("status") == "new"])
+        review_count = len([c for c in candidates if c.get("status") == "review"])
+        filtered_count = len([c for c in candidates if c.get("status") == "filtered"])
+        imported_count = len([c for c in candidates if c.get("status") == "imported" or source_url_exists(str(c.get("source_url")))])
         rows.append(
             f"""
             <tr>
-              <td>{esc(profile.get('name'))}</td>
+              <td>{esc(profile.get('name'))}<br>{criteria_summary(profile)}</td>
               <td>{esc(profile.get('source_name'))}</td>
-              <td><span class="pill">{len(candidates)} Kandidaten</span><span class="pill">{new_count} neu</span><span class="pill">{imported_count} importiert</span></td>
+              <td><span class="pill good">{new_count} neu</span><span class="pill warn">{review_count} prüfen</span><span class="pill bad">{filtered_count} gefiltert</span><span class="pill">{imported_count} importiert</span></td>
               <td>{esc(profile.get('last_run_at') or 'noch nie')}</td>
-              <td>
-                <a class="button" href="search/profiles/{profile['id']}">Öffnen</a>
-                <form method="post" action="search/profiles/{profile['id']}/run" style="display:inline"><button class="secondary" type="submit">Starten</button></form>
-              </td>
+              <td><a class="button" href="search/profiles/{profile['id']}">Öffnen</a><form method="post" action="search/profiles/{profile['id']}/run" style="display:inline"><button class="secondary" type="submit">Starten</button></form></td>
             </tr>
             """
         )
     body = f"""
     <div class="card">
-      <h2>Suchprofile</h2>
-      <p class="muted">Speichere gefilterte Willhaben-Suchergebnis-URLs dauerhaft. Kandidaten bleiben erhalten und können später importiert werden.</p>
+      <h2>Zentrales Suchprofil anlegen</h2>
+      <p class="muted">Die Kriterien sind die Wahrheit. Die Willhaben-URL ist nur die technische Quelle, damit nicht das ganze Portal durchsucht werden muss.</p>
       <form method="post" action="search/profiles">
         <label>Name</label>
         <input name="name" placeholder="z. B. Wies/Eibiswald bis 380k" required>
         <label>Willhaben-Suchergebnis-URL</label>
         <input name="search_url" placeholder="https://www.willhaben.at/iad/immobilien/..." required>
+        <div class="grid">
+          <div><label>Zielpreis bis €</label><input name="soft_max_price_eur" type="number" value="380000"></div>
+          <div><label>Harte Grenze bis €</label><input name="max_price_eur" type="number" value="400000"></div>
+          <div><label>Mindestwohnfläche m²</label><input name="min_living_area_m2" type="number" step="0.1" value="130"></div>
+          <div><label>Wunsch-Grundstück m²</label><input name="min_plot_area_m2" type="number" step="0.1" value="700"></div>
+          <div><label>HWB Warnung ab</label><input name="hwb_warn" type="number" step="0.1" value="200"></div>
+          <div><label>HWB kritisch ab</label><input name="hwb_reject" type="number" step="0.1" value="300"></div>
+        </div>
+        <label>Regionen / Orte</label>
+        <input name="regions" value="Wies,Eibiswald,Oberhaag,Hörmsdorf,Pölfing-Brunn,Bad Schwanberg,Frauental,Deutschlandsberg">
+        <label>Ausschluss-/Prüfbegriffe</label>
+        <input name="exclude_roads" value="B76,B69,Bundesstraße,Hauptstraße">
+        <label>Ölheizung</label>
+        <select name="oil_policy"><option value="review" selected>prüfen / nur Ausnahme</option><option value="reject">ausschließen</option><option value="allow">zulassen</option></select>
         <button type="submit">Suchprofil speichern</button>
       </form>
     </div>
     <div class="card">
       <h2>Gespeicherte Profile</h2>
-      <table><tr><th>Name</th><th>Quelle</th><th>Kandidaten</th><th>Letzter Lauf</th><th>Aktion</th></tr>{''.join(rows) if rows else '<tr><td colspan="5" class="muted">Noch keine Suchprofile gespeichert.</td></tr>'}</table>
-    </div>
-    <div class="card">
-      <h2>Ad-hoc Suchlauf</h2>
-      <form method="post" action="search/run">
-        <label>Willhaben-Suchergebnis-URL</label>
-        <input name="url" placeholder="https://www.willhaben.at/iad/immobilien/..." required>
-        <label>Maximale Treffer</label>
-        <input name="max_results" type="number" min="1" max="100" value="40">
-        <button type="submit">Einmalig auslesen</button>
-      </form>
+      <table><tr><th>Name / Kriterien</th><th>Quelle</th><th>Kandidaten</th><th>Letzter Lauf</th><th>Aktion</th></tr>{''.join(rows) if rows else '<tr><td colspan="5" class="muted">Noch keine Suchprofile gespeichert.</td></tr>'}</table>
     </div>
     """
     return layout("Suchprofile", body, home_href="../")
@@ -291,26 +424,61 @@ async def fetch_html(url: str) -> str:
         return response.text
 
 
-async def run_search_profile(profile_id: str, max_results: int = 80) -> int:
+async def run_search_profile(profile_id: str, max_results: int = 40) -> int:
     profile = get_search_profile(profile_id)
     if not profile:
         raise HTTPException(status_code=404, detail="Suchprofil nicht gefunden")
     raw_html = await fetch_html(str(profile["search_url"]))
-    links = extract_listing_links(raw_html, str(profile["search_url"]))[: max(1, min(max_results, 150))]
-    for link in links:
-        status = "imported" if source_url_exists(link) else "new"
-        upsert_search_candidate(profile_id, link, title_from_listing_url(link), status=status)
+    links = extract_listing_links(raw_html, str(profile["search_url"]))[: max(1, min(max_results, 80))]
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True, headers={"User-Agent": USER_AGENT}) as client:
+        for link in links:
+            if source_url_exists(link):
+                upsert_search_candidate(profile_id, link, title_from_listing_url(link), status="imported")
+                continue
+            try:
+                detail = await client.get(link)
+                detail.raise_for_status()
+                parsed = parse_listing(link, detail.text)
+                status, reasons = evaluate_candidate(profile, parsed)
+                upsert_search_candidate(profile_id, link, parsed.title or title_from_listing_url(link), status=status, facts=facts_from_parsed(parsed), filter_reasons=reasons)
+            except Exception as exc:
+                upsert_search_candidate(profile_id, link, title_from_listing_url(link), status="review", filter_reasons=[f"Detailprüfung fehlgeschlagen: {str(exc)[:180]}"])
     update_search_profile_run(profile_id, len(links))
     return len(links)
 
 
 @app.post("/search/profiles")
-def create_profile(name: str = Form(...), search_url: str = Form(...)) -> RedirectResponse:
+def create_profile(
+    name: str = Form(...),
+    search_url: str = Form(...),
+    max_price_eur: str | None = Form(None),
+    soft_max_price_eur: str | None = Form(None),
+    min_living_area_m2: str | None = Form(None),
+    min_plot_area_m2: str | None = Form(None),
+    regions: str | None = Form(None),
+    exclude_roads: str | None = Form(None),
+    hwb_warn: str | None = Form(None),
+    hwb_reject: str | None = Form(None),
+    oil_policy: str | None = Form("review"),
+) -> RedirectResponse:
     if not search_url.startswith(("http://", "https://")):
         raise HTTPException(status_code=400, detail="Ungültige URL")
     if "willhaben.at" not in search_url.lower():
         raise HTTPException(status_code=400, detail="Aktuell werden nur Willhaben-Suchprofile unterstützt")
-    profile = create_search_profile(name.strip(), search_url.strip(), "willhaben.at")
+    profile = create_search_profile({
+        "name": name.strip(),
+        "search_url": search_url.strip(),
+        "source_name": "willhaben.at",
+        "max_price_eur": optional_int(max_price_eur),
+        "soft_max_price_eur": optional_int(soft_max_price_eur),
+        "min_living_area_m2": optional_float(min_living_area_m2),
+        "min_plot_area_m2": optional_float(min_plot_area_m2),
+        "regions": regions,
+        "exclude_roads": exclude_roads,
+        "hwb_warn": optional_float(hwb_warn),
+        "hwb_reject": optional_float(hwb_reject),
+        "oil_policy": oil_policy or "review",
+    })
     return RedirectResponse(f"profiles/{profile['id']}", status_code=303)
 
 
@@ -323,22 +491,26 @@ def profile_detail(profile_id: str) -> HTMLResponse:
     rows = []
     for idx, cand in enumerate(candidates, start=1):
         imported = cand.get("status") == "imported" or source_url_exists(str(cand.get("source_url")))
-        status = "importiert" if imported else "neu"
+        status = "imported" if imported else str(cand.get("status") or "new")
+        reasons = reasons_from_json(cand.get("filter_reasons"))
+        reason_html = "<br>".join(esc(reason) for reason in reasons[:4])
         action = ""
-        if not imported:
+        if not imported and status != "filtered":
             action = f"""
             <form method="post" action="../../import" style="display:inline">
               <input type="hidden" name="url" value="{esc(cand.get('source_url'))}">
               <button type="submit">Importieren</button>
             </form>
             """
+        elif status == "filtered":
+            action = "<span class='muted'>ausgefiltert</span>"
         rows.append(
             f"""
             <tr>
               <td>{idx}</td>
               <td>{esc(cand.get('title') or title_from_listing_url(str(cand.get('source_url'))))}<br><a href="{esc(cand.get('source_url'))}" target="_blank">Direktlink öffnen</a></td>
-              <td><span class="pill">{status}</span></td>
-              <td>{esc(cand.get('first_seen_at'))}</td>
+              <td>{status_pill(status)}<br><span class="muted">{reason_html}</span></td>
+              <td>{money(cand.get('price_eur'))}<br>{num(cand.get('living_area_m2'), ' m² Wfl.')}<br>{num(cand.get('plot_area_m2'), ' m² Grund')}<br>HWB {num(cand.get('energy_hwb'))}</td>
               <td>{action}</td>
             </tr>
             """
@@ -346,6 +518,7 @@ def profile_detail(profile_id: str) -> HTMLResponse:
     body = f"""
     <div class="card">
       <h2>{esc(profile.get('name'))}</h2>
+      <p>{criteria_summary(profile)}</p>
       <p class="muted"><a href="{esc(profile.get('search_url'))}" target="_blank">Original-Suche öffnen</a></p>
       <p><span class="pill">{len(candidates)} Kandidaten</span><span class="pill">Letzter Lauf: {esc(profile.get('last_run_at') or 'noch nie')}</span></p>
       <form method="post" action="{profile_id}/run" style="display:inline"><button type="submit">Suchprofil jetzt starten</button></form>
@@ -353,7 +526,7 @@ def profile_detail(profile_id: str) -> HTMLResponse:
     </div>
     <div class="card">
       <h2>Kandidaten</h2>
-      <table><tr><th>#</th><th>Kandidat</th><th>Status</th><th>Erstmals gesehen</th><th>Aktion</th></tr>{''.join(rows) if rows else '<tr><td colspan="5" class="muted">Noch keine Kandidaten. Starte das Suchprofil.</td></tr>'}</table>
+      <table><tr><th>#</th><th>Kandidat</th><th>Status / Grund</th><th>Fakten</th><th>Aktion</th></tr>{''.join(rows) if rows else '<tr><td colspan="5" class="muted">Noch keine Kandidaten. Starte das Suchprofil.</td></tr>'}</table>
     </div>
     """
     return layout("Suchprofil", body, home_href="../../../")
@@ -365,55 +538,6 @@ async def run_profile_route(profile_id: str) -> RedirectResponse:
     return RedirectResponse(f"../{profile_id}", status_code=303)
 
 
-@app.post("/search/run", response_class=HTMLResponse)
-async def search_willhaben(url: str = Form(...), max_results: int = Form(40)) -> HTMLResponse:
-    if not url.startswith(("http://", "https://")):
-        raise HTTPException(status_code=400, detail="Ungültige URL")
-    if "willhaben.at" not in url.lower():
-        raise HTTPException(status_code=400, detail="Aktuell wird hier nur Willhaben unterstützt")
-
-    raw_html = await fetch_html(url)
-    links = extract_listing_links(raw_html, url)[: max(1, min(max_results, 100))]
-    rows = []
-    for index, link in enumerate(links, start=1):
-        imported = source_url_exists(link)
-        known_badge = "<span class='pill'>bereits importiert</span>" if imported else "<span class='pill'>neu</span>"
-        import_button = ""
-        if not imported:
-            import_button = f"""
-            <form method="post" action="../import" style="display:inline">
-              <input type="hidden" name="url" value="{esc(link)}">
-              <button type="submit">Importieren</button>
-            </form>
-            """
-        rows.append(
-            f"""
-            <tr>
-              <td>{index}</td>
-              <td>{esc(title_from_listing_url(link))}<br><a href="{esc(link)}" target="_blank">{esc(link)}</a></td>
-              <td>{known_badge}</td>
-              <td>{import_button}</td>
-            </tr>
-            """
-        )
-
-    body = f"""
-    <div class="card">
-      <h2>Ad-hoc Suchlauf Ergebnis</h2>
-      <p><span class="pill">{len(links)} Direktlinks gefunden</span></p>
-      <p class="muted">Quelle: <a href="{esc(url)}" target="_blank">Willhaben-Suche öffnen</a></p>
-      <a class="button secondary" href="../search">Zurück zu Suchprofilen</a>
-    </div>
-    <div class="card">
-      <table>
-        <tr><th>#</th><th>Kandidat</th><th>Status</th><th>Aktion</th></tr>
-        {''.join(rows) if rows else '<tr><td colspan="4" class="muted">Keine Inserat-Direktlinks erkannt.</td></tr>'}
-      </table>
-    </div>
-    """
-    return layout("Suchlauf Ergebnis", body, home_href="../")
-
-
 @app.post("/import")
 async def import_url(url: str = Form(...)) -> RedirectResponse:
     if not url.startswith(("http://", "https://")):
@@ -421,39 +545,34 @@ async def import_url(url: str = Form(...)) -> RedirectResponse:
     raw_html = await fetch_html(url)
     parsed = parse_listing(url, raw_html)
 
-    house = create_house(
-        {
-            "title": parsed.title,
-            "location_text": parsed.location_text,
-            "address_status": parsed.address_status,
-            "price_eur": parsed.price_eur,
-            "living_area_m2": parsed.living_area_m2,
-            "plot_area_m2": parsed.plot_area_m2,
-            "rooms": parsed.rooms,
-            "year_built": parsed.year_built,
-            "heating": parsed.heating,
-            "energy_hwb": parsed.energy_hwb,
-            "energy_fgee": parsed.energy_fgee,
-            "energy_class_hwb": parsed.energy_class_hwb,
-            "energy_class_fgee": parsed.energy_class_fgee,
-        }
-    )
+    house = create_house({
+        "title": parsed.title,
+        "location_text": parsed.location_text,
+        "address_status": parsed.address_status,
+        "price_eur": parsed.price_eur,
+        "living_area_m2": parsed.living_area_m2,
+        "plot_area_m2": parsed.plot_area_m2,
+        "rooms": parsed.rooms,
+        "year_built": parsed.year_built,
+        "heating": parsed.heating,
+        "energy_hwb": parsed.energy_hwb,
+        "energy_fgee": parsed.energy_fgee,
+        "energy_class_hwb": parsed.energy_class_hwb,
+        "energy_class_fgee": parsed.energy_class_fgee,
+    })
     hdir = project_dir(house["id"])
     html_path = hdir / "html" / "listing.html"
     html_path.write_text(raw_html, encoding="utf-8")
 
-    source = create_source(
-        house["id"],
-        {
-            "source_name": parsed.source_name,
-            "source_url": parsed.source_url,
-            "external_id": parsed.external_id,
-            "description": parsed.description,
-            "raw_html_path": str(html_path),
-            "parser_status": "success" if not parsed.warnings else "partial",
-            "parser_warnings": parsed.warnings,
-        },
-    )
+    source = create_source(house["id"], {
+        "source_name": parsed.source_name,
+        "source_url": parsed.source_url,
+        "external_id": parsed.external_id,
+        "description": parsed.description,
+        "raw_html_path": str(html_path),
+        "parser_status": "success" if not parsed.warnings else "partial",
+        "parser_warnings": parsed.warnings,
+    })
     add_evidence(house["id"], source["id"], parsed.evidence)
     mark_candidates_imported(parsed.source_url, house["id"])
 
@@ -466,13 +585,7 @@ async def import_url(url: str = Form(...)) -> RedirectResponse:
 
 
 @app.post("/manual")
-def manual_create(
-    title: str = Form(...),
-    location_text: str | None = Form(None),
-    price_eur: int | None = Form(None),
-    living_area_m2: float | None = Form(None),
-    plot_area_m2: float | None = Form(None),
-) -> RedirectResponse:
+def manual_create(title: str = Form(...), location_text: str | None = Form(None), price_eur: int | None = Form(None), living_area_m2: float | None = Form(None), plot_area_m2: float | None = Form(None)) -> RedirectResponse:
     house = create_house({"title": title, "location_text": location_text, "price_eur": price_eur, "living_area_m2": living_area_m2, "plot_area_m2": plot_area_m2, "address_status": "unknown"})
     return RedirectResponse(f"houses/{house['id']}", status_code=303)
 
@@ -521,13 +634,7 @@ def house_detail(house_id: str) -> HTMLResponse:
       <form method="post" action="{house_id}/cleanup-media" style="display:inline"><button class="secondary" type="submit">Medien bereinigen</button></form>
       <a class="button secondary" href="{house_id}/briefing">Analysebriefing</a>
     </div>
-    <div class="card">
-      <h2>Bilder</h2>
-      <div class="gallery">{media_html}</div>
-      <h3>Manuell hochladen</h3>
-      <form method="post" action="{house_id}/upload" enctype="multipart/form-data"><input type="file" name="file" required><button type="submit">Hochladen</button></form>
-      {skipped_html}{failed_html}
-    </div>
+    <div class="card"><h2>Bilder</h2><div class="gallery">{media_html}</div><h3>Manuell hochladen</h3><form method="post" action="{house_id}/upload" enctype="multipart/form-data"><input type="file" name="file" required><button type="submit">Hochladen</button></form>{skipped_html}{failed_html}</div>
     <div class="card"><h2>Quellen</h2><table><tr><th>Portal</th><th>Link</th><th>Status</th></tr>{source_rows}</table></div>
     <div class="card"><h2>Feldherkunft</h2><table><tr><th>Feld</th><th>Wert</th><th>Sicherheit</th><th>Snippet</th></tr>{evidence_rows}</table></div>
     """
