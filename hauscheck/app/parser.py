@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import html as html_lib
 import json
 import re
 from dataclasses import dataclass, field
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlsplit, urlunsplit
 
 from bs4 import BeautifulSoup
 
@@ -32,6 +33,23 @@ class ParsedListing:
     pdf_urls: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     evidence: list[dict[str, Any]] = field(default_factory=list)
+
+
+BAD_IMAGE_MARKERS = (
+    "logo",
+    "avatar",
+    "profile",
+    "profil",
+    "company",
+    "makler",
+    "agent",
+    "favicon",
+    "sprite",
+    "icon",
+    "placeholder",
+    "banner",
+    "tracking",
+)
 
 
 def parse_number(value: str) -> float | None:
@@ -101,23 +119,41 @@ def extract_json_ld(soup: BeautifulSoup) -> list[dict[str, Any]]:
     return objects
 
 
-def extract_image_urls(html: str) -> list[str]:
-    urls = set()
-    patterns = [
-        r"https://cache\.willhaben\.at/mmo/[^\"'\\\s<>]+?\.(?:jpg|jpeg|png|webp)",
-        r"https://[^\"'\\\s<>]+?\.(?:jpg|jpeg|png|webp)",
-    ]
+def normalize_image_url(url: str) -> str:
+    url = html_lib.unescape(url).replace("\\/", "/").strip()
+    parts = urlsplit(url)
+    # Query strings often only represent srcset/image-size variants. Removing them makes dedupe robust.
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+
+
+def looks_like_logo_or_ui_asset(url: str) -> bool:
+    lower = url.lower()
+    return any(marker in lower for marker in BAD_IMAGE_MARKERS)
+
+
+def extract_image_urls(raw_html: str, *, willhaben_gallery_only: bool = False) -> list[str]:
+    urls: set[str] = set()
+    if willhaben_gallery_only:
+        patterns = [r"https://cache\.willhaben\.at/mmo/[^\"'\\\s<>]+?\.(?:jpg|jpeg|png|webp)"]
+    else:
+        patterns = [
+            r"https://cache\.willhaben\.at/mmo/[^\"'\\\s<>]+?\.(?:jpg|jpeg|png|webp)",
+            r"https://[^\"'\\\s<>]+?\.(?:jpg|jpeg|png|webp)",
+        ]
+
     for pattern in patterns:
-        for match in re.finditer(pattern, html, re.IGNORECASE):
-            url = match.group(0).replace("\\/", "/")
+        for match in re.finditer(pattern, raw_html, re.IGNORECASE):
+            url = normalize_image_url(match.group(0))
+            if not url or looks_like_logo_or_ui_asset(url):
+                continue
             urls.add(url)
     return sorted(urls)
 
 
-def extract_pdf_urls(html: str) -> list[str]:
+def extract_pdf_urls(raw_html: str) -> list[str]:
     urls = set()
-    for match in re.finditer(r"https://[^\"'\\\s<>]+?\.pdf", html, re.IGNORECASE):
-        urls.add(match.group(0).replace("\\/", "/"))
+    for match in re.finditer(r"https://[^\"'\\\s<>]+?\.pdf", raw_html, re.IGNORECASE):
+        urls.add(html_lib.unescape(match.group(0)).replace("\\/", "/"))
     return sorted(urls)
 
 
@@ -126,8 +162,8 @@ def parse_willhaben_id(url: str) -> str | None:
     return match.group(1) if match else None
 
 
-def parse_willhaben(url: str, html: str) -> ParsedListing:
-    soup = BeautifulSoup(html, "html.parser")
+def parse_willhaben(url: str, raw_html: str) -> ParsedListing:
+    soup = BeautifulSoup(raw_html, "html.parser")
     text = soup.get_text(" ", strip=True)
     result = ParsedListing(source_name="willhaben.at", source_url=url, external_id=parse_willhaben_id(url))
 
@@ -204,7 +240,6 @@ def parse_willhaben(url: str, html: str) -> ParsedListing:
         result.energy_fgee = parse_number(fgee_match.group(1))
         add_evidence(result, "energy_fgee", result.energy_fgee, "fGEE label", fgee_match.group(0), "verified")
 
-    # Address/location via JSON-LD if available.
     for obj in extract_json_ld(soup):
         address = obj.get("address")
         if isinstance(address, dict):
@@ -223,24 +258,28 @@ def parse_willhaben(url: str, html: str) -> ParsedListing:
             result.address_status = "municipality_only"
             add_evidence(result, "location_text", result.location_text, "postal code text", loc_match.group(0), "derived")
 
-    result.image_urls = extract_image_urls(html)
-    result.pdf_urls = extract_pdf_urls(html)
+    result.image_urls = extract_image_urls(raw_html, willhaben_gallery_only=True)
+    if not result.image_urls:
+        result.image_urls = extract_image_urls(raw_html, willhaben_gallery_only=False)
+        result.warnings.append("Keine eindeutigen Willhaben-Galerie-URLs erkannt; generische Bildsuche verwendet")
+
+    result.pdf_urls = extract_pdf_urls(raw_html)
     if not result.image_urls:
         result.warnings.append("Keine Bild-URLs im HTML erkannt")
 
     return result
 
 
-def parse_listing(url: str, html: str) -> ParsedListing:
+def parse_listing(url: str, raw_html: str) -> ParsedListing:
     host = urlparse(url).netloc.lower()
     if "willhaben.at" in host:
-        return parse_willhaben(url, html)
+        return parse_willhaben(url, raw_html)
     result = ParsedListing(source_name=host or "unknown", source_url=url)
-    soup = BeautifulSoup(html, "html.parser")
+    soup = BeautifulSoup(raw_html, "html.parser")
     if soup.title:
         result.title = soup.title.get_text(" ", strip=True)
     result.description = first_text(soup, ["meta[name=description]"])
-    result.image_urls = extract_image_urls(html)
-    result.pdf_urls = extract_pdf_urls(html)
+    result.image_urls = extract_image_urls(raw_html)
+    result.pdf_urls = extract_pdf_urls(raw_html)
     result.warnings.append("Portal noch nicht spezifisch implementiert; generischer Import")
     return result
