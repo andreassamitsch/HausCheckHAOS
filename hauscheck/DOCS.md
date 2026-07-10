@@ -4,7 +4,7 @@
 
 Nach der Installation das Add-on starten und über den Home-Assistant-Ingress öffnen.
 
-## Aktueller Funktionsumfang v0.3
+## Aktueller Funktionsumfang v0.4
 
 - Hausakten-Dashboard
 - Direktlink-Import
@@ -15,24 +15,41 @@ Nach der Installation das Add-on starten und über den Home-Assistant-Ingress ö
 - Medienfilter gegen Logos, Icons und Duplikate
 - manuelle Medien-Uploads
 - Analysebriefing pro Hausakte
-- gespeicherte Suchprofile für Willhaben-Suchergebnis-URLs
+- zentrale Suchprofile mit Kriterien
+- Willhaben-Suchergebnis-URL als technische Portalquelle
 - persistente Kandidatenliste mit Einzelimport
+- Kandidaten-Vorprüfung anhand Preis, Wohnfläche, Grundstück und HWB
 
-## Suchprofile verwenden
+## Zentrale Suchprofile verwenden
 
-1. In Willhaben eine Suche mit deinen Kriterien öffnen.
+1. In Willhaben eine Suche grob mit deinen Kriterien öffnen.
 2. Die Suchergebnis-URL kopieren.
 3. In HausCheck auf **Suchprofile** klicken.
-4. Name und Such-URL speichern.
+4. Name, Portal-URL und zentrale Kriterien speichern.
 5. Profil öffnen und **Suchprofil jetzt starten** klicken.
-6. Kandidaten einzeln importieren.
+6. Kandidaten prüfen und einzeln importieren.
+
+Die zentrale Logik lautet:
+
+```text
+Profil-Kriterien = Wahrheit
+Portal-URL = technische Quelle
+HausCheck-Filter = finale Kontrolle
+```
 
 Beispiele für Suchprofile:
 
-- Wies/Eibiswald bis 380k
-- Oberhaag/Obergreith Grenzfälle
+- Wies/Eibiswald bis 380k, Grenzfälle bis 400k
+- Oberhaag/Obergreith mit Grundstück ab 700 m²
 - Deutschlandsberg größere Grundstücke
 - Preisgrenze 400k als Beobachtung
+
+## Kandidatenstatus
+
+- `neu`: Kriterien aktuell erfüllt
+- `prüfen`: nicht ausgeschlossen, aber mit Warnung
+- `gefiltert`: harte Kriterien nicht erfüllt
+- `importiert`: bereits als Hausakte vorhanden
 
 Wichtig:
 
