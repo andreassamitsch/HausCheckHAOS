@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.2
+
+- Zahlenparser für Suchprofil-Kriterien korrigiert
+- SQLite-REAL-Werte wie `120.0` werden nicht mehr fälschlich zu `1200`
+- automatische Willhaben-URL setzt Mindestwohnfläche wieder korrekt, z. B. `ESTATE_SIZE/LIVING_AREA_FROM=120`
+- deutsche Tausender-Schreibweise wie `400.000` bleibt weiterhin unterstützt
+
 ## 0.4.1
 
 - Willhaben-Such-URL ist beim Suchprofil nicht mehr Pflicht
