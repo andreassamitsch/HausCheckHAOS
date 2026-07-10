@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.5
+
+- Feld „Regionen / Orte“ aus der Suchprofil-Maske entfernt, weil Willhaben jetzt über PLZ/areaIds gesucht wird
+- Kandidaten werden zusätzlich über die Willhaben-Inserat-ID dedupliziert
+- bestehende doppelte Kandidaten werden in der Profilansicht nur noch einmal angezeigt
+- Kandidaten speichern ein Vorschaubild aus der Detailseite
+- Kandidatenliste zeigt ein Vorschaubild je Inserat
+- Import lädt Bilder und PDFs automatisch direkt mit
+- „Medien herunterladen“ bleibt nur noch als Retry-Funktion erhalten
+- Runtime-Patching im Startskript entfernt; Änderungen liegen wieder direkt in `app/main.py`
+
 ## 0.4.4
 
 - neues Feld „Willhaben PLZ / areaIds“ im Suchprofil
