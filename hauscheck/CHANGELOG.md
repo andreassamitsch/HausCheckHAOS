@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.2
+
+- Variante C vorbereitet: ChatGPT/Home-Assistant-Bridge über API und MCP
+- neuer geschützter Endpoint `/mcp` als Streamable-HTTP-MCP-MVP
+- neue geschützte JSON-API unter `/api/chatgpt/...`
+- neue Add-on-Option `api_token`
+- MCP-Tools: `list_houses`, `get_house`, `get_house_images`, `list_search_profiles`, `get_candidates`
+- `get_house_images` liefert lokale Hausbilder als Bildinhalte für Analysezwecke
+- Start erfolgt über `app.bootstrap`, damit die ChatGPT-Bridge registriert wird
+- API/MCP bleibt deaktiviert, solange kein `api_token` gesetzt ist
+
 ## 0.5.1
 
 - Vorschaubilder werden bevorzugt aus der Portal-/Willhaben-Übersicht übernommen
