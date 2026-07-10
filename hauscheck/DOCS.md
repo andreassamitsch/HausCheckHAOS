@@ -4,7 +4,7 @@
 
 Nach der Installation das Add-on starten und über den Home-Assistant-Ingress öffnen.
 
-## Aktueller Funktionsumfang v0.4.6
+## Aktueller Funktionsumfang v0.5.0
 
 - Hausakten-Dashboard
 - Direktlink-Import
@@ -24,6 +24,7 @@ Nach der Installation das Add-on starten und über den Home-Assistant-Ingress ö
 - mobilfreundliche Kandidaten-Karten statt breiter Tabelle
 - Ladeanzeige mit Spinner und Aktionstext
 - Deduplizierung über Willhaben-Inserat-ID
+- regelbasierte Erstbewertung / Score je Kandidat und Hausakte
 
 ## Zentrale Suchprofile verwenden
 
@@ -31,10 +32,10 @@ Nach der Installation das Add-on starten und über den Home-Assistant-Ingress ö
 2. Name, zentrale Kriterien und Willhaben-PLZ/areaIds speichern.
 3. Die Willhaben-URL kann leer bleiben.
 4. Profil öffnen und **Suchprofil jetzt starten** klicken.
-5. Kandidaten anhand Vorschaubild und Fakten prüfen.
+5. Kandidaten anhand Vorschaubild, Fakten und Score prüfen.
 6. Kandidaten einzeln importieren. Bilder werden beim Import automatisch geladen.
 
-Die Kandidatenansicht ist für Mobilgeräte optimiert: Bild, Titel, Fakten, Status und Import-Schaltfläche stehen in einer Immobilien-Karte.
+Die Kandidatenansicht ist für Mobilgeräte optimiert: Bild, Titel, Fakten, Status, Score und Import-Schaltfläche stehen in einer Immobilien-Karte.
 
 Die zentrale Logik lautet:
 
@@ -42,7 +43,37 @@ Die zentrale Logik lautet:
 Profil-Kriterien = Wahrheit
 Portalquelle = automatisch erzeugt oder optional manuell
 HausCheck-Filter = finale Kontrolle
+HausCheck-Score = schnelle Priorisierung
 ```
+
+## Regelbasierte Erstbewertung
+
+Der Score bewertet aktuell nur vorhandene Daten aus dem Inserat:
+
+- Preis
+- Wohnfläche
+- Grundstück
+- HWB
+- Kandidatenstatus: neu / prüfen / gefiltert / importiert
+
+Ergebnis:
+
+```text
+82-100  sehr interessant
+68-81   interessant
+50-67   prüfen
+0-49    kritisch
+```
+
+Zusätzlich wird eine Bewertungssicherheit angezeigt:
+
+```text
+hoch    mehrere wichtige Werte vorhanden
+mittel  einige Werte vorhanden
+niedrig zu viele Werte fehlen
+```
+
+Wichtig: Der Score ist noch keine Marktwertschätzung. Fehlende Werte werden nicht erfunden.
 
 ## Automatische Willhaben-Quelle
 
