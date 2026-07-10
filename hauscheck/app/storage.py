@@ -89,6 +89,31 @@ def init_storage() -> None:
                 created_at TEXT NOT NULL,
                 FOREIGN KEY(house_id) REFERENCES houses(id)
             );
+
+            CREATE TABLE IF NOT EXISTS search_profiles (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                source_name TEXT NOT NULL DEFAULT 'willhaben.at',
+                search_url TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                last_run_at TEXT,
+                last_found_count INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS search_candidates (
+                id TEXT PRIMARY KEY,
+                profile_id TEXT NOT NULL,
+                source_url TEXT NOT NULL,
+                title TEXT,
+                status TEXT NOT NULL DEFAULT 'new',
+                imported_house_id TEXT,
+                first_seen_at TEXT NOT NULL,
+                last_seen_at TEXT NOT NULL,
+                UNIQUE(profile_id, source_url),
+                FOREIGN KEY(profile_id) REFERENCES search_profiles(id)
+            );
             """
         )
         ensure_media_columns(con)
@@ -171,7 +196,7 @@ def update_house(house_id: str, data: dict[str, Any]) -> dict[str, Any]:
     allowed = {
         "title", "status", "location_text", "address_status", "price_eur",
         "living_area_m2", "plot_area_m2", "rooms", "year_built", "heating",
-        "energy_hwb", "energy_fgee", "energy_class_hwb", "energy_class_fgee", "notes"
+        "energy_hwb", "energy_fgee", "energy_class_hwb", "energy_class_fgee", "notes",
     }
     fields = {k: v for k, v in data.items() if k in allowed}
     if not fields:
@@ -236,6 +261,12 @@ def list_sources(house_id: str) -> list[dict[str, Any]]:
     with connect() as con:
         rows = con.execute("SELECT * FROM listing_sources WHERE house_id = ? ORDER BY created_at DESC", (house_id,)).fetchall()
     return [row_to_dict(row) or {} for row in rows]
+
+
+def source_url_exists(source_url: str) -> bool:
+    with connect() as con:
+        row = con.execute("SELECT 1 FROM listing_sources WHERE source_url = ? LIMIT 1", (source_url,)).fetchone()
+    return row is not None
 
 
 def add_media(house_id: str, data: dict[str, Any]) -> dict[str, Any]:
@@ -359,3 +390,107 @@ def list_evidence(house_id: str) -> list[dict[str, Any]]:
     with connect() as con:
         rows = con.execute("SELECT * FROM field_evidence WHERE house_id = ? ORDER BY created_at DESC", (house_id,)).fetchall()
     return [row_to_dict(row) or {} for row in rows]
+
+
+def create_search_profile(name: str, search_url: str, source_name: str = "willhaben.at") -> dict[str, Any]:
+    profile_id = str(uuid.uuid4())[:8]
+    timestamp = now_iso()
+    with connect() as con:
+        con.execute(
+            """
+            INSERT INTO search_profiles (
+                id, name, source_name, search_url, enabled,
+                last_run_at, last_found_count, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, 1, NULL, 0, ?, ?)
+            """,
+            (profile_id, name, source_name, search_url, timestamp, timestamp),
+        )
+        con.commit()
+    return get_search_profile(profile_id) or {}
+
+
+def list_search_profiles() -> list[dict[str, Any]]:
+    with connect() as con:
+        rows = con.execute("SELECT * FROM search_profiles ORDER BY created_at DESC").fetchall()
+    return [row_to_dict(row) or {} for row in rows]
+
+
+def get_search_profile(profile_id: str) -> dict[str, Any] | None:
+    with connect() as con:
+        row = con.execute("SELECT * FROM search_profiles WHERE id = ?", (profile_id,)).fetchone()
+    return row_to_dict(row)
+
+
+def update_search_profile_run(profile_id: str, found_count: int) -> None:
+    timestamp = now_iso()
+    with connect() as con:
+        con.execute(
+            """
+            UPDATE search_profiles
+            SET last_run_at = ?, last_found_count = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (timestamp, found_count, timestamp, profile_id),
+        )
+        con.commit()
+
+
+def upsert_search_candidate(profile_id: str, source_url: str, title: str | None, status: str = "new", imported_house_id: str | None = None) -> dict[str, Any]:
+    timestamp = now_iso()
+    with connect() as con:
+        existing = con.execute(
+            "SELECT * FROM search_candidates WHERE profile_id = ? AND source_url = ?",
+            (profile_id, source_url),
+        ).fetchone()
+        if existing:
+            con.execute(
+                """
+                UPDATE search_candidates
+                SET title = COALESCE(?, title), status = ?, imported_house_id = COALESCE(?, imported_house_id), last_seen_at = ?
+                WHERE id = ?
+                """,
+                (title, status, imported_house_id, timestamp, existing["id"]),
+            )
+            con.commit()
+            return get_search_candidate(existing["id"]) or {}
+
+        candidate_id = str(uuid.uuid4())[:8]
+        con.execute(
+            """
+            INSERT INTO search_candidates (
+                id, profile_id, source_url, title, status, imported_house_id,
+                first_seen_at, last_seen_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (candidate_id, profile_id, source_url, title, status, imported_house_id, timestamp, timestamp),
+        )
+        con.commit()
+    return get_search_candidate(candidate_id) or {}
+
+
+def get_search_candidate(candidate_id: str) -> dict[str, Any] | None:
+    with connect() as con:
+        row = con.execute("SELECT * FROM search_candidates WHERE id = ?", (candidate_id,)).fetchone()
+    return row_to_dict(row)
+
+
+def list_search_candidates(profile_id: str) -> list[dict[str, Any]]:
+    with connect() as con:
+        rows = con.execute(
+            "SELECT * FROM search_candidates WHERE profile_id = ? ORDER BY first_seen_at DESC",
+            (profile_id,),
+        ).fetchall()
+    return [row_to_dict(row) or {} for row in rows]
+
+
+def mark_candidates_imported(source_url: str, house_id: str) -> None:
+    with connect() as con:
+        con.execute(
+            """
+            UPDATE search_candidates
+            SET status = 'imported', imported_house_id = ?, last_seen_at = ?
+            WHERE source_url = ?
+            """,
+            (house_id, now_iso(), source_url),
+        )
+        con.commit()
