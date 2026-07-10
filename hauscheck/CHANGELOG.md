@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.1
+
+- Vorschaubilder werden bevorzugt aus der Portal-/Willhaben-Übersicht übernommen
+- Suchseitenauswertung extrahiert nun Kandidaten mit Link, Titel und Übersichtsvorschaubild
+- Detailseiten-Parser bleibt Fallback, falls in der Übersicht kein Bild erkannt wird
+- bestehender Score bleibt unverändert
+
 ## 0.5.0
 
 - Phase 7 Bewertung/Scoring vorgezogen
