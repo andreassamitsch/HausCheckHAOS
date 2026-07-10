@@ -4,7 +4,7 @@
 
 Nach der Installation das Add-on starten und über den Home-Assistant-Ingress öffnen.
 
-## Aktueller Funktionsumfang v0.5.4
+## Aktueller Funktionsumfang v0.5.5
 
 - Hausakten-Dashboard
 - Direktlink-Import
@@ -14,19 +14,80 @@ Nach der Installation das Add-on starten und über den Home-Assistant-Ingress ö
 - Bild-URL-Erkennung und automatischer Bilddownload beim Import
 - Medienfilter gegen Logos, Icons und Duplikate
 - manuelle Medien-Uploads
-- Analysebriefing pro Hausakte
 - zentrale Suchprofile mit Kriterien
 - automatisch erzeugte Willhaben-Suchquellen über eine oder mehrere PLZ/areaIds
 - optionale manuelle Willhaben-Such-URL für Spezialfälle, z. B. Umkreis
 - persistente Kandidatenliste mit Einzelimport
 - Kandidaten-Vorprüfung anhand Preis, Wohnfläche, Grundstück und HWB
 - Vorschaubild je Kandidat bevorzugt aus der Portal-/Willhaben-Übersicht
+- Hauskarten nutzen bevorzugt das Portal-/Willhaben-Vorschaubild
 - mobilfreundliche Kandidaten-Karten statt breiter Tabelle
-- Ladeanzeige mit Spinner und Aktionstext
-- Deduplizierung über Willhaben-Inserat-ID
 - regelbasierte Erstbewertung / Score je Kandidat und Hausakte
 - manueller ChatGPT-Analyseworkflow per ZIP Export/JSON Import
-- geschützte ChatGPT/API/MCP-Bridge bleibt optional vorhanden, kann aber ignoriert werden
+- Hausakte manuell bearbeiten
+- Hausakte vollständig löschen inklusive geladener Dateien
+- Galerie/Slider oben in der Hausakte; Klick öffnet Bilder groß
+- Exposé-PDF hochladen und Textdaten auslesen
+- optionale API-/MCP-Bridge bleibt vorhanden, kann aber ignoriert werden
+
+## Hausakte bearbeiten und löschen
+
+In der Hausakte gibt es jetzt aufklappbare Bereiche:
+
+```text
+Hausakte bearbeiten
+Exposé PDF
+Hausakte löschen
+```
+
+Bearbeitbar sind:
+
+```text
+Titel
+Adresse / Lage
+Adressstatus
+Preis
+Wohnfläche
+Grundstück
+Zimmer
+Baujahr
+HWB
+fGEE
+Heizung
+Portal-Vorschaubild URL
+Notizen
+```
+
+Beim Löschen werden entfernt:
+
+```text
+Hausakte
+Quellen
+Feldherkunft
+Medien-Datenbankeinträge
+KI-Analysen
+Projektordner unter /share/hauscheck/projects/<house_id>
+```
+
+## Exposé PDF
+
+PDFs können direkt in der Hausakte hochgeladen werden.
+
+HausCheck versucht daraus zu erkennen und zu aktualisieren:
+
+```text
+Adresse / Lage
+Preis
+Wohnfläche
+Grundstück
+Zimmer
+Baujahr
+HWB
+fGEE
+Heizung
+```
+
+Zusätzlich versucht HausCheck, Bilder aus dem PDF zu extrahieren und der Hausakte hinzuzufügen. Je nach PDF-Aufbau kann das vollständig, teilweise oder gar nicht funktionieren.
 
 ## Empfohlener Analyseworkflow ohne API-Kosten
 
@@ -35,7 +96,7 @@ Nach der Installation das Add-on starten und über den Home-Assistant-Ingress ö
 3. Die ZIP-Datei in ChatGPT hochladen.
 4. ChatGPT soll anhand der enthaltenen `README_PROMPT.md` eine Datei `hauscheck_analysis.json` erzeugen.
 5. Diese JSON-Datei in HausCheck bei **KI-Analyse importieren** hochladen.
-6. HausCheck zeigt KI-Score, Analysedatum, Zusammenfassung, Chancen und Risiken in der Hausakte an.
+6. HausCheck zeigt KI-Score, Analysedatum, Zusammenfassung, Chancen, Risiken und Adress-/Lagehinweise in der Hausakte an.
 
 Der Workflow benötigt:
 
@@ -99,6 +160,13 @@ Mindeststruktur:
     "confidence": "niedrig",
     "comment": "Nur grobe Bild-/Inseratsschätzung."
   },
+  "address_hints": [
+    {
+      "hint": "möglicher Ortsteil / Lagehinweis",
+      "basis": "z. B. Text, Aussicht, Straßenhinweis, Bildmerkmal",
+      "confidence": "niedrig"
+    }
+  ],
   "image_findings": [],
   "recommendation": "Besichtigung sinnvoll, Unterlagen prüfen.",
   "next_steps": [],
@@ -140,7 +208,7 @@ Solange in den Add-on-Optionen kein `api_token` gesetzt ist, bleibt diese Bridge
 
 HausCheck versucht das Vorschaubild direkt aus der Portal-/Willhaben-Übersicht zu übernehmen. Das entspricht eher dem Bild, das auch auf der Suchergebnisseite sichtbar ist.
 
-Wenn dort kein Bild erkannt wird, bleibt die Detailseite als Fallback.
+Wenn dort kein Bild erkannt wird, bleibt die Detailseite als Fallback. Nach dem Import wird das Portal-Vorschaubild an die Hausakte übergeben und in der Hauskarte bevorzugt angezeigt.
 
 ## Regelbasierte Erstbewertung
 
@@ -205,10 +273,10 @@ Bei länger laufenden Aktionen zeigt HausCheck einen Ladehinweis mit Spinner:
 
 - Suchprofil starten
 - Inserat importieren und Bilder laden
-- Medien erneut herunterladen
-- Medien bereinigen
 - Datei hochladen
 - ChatGPT-Analyse importieren
+- Exposé PDF auslesen
+- Hausakte löschen
 
 ## Kandidatenstatus
 
@@ -220,8 +288,6 @@ Bei länger laufenden Aktionen zeigt HausCheck einen Ladehinweis mit Spinner:
 ## Import und Medien
 
 Beim Import aus der Kandidatenliste oder per Direktlink werden Bilder und PDFs automatisch geladen.
-
-Der Button **Medien erneut herunterladen** bleibt als Retry-Funktion erhalten, falls einzelne Medien beim ersten Versuch fehlschlagen.
 
 Wichtig:
 
@@ -238,6 +304,7 @@ Dies ist eine frühe MVP-Version. Die Parser sind bewusst konservativ:
 - Grundstück wird nur aus expliziten Grundstücksfeldern übernommen
 - ohne genaue Adresse erfolgt keine belastbare Lageprüfung
 - aktuell keine Captcha-/Login-Umgehung
+- PDF-Bildextraktion hängt stark vom PDF-Aufbau ab
 
 ## Datenablage
 
@@ -247,6 +314,7 @@ Dies ist eine frühe MVP-Version. Die Parser sind bewusst konservativ:
 ├── projects/
 │   └── <house_id>/
 │       ├── images/
+│       ├── pdfs/
 │       ├── exports/
 │       └── analysis/
 │           └── hauscheck_analysis.json
