@@ -12,7 +12,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
 from PIL import Image, UnidentifiedImageError
 
-from app.parser import parse_listing
+from app.parser import extract_listing_links, parse_listing, title_from_listing_url
 from app.storage import (
     PROJECTS_DIR,
     add_evidence,
@@ -37,7 +37,7 @@ MIN_IMAGE_WIDTH = 400
 MIN_IMAGE_HEIGHT = 250
 MIN_IMAGE_PIXELS = 180_000
 
-app = FastAPI(title=APP_NAME, version="0.1.2")
+app = FastAPI(title=APP_NAME, version="0.2.0")
 
 
 @app.on_event("startup")
@@ -148,6 +148,15 @@ def first_local_image(house_id: str) -> str | None:
     return None
 
 
+def existing_source_urls() -> set[str]:
+    urls: set[str] = set()
+    for house in list_houses():
+        for source in list_sources(str(house["id"])):
+            if source.get("source_url"):
+                urls.add(str(source["source_url"]))
+    return urls
+
+
 @app.get("/", response_class=HTMLResponse)
 def dashboard() -> HTMLResponse:
     houses = list_houses()
@@ -177,11 +186,12 @@ def dashboard() -> HTMLResponse:
         <h2>Neue Hausakte</h2>
         <p class="muted">Direktlink importieren oder Objekt manuell anlegen.</p>
         <a class="button" href="import">Inserat importieren</a>
+        <a class="button secondary" href="search">Suchlauf starten</a>
       </div>
       <div class="card">
         <h2>Status</h2>
         <p><span class="pill">{len(houses)} Hausakten</span></p>
-        <p class="muted">v0.1.2: Medienfilter, Deduplizierung und Logo-Erkennung.</p>
+        <p class="muted">v0.2.0: Willhaben-Suchergebnis-URL einlesen und Kandidaten importieren.</p>
       </div>
     </div>
     <h2>Hausakten</h2>
@@ -217,11 +227,80 @@ def import_form() -> HTMLResponse:
     return layout("Inserat importieren", body, home_href="../")
 
 
+@app.get("/search", response_class=HTMLResponse)
+def search_form() -> HTMLResponse:
+    body = """
+    <div class="card">
+      <h2>Suchlauf MVP</h2>
+      <p class="muted">Füge eine gefilterte Willhaben-Suchergebnis-URL ein. HausCheck extrahiert daraus echte Inserat-Direktlinks.</p>
+      <form method="post" action="search/willhaben">
+        <label>Willhaben-Suchergebnis-URL</label>
+        <input name="url" placeholder="https://www.willhaben.at/iad/immobilien/haus-kaufen/steiermark/deutschlandsberg/..." required>
+        <label>Maximale Treffer</label>
+        <input name="max_results" type="number" min="1" max="100" value="40">
+        <button type="submit">Suchseite auslesen</button>
+      </form>
+      <p class="muted">Dieser Schritt speichert noch keine Objekte automatisch. Du entscheidest pro Kandidat, ob importiert wird.</p>
+    </div>
+    """
+    return layout("Suchlauf", body, home_href="../")
+
+
 async def fetch_html(url: str) -> str:
     async with httpx.AsyncClient(timeout=30, follow_redirects=True, headers={"User-Agent": USER_AGENT}) as client:
         response = await client.get(url)
         response.raise_for_status()
         return response.text
+
+
+@app.post("/search/willhaben", response_class=HTMLResponse)
+async def search_willhaben(url: str = Form(...), max_results: int = Form(40)) -> HTMLResponse:
+    if not url.startswith(("http://", "https://")):
+        raise HTTPException(status_code=400, detail="Ungültige URL")
+    if "willhaben.at" not in url.lower():
+        raise HTTPException(status_code=400, detail="Aktuell wird hier nur Willhaben unterstützt")
+
+    raw_html = await fetch_html(url)
+    links = extract_listing_links(raw_html, url)[: max(1, min(max_results, 100))]
+    known = existing_source_urls()
+
+    rows = []
+    for index, link in enumerate(links, start=1):
+        known_badge = "<span class='pill'>bereits importiert</span>" if link in known else "<span class='pill'>neu</span>"
+        import_button = ""
+        if link not in known:
+            import_button = f"""
+            <form method="post" action="../import" style="display:inline">
+              <input type="hidden" name="url" value="{esc(link)}">
+              <button type="submit">Importieren</button>
+            </form>
+            """
+        rows.append(
+            f"""
+            <tr>
+              <td>{index}</td>
+              <td>{esc(title_from_listing_url(link))}<br><a href="{esc(link)}" target="_blank">{esc(link)}</a></td>
+              <td>{known_badge}</td>
+              <td>{import_button}</td>
+            </tr>
+            """
+        )
+
+    body = f"""
+    <div class="card">
+      <h2>Suchlauf Ergebnis</h2>
+      <p><span class="pill">{len(links)} Direktlinks gefunden</span></p>
+      <p class="muted">Quelle: <a href="{esc(url)}" target="_blank">Willhaben-Suche öffnen</a></p>
+      <a class="button secondary" href="../search">Neue Suchseite prüfen</a>
+    </div>
+    <div class="card">
+      <table>
+        <tr><th>#</th><th>Kandidat</th><th>Status</th><th>Aktion</th></tr>
+        {''.join(rows) if rows else '<tr><td colspan="4" class="muted">Keine Inserat-Direktlinks erkannt. Möglicherweise blockiert Willhaben die Suchseite oder die Seite wurde dynamisch geladen.</td></tr>'}
+      </table>
+    </div>
+    """
+    return layout("Suchlauf Ergebnis", body, home_href="../")
 
 
 @app.post("/import")
