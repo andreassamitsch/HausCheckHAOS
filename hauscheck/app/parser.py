@@ -35,6 +35,13 @@ class ParsedListing:
     evidence: list[dict[str, Any]] = field(default_factory=list)
 
 
+@dataclass
+class SearchResultCandidate:
+    url: str
+    title: str | None = None
+    preview_image_url: str | None = None
+
+
 BAD_IMAGE_MARKERS = (
     "logo", "avatar", "profile", "profil", "company", "makler", "agent",
     "favicon", "sprite", "icon", "placeholder", "banner", "tracking",
@@ -123,22 +130,30 @@ def looks_like_logo_or_ui_asset(url: str) -> bool:
     return any(marker in lower for marker in BAD_IMAGE_MARKERS)
 
 
-def extract_image_urls(raw_html: str, *, willhaben_gallery_only: bool = False) -> list[str]:
-    urls: set[str] = set()
+def image_patterns(willhaben_gallery_only: bool = False) -> list[str]:
     if willhaben_gallery_only:
-        patterns = [r"https://cache\.willhaben\.at/mmo/[^\"'\\\s<>]+?\.(?:jpg|jpeg|png|webp)"]
-    else:
-        patterns = [
-            r"https://cache\.willhaben\.at/mmo/[^\"'\\\s<>]+?\.(?:jpg|jpeg|png|webp)",
-            r"https://[^\"'\\\s<>]+?\.(?:jpg|jpeg|png|webp)",
-        ]
-    for pattern in patterns:
+        return [r"https://cache\.willhaben\.at/mmo/[^\"'\\\s<>]+?\.(?:jpg|jpeg|png|webp)"]
+    return [
+        r"https://cache\.willhaben\.at/mmo/[^\"'\\\s<>]+?\.(?:jpg|jpeg|png|webp)",
+        r"https://[^\"'\\\s<>]+?\.(?:jpg|jpeg|png|webp)",
+    ]
+
+
+def extract_image_urls_ordered(raw_html: str, *, willhaben_gallery_only: bool = False) -> list[str]:
+    urls: list[str] = []
+    seen: set[str] = set()
+    for pattern in image_patterns(willhaben_gallery_only):
         for match in re.finditer(pattern, raw_html, re.IGNORECASE):
             url = normalize_image_url(match.group(0))
-            if not url or looks_like_logo_or_ui_asset(url):
+            if not url or looks_like_logo_or_ui_asset(url) or url in seen:
                 continue
-            urls.add(url)
-    return sorted(urls)
+            seen.add(url)
+            urls.append(url)
+    return urls
+
+
+def extract_image_urls(raw_html: str, *, willhaben_gallery_only: bool = False) -> list[str]:
+    return sorted(extract_image_urls_ordered(raw_html, willhaben_gallery_only=willhaben_gallery_only))
 
 
 def extract_pdf_urls(raw_html: str) -> list[str]:
@@ -148,37 +163,77 @@ def extract_pdf_urls(raw_html: str) -> list[str]:
     return sorted(urls)
 
 
-def extract_listing_links(raw_html: str, base_url: str) -> list[str]:
-    """Extract real detail listing links from a portal/search HTML page.
+def is_detail_listing_link(candidate: str) -> bool:
+    if "/iad/immobilien/d/" not in candidate:
+        return False
+    return bool(re.search(r"-\d{7,}(?:$|[/?#])", candidate))
 
-    Search/category pages are intentionally ignored. Currently optimized for
-    Willhaben detail URLs like /iad/immobilien/d/...-1234567890.
+
+def extract_listing_candidates(raw_html: str, base_url: str) -> list[SearchResultCandidate]:
+    """Extract portal result cards from a search page.
+
+    For Willhaben this tries to use the same thumbnail image that is present in
+    the overview result card. If no card image is found, the candidate is still
+    returned without a preview so the detail page can be parsed later.
     """
-    links: set[str] = set()
     soup = BeautifulSoup(raw_html, "html.parser")
+    by_url: dict[str, SearchResultCandidate] = {}
 
-    candidates: list[str] = []
+    def add_candidate(raw_href: str, title: str | None = None, preview: str | None = None) -> None:
+        raw_href = html_lib.unescape(raw_href).replace("\\/", "/")
+        if not is_detail_listing_link(raw_href):
+            return
+        absolute = urljoin(base_url, raw_href)
+        normalized = normalize_url(absolute)
+        current = by_url.get(normalized)
+        if current is None:
+            by_url[normalized] = SearchResultCandidate(url=normalized, title=title, preview_image_url=preview)
+            return
+        if title and not current.title:
+            current.title = title
+        if preview and not current.preview_image_url:
+            current.preview_image_url = preview
+
     for tag in soup.find_all("a", href=True):
-        candidates.append(str(tag.get("href") or ""))
+        href = str(tag.get("href") or "")
+        if not is_detail_listing_link(href):
+            continue
+        title = tag.get_text(" ", strip=True) or None
+        card_html = ""
+        node = tag
+        for _ in range(7):
+            if node is None:
+                break
+            node_html = str(node)
+            if "cache.willhaben.at/mmo/" in node_html:
+                card_html = node_html
+                break
+            parent = getattr(node, "parent", None)
+            if parent is None or getattr(parent, "name", None) in ("body", "html"):
+                break
+            node = parent
+        preview = None
+        if card_html:
+            images = extract_image_urls_ordered(card_html, willhaben_gallery_only=True)
+            if not images:
+                images = extract_image_urls_ordered(card_html, willhaben_gallery_only=False)
+            preview = images[0] if images else None
+        add_candidate(href, title=title, preview=preview)
 
     regexes = [
         r"https://www\.willhaben\.at/iad/immobilien/d/[^\"'\\\s<>]+?-\d{7,}",
         r"/iad/immobilien/d/[^\"'\\\s<>]+?-\d{7,}",
     ]
     for regex in regexes:
-        candidates.extend(match.group(0) for match in re.finditer(regex, raw_html, re.IGNORECASE))
+        for match in re.finditer(regex, raw_html, re.IGNORECASE):
+            add_candidate(match.group(0))
 
-    for candidate in candidates:
-        candidate = html_lib.unescape(candidate).replace("\\/", "/")
-        if "/iad/immobilien/d/" not in candidate:
-            continue
-        if not re.search(r"-\d{7,}(?:$|[/?#])", candidate):
-            continue
-        absolute = urljoin(base_url, candidate)
-        normalized = normalize_url(absolute)
-        links.add(normalized)
+    return list(by_url.values())
 
-    return sorted(links)
+
+def extract_listing_links(raw_html: str, base_url: str) -> list[str]:
+    """Extract real detail listing links from a portal/search HTML page."""
+    return sorted(candidate.url for candidate in extract_listing_candidates(raw_html, base_url))
 
 
 def title_from_listing_url(url: str) -> str:
