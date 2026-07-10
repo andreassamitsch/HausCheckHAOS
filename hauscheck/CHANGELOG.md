@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.4
+
+- neues Feld „Willhaben PLZ / areaIds“ im Suchprofil
+- mehrere PLZ/areaIds möglich, z. B. `8551,8552,8544,8553`
+- HausCheck erzeugt pro PLZ eine eigene Willhaben-Suchquelle
+- Kandidaten aus mehreren PLZ-Suchen werden zusammengeführt und dedupliziert
+- manuelle Willhaben-Such-URL bleibt weiterhin möglich und überschreibt die automatische PLZ-Suche
+- bestehende automatische Profile werden weiter mit `8551` betrieben
+
 ## 0.4.3
 
 - automatische Willhaben-Suche nutzt jetzt PLZ/areaId `8551` als Standard für Wies
