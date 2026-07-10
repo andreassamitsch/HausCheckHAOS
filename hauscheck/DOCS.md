@@ -4,7 +4,7 @@
 
 Nach der Installation das Add-on starten und über den Home-Assistant-Ingress öffnen.
 
-## Aktueller Funktionsumfang v0.4.3
+## Aktueller Funktionsumfang v0.4.4
 
 - Hausakten-Dashboard
 - Direktlink-Import
@@ -16,7 +16,7 @@ Nach der Installation das Add-on starten und über den Home-Assistant-Ingress ö
 - manuelle Medien-Uploads
 - Analysebriefing pro Hausakte
 - zentrale Suchprofile mit Kriterien
-- automatisch erzeugte Willhaben-Suchquelle über PLZ/areaId 8551
+- automatisch erzeugte Willhaben-Suchquellen über eine oder mehrere PLZ/areaIds
 - optionale manuelle Willhaben-Such-URL für Spezialfälle, z. B. Umkreis
 - persistente Kandidatenliste mit Einzelimport
 - Kandidaten-Vorprüfung anhand Preis, Wohnfläche, Grundstück und HWB
@@ -24,7 +24,7 @@ Nach der Installation das Add-on starten und über den Home-Assistant-Ingress ö
 ## Zentrale Suchprofile verwenden
 
 1. In HausCheck auf **Suchprofile** klicken.
-2. Name und zentrale Kriterien speichern.
+2. Name, zentrale Kriterien und Willhaben-PLZ/areaIds speichern.
 3. Die Willhaben-URL kann leer bleiben.
 4. Profil öffnen und **Suchprofil jetzt starten** klicken.
 5. Kandidaten prüfen und einzeln importieren.
@@ -39,14 +39,26 @@ HausCheck-Filter = finale Kontrolle
 
 ## Automatische Willhaben-Quelle
 
-Wenn keine Willhaben-URL eingetragen wird, erzeugt HausCheck aktuell eine Willhaben-PLZ-Suche für Wies nach diesem Muster:
+Wenn keine Willhaben-URL eingetragen wird, erzeugt HausCheck pro PLZ/areaId eine Willhaben-Suche nach diesem Muster:
 
 ```text
 https://www.willhaben.at/iad/immobilien/haus-kaufen/haus-angebote
-?areaId=8551
+?areaId=<PLZ oder areaId>
 &page=1
 &PRICE_TO=<harte Preisgrenze>
 &ESTATE_SIZE/LIVING_AREA_FROM=<Mindestwohnfläche>
+```
+
+Beispiel Wies:
+
+```text
+areaId=8551
+```
+
+Mehrere PLZ/areaIds können kommagetrennt eingetragen werden:
+
+```text
+8551,8552,8544,8553
 ```
 
 Die Umkreissuche mit `lat`, `lon` und `sfId` ist noch nicht automatisiert. Dafür kann vorerst weiterhin eine manuelle Willhaben-URL als Vorlage eingetragen werden.
