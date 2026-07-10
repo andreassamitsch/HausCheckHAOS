@@ -96,6 +96,9 @@ if path.exists():
         '        image_html = dashboard_preview_html(house)'
     )
 
+    # alten Analysebriefing-Button aus früheren Versionen entfernen
+    text = text.replace('      <a class="button secondary" href="{house_id}/briefing">Analysebriefing</a>\n', '')
+
     if '{candidate_score_html(cand, status)}' not in text:
         text = text.replace(
             '                <div>{status_pill(status)}</div>\n                <div class="listing-facts">',
@@ -116,7 +119,7 @@ if path.exists():
 
     if '{analysis_status_html(house_id)}' not in text:
         text = text.replace(
-            '      <a class="button secondary" href="{house_id}/briefing">Analysebriefing</a>\n    </div>\n    <div class="card"><h2>Bilder</h2>',
+            '    </div>\n    <div class="card"><h2>Bilder</h2>',
             '    </div>\n    {analysis_status_html(house_id)}\n    {edit_house_form_html(house)}\n    {expose_upload_html(house_id)}\n    <div class="card"><h2>Bilder</h2>'
         )
     else:
@@ -191,6 +194,34 @@ if path.exists():
         text = text[:start] + new_run + text[end:]
 
     path.write_text(text, encoding='utf-8')
+
+# Analysepaket-Prompt um Adresshinweise erweitern.
+ap = Path('/app/app/analysis_package.py')
+if ap.exists():
+    txt = ap.read_text(encoding='utf-8')
+    if 'address_hints' not in txt:
+        txt = txt.replace(
+            '            "image_findings": {\n',
+            '            "address_hints": {"type": "array", "items": {"type": "object", "properties": {"hint": {"type": "string"}, "basis": {"type": "string"}, "confidence": {"enum": ["niedrig", "mittel", "hoch"]}}}},\n            "image_findings": {\n'
+        )
+        txt = txt.replace(
+            '  "image_findings": [],\n  "recommendation": "...",',
+            '  "address_hints": [],\n  "image_findings": [],\n  "recommendation": "...",'
+        )
+        txt = txt.replace(
+            '- Besichtigungsfragen und nächste Prüfpunkte\n',
+            '- Besichtigungsfragen und nächste Prüfpunkte\n- versuche keine exakte Adresse zu erraten, aber gib mögliche Orts-/Lagehinweise als `address_hints` an, wenn Bilder, Text oder Quellen dafür eine Basis liefern; immer mit `basis` und `confidence`\n'
+        )
+    if 'Adress-/Lagehinweise' not in txt:
+        txt = txt.replace(
+            '        risk_html = "".join(f"<li>{esc(item)}</li>" for item in risks[:6]) or "<li class=\'muted\'>Keine Risiken importiert.</li>"\n        analysis_html = f"""',
+            '        risk_html = "".join(f"<li>{esc(item)}</li>" for item in risks[:6]) or "<li class=\'muted\'>Keine Risiken importiert.</li>"\n        address_hints = analysis.get("address_hints") or []\n        address_html = "".join(f"<li>{esc(item.get(\'hint\'))} <span class=\'muted\'>({esc(item.get(\'confidence\'))}; {esc(item.get(\'basis\'))})</span></li>" for item in address_hints[:5] if isinstance(item, dict)) or "<li class=\'muted\'>Keine Adresshinweise importiert.</li>"\n        analysis_html = f"""'
+        )
+        txt = txt.replace(
+            '        <p><strong>Empfehlung:</strong> {esc(recommendation)}</p>\n        <div class="grid"><div><strong>Chancen</strong><ul>{positive_html}</ul></div><div><strong>Risiken</strong><ul>{risk_html}</ul></div></div>',
+            '        <p><strong>Empfehlung:</strong> {esc(recommendation)}</p>\n        <p><strong>Adress-/Lagehinweise:</strong></p><ul>{address_html}</ul>\n        <div class="grid"><div><strong>Chancen</strong><ul>{positive_html}</ul></div><div><strong>Risiken</strong><ul>{risk_html}</ul></div></div>'
+        )
+    ap.write_text(txt, encoding='utf-8')
 PY
 
 exec uvicorn app.bootstrap:app --host 0.0.0.0 --port 8088
