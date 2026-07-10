@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.0
+
+- Dashboard-Button „Suchlauf starten“ ergänzt
+- neue Seite `/search` für Willhaben-Suchergebnis-URLs
+- Willhaben-Suchseiten werden ausgelesen
+- echte Inserat-Direktlinks werden extrahiert
+- Kandidatenliste mit Status „neu“ oder „bereits importiert“
+- Kandidaten können einzeln direkt importiert werden
+- Suchseiten werden nicht als Objekte gespeichert
+
 ## 0.1.2
 
 - Willhaben-Bild-URL-Erkennung auf Galerie-Kandidaten fokussiert
