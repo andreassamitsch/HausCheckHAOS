@@ -6,7 +6,7 @@ import json
 import re
 from io import BytesIO
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlsplit
 
 import httpx
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -46,9 +46,9 @@ MIN_IMAGE_WIDTH = 400
 MIN_IMAGE_HEIGHT = 250
 MIN_IMAGE_PIXELS = 180_000
 WILLHABEN_AUTO_BASE = "https://www.willhaben.at/iad/immobilien/haus-kaufen/haus-angebote"
-WILLHABEN_DEFAULT_AREA_ID = "60351"
+WILLHABEN_DEFAULT_AREA_ID = "8551"
 
-app = FastAPI(title=APP_NAME, version="0.4.2")
+app = FastAPI(title=APP_NAME, version="0.4.5")
 
 
 @app.on_event("startup")
@@ -84,12 +84,6 @@ def num(value: object, suffix: str = "") -> str:
 
 
 def normalize_number_text(value: str | None) -> str:
-    """Normalize German/user-entered or DB numeric strings safely.
-
-    Important: SQLite returns REAL values as e.g. 120.0. Older code removed every dot
-    and accidentally converted 120.0 to 1200. This function distinguishes decimal
-    dots from German thousands separators like 400.000.
-    """
     if value is None:
         return ""
     text = str(value).strip().replace(" ", "")
@@ -136,7 +130,7 @@ def layout(title: str, body: str, home_href: str = "./") -> HTMLResponse:
     body {{ margin: 0; background: #101418; color: #eef2f4; }}
     header {{ position: sticky; top: 0; z-index: 2; padding: 14px 16px; background: #17212b; border-bottom: 1px solid #26323e; }}
     header a {{ color: #eef2f4; text-decoration: none; font-weight: 700; }}
-    main {{ padding: 16px; max-width: 1100px; margin: 0 auto; }}
+    main {{ padding: 16px; max-width: 1160px; margin: 0 auto; }}
     .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }}
     .card {{ background: #17212b; border: 1px solid #26323e; border-radius: 14px; padding: 14px; box-shadow: 0 2px 10px rgba(0,0,0,.18); }}
     .card h2, .card h3 {{ margin-top: 0; }}
@@ -153,6 +147,7 @@ def layout(title: str, body: str, home_href: str = "./") -> HTMLResponse:
     table {{ width: 100%; border-collapse: collapse; }}
     th, td {{ padding: 8px; border-bottom: 1px solid #26323e; text-align: left; vertical-align: top; }}
     img.thumb {{ width: 100%; max-height: 180px; object-fit: cover; border-radius: 10px; background: #0b0f13; }}
+    img.preview {{ width: 150px; height: 105px; object-fit: cover; border-radius: 10px; background: #0b0f13; }}
     .gallery {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }}
     pre {{ white-space: pre-wrap; background: #0f151b; padding: 12px; border-radius: 10px; overflow-wrap: anywhere; }}
   </style>
@@ -235,26 +230,29 @@ def criteria_summary(profile: dict[str, object]) -> str:
         parts.append(f"HWB Warnung > {num(profile.get('hwb_warn'))}")
     if profile.get("hwb_reject"):
         parts.append(f"HWB kritisch > {num(profile.get('hwb_reject'))}")
-    if profile.get("regions"):
-        parts.append(f"Regionen: {esc(profile.get('regions'))}")
     if profile.get("exclude_roads"):
         parts.append(f"Ausschluss prüfen: {esc(profile.get('exclude_roads'))}")
     return "".join(f"<span class='pill'>{part}</span>" for part in parts) or "<span class='pill'>keine zentralen Kriterien gesetzt</span>"
 
 
-def build_willhaben_auto_url(profile: dict[str, object]) -> str:
-    """Build a broad Willhaben search URL from central criteria.
+def parse_area_ids(value: object) -> list[str]:
+    raw = str(value or "").strip()
+    if not raw:
+        raw = WILLHABEN_DEFAULT_AREA_ID
+    items = [item.strip() for item in re.split(r"[,;\s]+", raw) if item.strip()]
+    result: list[str] = []
+    for item in items:
+        if item not in result:
+            result.append(item)
+    return result or [WILLHABEN_DEFAULT_AREA_ID]
 
-    Current scope intentionally uses areaId=60351 and does not depend on lat/lon/sfId.
-    Radius search will be added later as optional source-template mode.
-    """
+
+def build_willhaben_url_for_area(profile: dict[str, object], area_id: str) -> str:
     max_price = optional_int(str(profile.get("max_price_eur") or "")) or optional_int(str(profile.get("soft_max_price_eur") or "")) or 400000
     min_living = optional_float(str(profile.get("min_living_area_m2") or "")) or 120
     params = [
-        ("sort", "1"),
-        ("rows", "30"),
+        ("areaId", str(area_id).strip() or WILLHABEN_DEFAULT_AREA_ID),
         ("page", "1"),
-        ("areaId", WILLHABEN_DEFAULT_AREA_ID),
         ("PRICE_TO", str(int(max_price))),
         ("ESTATE_SIZE/LIVING_AREA_FROM", str(int(min_living))),
     ]
@@ -262,11 +260,47 @@ def build_willhaben_auto_url(profile: dict[str, object]) -> str:
     return f"{WILLHABEN_AUTO_BASE}?{query}"
 
 
-def resolve_search_url(profile: dict[str, object]) -> str:
+def build_willhaben_auto_urls(profile: dict[str, object], area_ids: object | None = None) -> list[str]:
+    return [build_willhaben_url_for_area(profile, area_id) for area_id in parse_area_ids(area_ids)]
+
+
+def resolve_search_urls(profile: dict[str, object]) -> list[str]:
     search_url = str(profile.get("search_url") or "").strip()
     if search_url:
-        return search_url
-    return build_willhaben_auto_url(profile)
+        urls = [url.strip() for url in re.split(r"[\n;]+", search_url) if url.strip()]
+        return urls or [build_willhaben_url_for_area(profile, WILLHABEN_DEFAULT_AREA_ID)]
+    return build_willhaben_auto_urls(profile)
+
+
+def resolve_search_url(profile: dict[str, object]) -> str:
+    return "\n".join(resolve_search_urls(profile))
+
+
+def listing_key(url: str) -> str:
+    match = re.search(r"-(\d{7,})(?:$|[/?#])", url)
+    if match:
+        return f"willhaben:{match.group(1)}"
+    parts = urlsplit(url)
+    return f"{parts.netloc.lower()}{parts.path.rstrip('/')}".lower()
+
+
+def visible_candidates(candidates: list[dict[str, object]]) -> list[dict[str, object]]:
+    rank = {"filtered": 1, "review": 2, "new": 3, "imported": 4}
+    by_key: dict[str, dict[str, object]] = {}
+    for cand in candidates:
+        key = listing_key(str(cand.get("source_url") or ""))
+        current = by_key.get(key)
+        status = "imported" if source_url_exists(str(cand.get("source_url") or "")) else str(cand.get("status") or "new")
+        if current is None:
+            by_key[key] = cand
+            continue
+        current_status = "imported" if source_url_exists(str(current.get("source_url") or "")) else str(current.get("status") or "new")
+        better = rank.get(status, 0) > rank.get(current_status, 0)
+        if rank.get(status, 0) == rank.get(current_status, 0) and cand.get("preview_image_url") and not current.get("preview_image_url"):
+            better = True
+        if better:
+            by_key[key] = cand
+    return list(by_key.values())
 
 
 def evaluate_candidate(profile: dict[str, object], parsed: ParsedListing) -> tuple[str, list[str]]:
@@ -322,12 +356,6 @@ def evaluate_candidate(profile: dict[str, object], parsed: ParsedListing) -> tup
             review = True
             reasons.append("Ölheizung prüfen")
 
-    region_tokens = [token.strip().lower() for token in str(profile.get("regions") or "").split(",") if token.strip()]
-    location_text = (parsed.location_text or "").lower()
-    if region_tokens and location_text and not any(token in location_text for token in region_tokens):
-        review = True
-        reasons.append("Ort/Lage passt nicht eindeutig zu den Profilregionen")
-
     text_blob = " ".join([parsed.title or "", parsed.description or "", parsed.location_text or ""]).lower()
     for road in [token.strip().lower() for token in str(profile.get("exclude_roads") or "").split(",") if token.strip()]:
         if road and road in text_blob:
@@ -347,6 +375,7 @@ def facts_from_parsed(parsed: ParsedListing) -> dict[str, object]:
         "living_area_m2": parsed.living_area_m2,
         "plot_area_m2": parsed.plot_area_m2,
         "energy_hwb": parsed.energy_hwb,
+        "preview_image_url": parsed.image_urls[0] if parsed.image_urls else None,
     }
 
 
@@ -386,7 +415,7 @@ def dashboard() -> HTMLResponse:
       <div class="card">
         <h2>Status</h2>
         <p><span class="pill">{len(houses)} Hausakten</span><span class="pill">{len(profiles)} Suchprofile</span></p>
-        <p class="muted">v0.4.2: Zahlenparser-Fix für Wohnfläche/Preis aus SQLite.</p>
+        <p class="muted">v0.4.5: Vorschau, Dedupe nach Inserat-ID und Auto-Medienimport.</p>
         {profile_buttons}
       </div>
     </div>
@@ -404,9 +433,9 @@ def import_form() -> HTMLResponse:
       <form method="post" action="import">
         <label>Direktlink</label>
         <input name="url" placeholder="https://www.willhaben.at/iad/immobilien/d/..." required>
-        <button type="submit">Importieren</button>
+        <button type="submit">Importieren inkl. Bilder</button>
       </form>
-      <p class="muted">Direktlink-Import mit Willhaben-Parser, Medienfilter und generischem Fallback.</p>
+      <p class="muted">Direktlink-Import mit Willhaben-Parser, Medienfilter und automatischem Bilddownload.</p>
     </div>
     """
     return layout("Inserat importieren", body, home_href="../")
@@ -417,15 +446,16 @@ def search_profiles_page() -> HTMLResponse:
     profiles = list_search_profiles()
     rows = []
     for profile in profiles:
-        candidates = list_search_candidates(str(profile["id"]))
+        candidates = visible_candidates(list_search_candidates(str(profile["id"])))
         new_count = len([c for c in candidates if c.get("status") == "new"])
         review_count = len([c for c in candidates if c.get("status") == "review"])
         filtered_count = len([c for c in candidates if c.get("status") == "filtered"])
         imported_count = len([c for c in candidates if c.get("status") == "imported" or source_url_exists(str(c.get("source_url")))])
+        source_html = "<br>".join(esc(url) for url in resolve_search_urls(profile)[:5])
         rows.append(
             f"""
             <tr>
-              <td>{esc(profile.get('name'))}<br>{criteria_summary(profile)}<br><span class="muted">Quelle: {esc(resolve_search_url(profile))}</span></td>
+              <td>{esc(profile.get('name'))}<br>{criteria_summary(profile)}<br><span class="muted">{source_html}</span></td>
               <td>{esc(profile.get('source_name'))}</td>
               <td><span class="pill good">{new_count} neu</span><span class="pill warn">{review_count} prüfen</span><span class="pill bad">{filtered_count} gefiltert</span><span class="pill">{imported_count} importiert</span></td>
               <td>{esc(profile.get('last_run_at') or 'noch nie')}</td>
@@ -436,12 +466,14 @@ def search_profiles_page() -> HTMLResponse:
     body = f"""
     <div class="card">
       <h2>Zentrales Suchprofil anlegen</h2>
-      <p class="muted">Willhaben wird automatisch aus den Kriterien erzeugt. Die URL ist nur optional für Spezialfälle, z. B. später Umkreissuche.</p>
+      <p class="muted">Willhaben wird über PLZ/areaIds automatisch durchsucht. Eine manuelle URL ist nur für Spezialfälle nötig.</p>
       <form method="post" action="search/profiles">
         <label>Name</label>
         <input name="name" placeholder="z. B. Wies/Eibiswald bis 380k" required>
         <label>Willhaben-Suchergebnis-URL optional</label>
-        <input name="search_url" placeholder="leer lassen = automatische Willhaben-Suche areaId=60351">
+        <input name="search_url" placeholder="leer lassen = automatische Willhaben-Suche über PLZ/areaIds">
+        <label>Willhaben PLZ / areaIds</label>
+        <input name="area_ids" value="8551" placeholder="z. B. 8551,8552,8544,8553">
         <div class="grid">
           <div><label>Zielpreis bis €</label><input name="soft_max_price_eur" type="number" value="380000"></div>
           <div><label>Harte Grenze bis €</label><input name="max_price_eur" type="number" value="400000"></div>
@@ -450,15 +482,12 @@ def search_profiles_page() -> HTMLResponse:
           <div><label>HWB Warnung ab</label><input name="hwb_warn" type="number" step="0.1" value="200"></div>
           <div><label>HWB kritisch ab</label><input name="hwb_reject" type="number" step="0.1" value="300"></div>
         </div>
-        <label>Regionen / Orte</label>
-        <input name="regions" value="Wies,Eibiswald,Oberhaag,Hörmsdorf,Pölfing-Brunn,Bad Schwanberg,Frauental,Deutschlandsberg">
         <label>Ausschluss-/Prüfbegriffe</label>
         <input name="exclude_roads" value="B76,B69,Bundesstraße,Hauptstraße">
         <label>Ölheizung</label>
         <select name="oil_policy"><option value="review" selected>prüfen / nur Ausnahme</option><option value="reject">ausschließen</option><option value="allow">zulassen</option></select>
         <button type="submit">Suchprofil speichern</button>
       </form>
-      <p class="muted">Automatische Willhaben-Quelle: areaId=60351, sort=1, rows=30, page=1, PRICE_TO und ESTATE_SIZE/LIVING_AREA_FROM aus den Kriterien.</p>
     </div>
     <div class="card">
       <h2>Gespeicherte Profile</h2>
@@ -475,13 +504,22 @@ async def fetch_html(url: str) -> str:
         return response.text
 
 
-async def run_search_profile(profile_id: str, max_results: int = 40) -> int:
+async def run_search_profile(profile_id: str, max_results: int = 80) -> int:
     profile = get_search_profile(profile_id)
     if not profile:
         raise HTTPException(status_code=404, detail="Suchprofil nicht gefunden")
-    search_url = resolve_search_url(profile)
-    raw_html = await fetch_html(search_url)
-    links = extract_listing_links(raw_html, search_url)[: max(1, min(max_results, 80))]
+
+    links: list[str] = []
+    seen_keys: set[str] = set()
+    for search_url in resolve_search_urls(profile):
+        raw_html = await fetch_html(search_url)
+        for link in extract_listing_links(raw_html, search_url):
+            key = listing_key(link)
+            if key not in seen_keys:
+                seen_keys.add(key)
+                links.append(link)
+
+    links = links[: max(1, min(max_results, 160))]
     async with httpx.AsyncClient(timeout=30, follow_redirects=True, headers={"User-Agent": USER_AGENT}) as client:
         for link in links:
             if source_url_exists(link):
@@ -503,11 +541,11 @@ async def run_search_profile(profile_id: str, max_results: int = 40) -> int:
 def create_profile(
     name: str = Form(...),
     search_url: str | None = Form(None),
+    area_ids: str | None = Form("8551"),
     max_price_eur: str | None = Form(None),
     soft_max_price_eur: str | None = Form(None),
     min_living_area_m2: str | None = Form(None),
     min_plot_area_m2: str | None = Form(None),
-    regions: str | None = Form(None),
     exclude_roads: str | None = Form(None),
     hwb_warn: str | None = Form(None),
     hwb_reject: str | None = Form(None),
@@ -520,7 +558,7 @@ def create_profile(
         "soft_max_price_eur": optional_int(soft_max_price_eur),
         "min_living_area_m2": optional_float(min_living_area_m2),
         "min_plot_area_m2": optional_float(min_plot_area_m2),
-        "regions": regions,
+        "regions": "",
         "exclude_roads": exclude_roads,
         "hwb_warn": optional_float(hwb_warn),
         "hwb_reject": optional_float(hwb_reject),
@@ -534,7 +572,7 @@ def create_profile(
             raise HTTPException(status_code=400, detail="Aktuell werden nur Willhaben-Suchprofile unterstützt")
         profile_data["search_url"] = raw_url
     else:
-        profile_data["search_url"] = build_willhaben_auto_url(profile_data)
+        profile_data["search_url"] = "\n".join(build_willhaben_auto_urls(profile_data, area_ids))
     profile = create_search_profile(profile_data)
     return RedirectResponse(f"profiles/{profile['id']}", status_code=303)
 
@@ -544,19 +582,21 @@ def profile_detail(profile_id: str) -> HTMLResponse:
     profile = get_search_profile(profile_id)
     if not profile:
         raise HTTPException(status_code=404, detail="Suchprofil nicht gefunden")
-    candidates = list_search_candidates(profile_id)
+    candidates = visible_candidates(list_search_candidates(profile_id))
     rows = []
     for idx, cand in enumerate(candidates, start=1):
         imported = cand.get("status") == "imported" or source_url_exists(str(cand.get("source_url")))
         status = "imported" if imported else str(cand.get("status") or "new")
         reasons = reasons_from_json(cand.get("filter_reasons"))
         reason_html = "<br>".join(esc(reason) for reason in reasons[:4])
+        preview = str(cand.get("preview_image_url") or "")
+        preview_html = f'<img class="preview" src="{esc(preview)}" alt="Vorschaubild">' if preview else '<span class="muted">kein Bild</span>'
         action = ""
         if not imported and status != "filtered":
             action = f"""
             <form method="post" action="../../import" style="display:inline">
               <input type="hidden" name="url" value="{esc(cand.get('source_url'))}">
-              <button type="submit">Importieren</button>
+              <button type="submit">Importieren inkl. Bilder</button>
             </form>
             """
         elif status == "filtered":
@@ -565,6 +605,7 @@ def profile_detail(profile_id: str) -> HTMLResponse:
             f"""
             <tr>
               <td>{idx}</td>
+              <td>{preview_html}</td>
               <td>{esc(cand.get('title') or title_from_listing_url(str(cand.get('source_url'))))}<br><a href="{esc(cand.get('source_url'))}" target="_blank">Direktlink öffnen</a></td>
               <td>{status_pill(status)}<br><span class="muted">{reason_html}</span></td>
               <td>{money(cand.get('price_eur'))}<br>{num(cand.get('living_area_m2'), ' m² Wfl.')}<br>{num(cand.get('plot_area_m2'), ' m² Grund')}<br>HWB {num(cand.get('energy_hwb'))}</td>
@@ -572,19 +613,19 @@ def profile_detail(profile_id: str) -> HTMLResponse:
             </tr>
             """
         )
-    source_url = resolve_search_url(profile)
+    source_links = "<br>".join(f'<a href="{esc(url)}" target="_blank">Willhaben-Suchquelle {idx}</a>' for idx, url in enumerate(resolve_search_urls(profile), start=1))
     body = f"""
     <div class="card">
       <h2>{esc(profile.get('name'))}</h2>
       <p>{criteria_summary(profile)}</p>
-      <p class="muted"><a href="{esc(source_url)}" target="_blank">Willhaben-Suchquelle öffnen</a></p>
-      <p><span class="pill">{len(candidates)} Kandidaten</span><span class="pill">Letzter Lauf: {esc(profile.get('last_run_at') or 'noch nie')}</span></p>
+      <p class="muted">{source_links}</p>
+      <p><span class="pill">{len(candidates)} Kandidaten sichtbar</span><span class="pill">Letzter Lauf: {esc(profile.get('last_run_at') or 'noch nie')}</span></p>
       <form method="post" action="{profile_id}/run" style="display:inline"><button type="submit">Suchprofil jetzt starten</button></form>
       <a class="button secondary" href="../../search">Zurück</a>
     </div>
     <div class="card">
       <h2>Kandidaten</h2>
-      <table><tr><th>#</th><th>Kandidat</th><th>Status / Grund</th><th>Fakten</th><th>Aktion</th></tr>{''.join(rows) if rows else '<tr><td colspan="5" class="muted">Noch keine Kandidaten. Starte das Suchprofil.</td></tr>'}</table>
+      <table><tr><th>#</th><th>Bild</th><th>Kandidat</th><th>Status / Grund</th><th>Fakten</th><th>Aktion</th></tr>{''.join(rows) if rows else '<tr><td colspan="6" class="muted">Noch keine Kandidaten. Starte das Suchprofil.</td></tr>'}</table>
     </div>
     """
     return layout("Suchprofil", body, home_href="../../../")
@@ -639,6 +680,7 @@ async def import_url(url: str = Form(...)) -> RedirectResponse:
     for pdf_url in parsed.pdf_urls:
         add_media(house["id"], {"source_id": source["id"], "kind": "pdf", "original_url": pdf_url, "download_status": "pending"})
 
+    await download_pending_media_files(house["id"])
     return RedirectResponse(f"houses/{house['id']}", status_code=303)
 
 
@@ -688,7 +730,7 @@ def house_detail(house_id: str) -> HTMLResponse:
       </p>
       <p><span class="pill">Adresse: {esc(house.get('address_status'))}</span><span class="pill">Status: {esc(house.get('status'))}</span></p>
       <p><span class="pill">{downloaded_count} geladen</span><span class="pill">{pending_count} offen</span><span class="pill">{skipped_count} übersprungen</span><span class="pill">{failed_count} Fehler</span></p>
-      <form method="post" action="{house_id}/download-media" style="display:inline"><button type="submit">Medien herunterladen</button></form>
+      <form method="post" action="{house_id}/download-media" style="display:inline"><button type="submit">Medien erneut herunterladen</button></form>
       <form method="post" action="{house_id}/cleanup-media" style="display:inline"><button class="secondary" type="submit">Medien bereinigen</button></form>
       <a class="button secondary" href="{house_id}/briefing">Analysebriefing</a>
     </div>
@@ -708,15 +750,14 @@ def safe_filename_from_url(url: str, fallback: str) -> str:
     return name[:180]
 
 
-@app.post("/houses/{house_id}/download-media")
-async def download_media(house_id: str) -> RedirectResponse:
+async def download_pending_media_files(house_id: str, limit: int = 120) -> None:
     house = get_house(house_id)
     if not house:
         raise HTTPException(status_code=404, detail="Hausakte nicht gefunden")
     hdir = project_dir(house_id)
     media = [m for m in list_media(house_id) if m.get("download_status") == "pending" and m.get("original_url")]
     async with httpx.AsyncClient(timeout=30, follow_redirects=True, headers={"User-Agent": USER_AGENT}) as client:
-        for item in media[:120]:
+        for item in media[:limit]:
             try:
                 url = item["original_url"]
                 response = await client.get(url)
@@ -739,6 +780,11 @@ async def download_media(house_id: str) -> RedirectResponse:
                 update_media(item["id"], {**meta, "local_path": str(target), "mime_type": response.headers.get("content-type"), "download_status": "downloaded", "download_error": None})
             except Exception as exc:
                 update_media(item["id"], {"download_status": "failed", "download_error": str(exc)[:500]})
+
+
+@app.post("/houses/{house_id}/download-media")
+async def download_media(house_id: str) -> RedirectResponse:
+    await download_pending_media_files(house_id)
     return RedirectResponse(f"../{house_id}", status_code=303)
 
 
