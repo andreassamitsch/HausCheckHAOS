@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.5
+
+- Hausakten können jetzt gelöscht werden
+- Löschen entfernt auch Quellen, Medien-Datenbankeinträge, Analysen und den Projektordner unter `/share/hauscheck/projects/<house_id>`
+- Hausakten können manuell bearbeitet werden: Titel, Adresse/Lage, Adressstatus, Preis, Wohnfläche, Grundstück, Zimmer, Baujahr, HWB, fGEE, Heizung, Notizen und Portal-Vorschaubild
+- Hauskarten verwenden bevorzugt das Portal-/Willhaben-Vorschaubild; lokale Bilder bleiben Fallback
+- beim Import aus Kandidaten wird das Portal-Vorschaubild an die Hausakte übergeben
+- Hausakte zeigt oben eine horizontale Galerie/Slider; Klick öffnet das Bild groß
+- Exposé-PDF kann hochgeladen werden
+- PDF-Text wird auf Adresse/Lage, Preis, Wohnfläche, Grundstück, Zimmer, Baujahr, HWB, fGEE und Heizung geprüft
+- aus PDFs werden Bilder soweit technisch möglich extrahiert und der Hausakte hinzugefügt
+- ChatGPT-Analysepaket fragt jetzt zusätzlich nach Adress-/Lagehinweisen mit Begründung und Sicherheit
+- alter Analysebriefing-Button wurde aus der Hausakte entfernt
+
 ## 0.5.4
 
 - manueller ChatGPT-Analyseworkflow ergänzt
