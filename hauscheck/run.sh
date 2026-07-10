@@ -9,16 +9,24 @@ mkdir -p "${DATA_DIR}/logs"
 export HAUSCHECK_DATA_DIR="${DATA_DIR}"
 export PYTHONUNBUFFERED=1
 
-# v0.5.0: Bewertungs-MVP wird beim Start in die UI eingeblendet.
-# Der Score ist bewusst regelbasiert und nutzt nur vorhandene Inseratsdaten.
+# v0.5.1 runtime migration:
+# - Bewertungs-MVP in die UI einblenden
+# - Vorschaubilder bevorzugt aus der Portal-/Willhaben-Übersicht übernehmen
 python3 - <<'PY'
 from pathlib import Path
 
 path = Path('/app/app/main.py')
 if path.exists():
     text = path.read_text(encoding='utf-8')
-    text = text.replace('app = FastAPI(title=APP_NAME, version="0.4.6")', 'app = FastAPI(title=APP_NAME, version="0.5.0")')
-    text = text.replace('v0.4.6: mobile Kartenansicht und Ladehinweise.', 'v0.5.0: regelbasierte Erstbewertung / Score vorgezogen.')
+    text = text.replace('app = FastAPI(title=APP_NAME, version="0.4.6")', 'app = FastAPI(title=APP_NAME, version="0.5.1")')
+    text = text.replace('app = FastAPI(title=APP_NAME, version="0.5.0")', 'app = FastAPI(title=APP_NAME, version="0.5.1")')
+    text = text.replace('v0.4.6: mobile Kartenansicht und Ladehinweise.', 'v0.5.1: Bewertung und Portal-Vorschaubilder.')
+    text = text.replace('v0.5.0: regelbasierte Erstbewertung / Score vorgezogen.', 'v0.5.1: Bewertung und Portal-Vorschaubilder.')
+
+    text = text.replace(
+        'from app.parser import ParsedListing, extract_listing_links, parse_listing, title_from_listing_url',
+        'from app.parser import ParsedListing, extract_listing_candidates, extract_listing_links, parse_listing, title_from_listing_url'
+    )
 
     if '.score-box {' not in text:
         text = text.replace(
@@ -203,6 +211,49 @@ def house_score_html(house: dict[str, object]) -> str:
             '      <p class="muted">{esc(house.get(\'location_text\') or \'Lage unbekannt\')}</p>\n      <p>',
             '      <p class="muted">{esc(house.get(\'location_text\') or \'Lage unbekannt\')}</p>\n      {house_score_html(house)}\n      <p>'
         )
+
+    start = text.find('async def run_search_profile(profile_id: str, max_results: int = 80) -> int:')
+    end = text.find('\n\n@app.post("/search/profiles")', start)
+    if start != -1 and end != -1:
+        new_run = '''async def run_search_profile(profile_id: str, max_results: int = 80) -> int:
+    profile = get_search_profile(profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Suchprofil nicht gefunden")
+
+    overview_candidates = []
+    seen_keys: set[str] = set()
+    for search_url in resolve_search_urls(profile):
+        raw_html = await fetch_html(search_url)
+        for candidate in extract_listing_candidates(raw_html, search_url):
+            key = listing_key(candidate.url)
+            if key not in seen_keys:
+                seen_keys.add(key)
+                overview_candidates.append(candidate)
+
+    overview_candidates = overview_candidates[: max(1, min(max_results, 160))]
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True, headers={"User-Agent": USER_AGENT}) as client:
+        for candidate in overview_candidates:
+            link = candidate.url
+            overview_preview = candidate.preview_image_url
+            if source_url_exists(link):
+                facts = {"preview_image_url": overview_preview} if overview_preview else None
+                upsert_search_candidate(profile_id, link, candidate.title or title_from_listing_url(link), status="imported", facts=facts)
+                continue
+            try:
+                detail = await client.get(link)
+                detail.raise_for_status()
+                parsed = parse_listing(link, detail.text)
+                status, reasons = evaluate_candidate(profile, parsed)
+                facts = facts_from_parsed(parsed)
+                if overview_preview:
+                    facts["preview_image_url"] = overview_preview
+                upsert_search_candidate(profile_id, link, parsed.title or candidate.title or title_from_listing_url(link), status=status, facts=facts, filter_reasons=reasons)
+            except Exception as exc:
+                facts = {"preview_image_url": overview_preview} if overview_preview else None
+                upsert_search_candidate(profile_id, link, candidate.title or title_from_listing_url(link), status="review", facts=facts, filter_reasons=[f"Detailprüfung fehlgeschlagen: {str(exc)[:180]}"])
+    update_search_profile_run(profile_id, len(overview_candidates))
+    return len(overview_candidates)'''
+        text = text[:start] + new_run + text[end:]
 
     path.write_text(text, encoding='utf-8')
 PY
