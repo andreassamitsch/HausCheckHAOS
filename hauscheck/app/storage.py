@@ -69,6 +69,10 @@ def init_storage() -> None:
                 mime_type TEXT,
                 download_status TEXT NOT NULL DEFAULT 'pending',
                 download_error TEXT,
+                content_hash TEXT,
+                width INTEGER,
+                height INTEGER,
+                file_size_bytes INTEGER,
                 created_at TEXT NOT NULL,
                 FOREIGN KEY(house_id) REFERENCES houses(id)
             );
@@ -87,7 +91,22 @@ def init_storage() -> None:
             );
             """
         )
+        ensure_media_columns(con)
         con.commit()
+
+
+def ensure_media_columns(con: sqlite3.Connection) -> None:
+    rows = con.execute("PRAGMA table_info(media_assets)").fetchall()
+    existing = {row[1] for row in rows}
+    additions = {
+        "content_hash": "TEXT",
+        "width": "INTEGER",
+        "height": "INTEGER",
+        "file_size_bytes": "INTEGER",
+    }
+    for column, definition in additions.items():
+        if column not in existing:
+            con.execute(f"ALTER TABLE media_assets ADD COLUMN {column} {definition}")
 
 
 def connect() -> sqlite3.Connection:
@@ -220,6 +239,22 @@ def list_sources(house_id: str) -> list[dict[str, Any]]:
 
 
 def add_media(house_id: str, data: dict[str, Any]) -> dict[str, Any]:
+    original_url = data.get("original_url")
+    kind = data.get("kind") or "image"
+
+    if original_url:
+        with connect() as con:
+            existing = con.execute(
+                """
+                SELECT * FROM media_assets
+                WHERE house_id = ? AND kind = ? AND original_url = ?
+                LIMIT 1
+                """,
+                (house_id, kind, original_url),
+            ).fetchone()
+            if existing:
+                return row_to_dict(existing) or {}
+
     media_id = str(uuid.uuid4())[:8]
     timestamp = now_iso()
     with connect() as con:
@@ -227,19 +262,24 @@ def add_media(house_id: str, data: dict[str, Any]) -> dict[str, Any]:
             """
             INSERT INTO media_assets (
                 id, house_id, source_id, kind, original_url, local_path, mime_type,
-                download_status, download_error, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                download_status, download_error, content_hash, width, height,
+                file_size_bytes, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 media_id,
                 house_id,
                 data.get("source_id"),
-                data.get("kind") or "image",
-                data.get("original_url"),
+                kind,
+                original_url,
                 data.get("local_path"),
                 data.get("mime_type"),
                 data.get("download_status") or "pending",
                 data.get("download_error"),
+                data.get("content_hash"),
+                data.get("width"),
+                data.get("height"),
+                data.get("file_size_bytes"),
                 timestamp,
             ),
         )
@@ -248,7 +288,10 @@ def add_media(house_id: str, data: dict[str, Any]) -> dict[str, Any]:
 
 
 def update_media(media_id: str, data: dict[str, Any]) -> dict[str, Any]:
-    allowed = {"local_path", "mime_type", "download_status", "download_error"}
+    allowed = {
+        "local_path", "mime_type", "download_status", "download_error",
+        "content_hash", "width", "height", "file_size_bytes",
+    }
     fields = {k: v for k, v in data.items() if k in allowed}
     if not fields:
         return get_media(media_id) or {}
@@ -263,6 +306,20 @@ def update_media(media_id: str, data: dict[str, Any]) -> dict[str, Any]:
 def get_media(media_id: str) -> dict[str, Any] | None:
     with connect() as con:
         row = con.execute("SELECT * FROM media_assets WHERE id = ?", (media_id,)).fetchone()
+    return row_to_dict(row)
+
+
+def find_media_by_hash(house_id: str, kind: str, content_hash: str) -> dict[str, Any] | None:
+    with connect() as con:
+        row = con.execute(
+            """
+            SELECT * FROM media_assets
+            WHERE house_id = ? AND kind = ? AND content_hash = ? AND download_status = 'downloaded'
+            ORDER BY created_at ASC
+            LIMIT 1
+            """,
+            (house_id, kind, content_hash),
+        ).fetchone()
     return row_to_dict(row)
 
 
