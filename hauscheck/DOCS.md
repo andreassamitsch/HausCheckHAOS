@@ -4,7 +4,7 @@
 
 Nach der Installation das Add-on starten und über den Home-Assistant-Ingress öffnen.
 
-## Aktueller Funktionsumfang v0.4.5
+## Aktueller Funktionsumfang v0.4.6
 
 - Hausakten-Dashboard
 - Direktlink-Import
@@ -21,6 +21,8 @@ Nach der Installation das Add-on starten und über den Home-Assistant-Ingress ö
 - persistente Kandidatenliste mit Einzelimport
 - Kandidaten-Vorprüfung anhand Preis, Wohnfläche, Grundstück und HWB
 - Vorschaubild je Kandidat
+- mobilfreundliche Kandidaten-Karten statt breiter Tabelle
+- Ladeanzeige mit Spinner und Aktionstext
 - Deduplizierung über Willhaben-Inserat-ID
 
 ## Zentrale Suchprofile verwenden
@@ -31,6 +33,8 @@ Nach der Installation das Add-on starten und über den Home-Assistant-Ingress ö
 4. Profil öffnen und **Suchprofil jetzt starten** klicken.
 5. Kandidaten anhand Vorschaubild und Fakten prüfen.
 6. Kandidaten einzeln importieren. Bilder werden beim Import automatisch geladen.
+
+Die Kandidatenansicht ist für Mobilgeräte optimiert: Bild, Titel, Fakten, Status und Import-Schaltfläche stehen in einer Immobilien-Karte.
 
 Die zentrale Logik lautet:
 
@@ -67,6 +71,16 @@ Mehrere PLZ/areaIds können kommagetrennt eingetragen werden:
 Die frühere Maske „Regionen / Orte“ wurde entfernt. Für Willhaben steuert jetzt **PLZ / areaId** die Suche. Die lokale Textprüfung über Orte war zu unzuverlässig und wird später sauber über Portaladapter/Geo-Daten ersetzt.
 
 Die Umkreissuche mit `lat`, `lon` und `sfId` ist noch nicht automatisiert. Dafür kann vorerst weiterhin eine manuelle Willhaben-URL als Vorlage eingetragen werden.
+
+## Ladeanzeige
+
+Bei länger laufenden Aktionen zeigt HausCheck einen Ladehinweis mit Spinner:
+
+- Suchprofil starten
+- Inserat importieren und Bilder laden
+- Medien erneut herunterladen
+- Medien bereinigen
+- Datei hochladen
 
 ## Kandidatenstatus
 
