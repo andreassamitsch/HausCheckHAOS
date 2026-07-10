@@ -4,7 +4,7 @@
 
 Nach der Installation das Add-on starten und über den Home-Assistant-Ingress öffnen.
 
-## Aktueller Funktionsumfang v0.4.1
+## Aktueller Funktionsumfang v0.4.3
 
 - Hausakten-Dashboard
 - Direktlink-Import
@@ -16,8 +16,8 @@ Nach der Installation das Add-on starten und über den Home-Assistant-Ingress ö
 - manuelle Medien-Uploads
 - Analysebriefing pro Hausakte
 - zentrale Suchprofile mit Kriterien
-- automatisch erzeugte Willhaben-Suchquelle
-- optionale manuelle Willhaben-Such-URL für Spezialfälle
+- automatisch erzeugte Willhaben-Suchquelle über PLZ/areaId 8551
+- optionale manuelle Willhaben-Such-URL für Spezialfälle, z. B. Umkreis
 - persistente Kandidatenliste mit Einzelimport
 - Kandidaten-Vorprüfung anhand Preis, Wohnfläche, Grundstück und HWB
 
@@ -39,14 +39,12 @@ HausCheck-Filter = finale Kontrolle
 
 ## Automatische Willhaben-Quelle
 
-Wenn keine Willhaben-URL eingetragen wird, erzeugt HausCheck eine breite Willhaben-Suche nach diesem Muster:
+Wenn keine Willhaben-URL eingetragen wird, erzeugt HausCheck aktuell eine Willhaben-PLZ-Suche für Wies nach diesem Muster:
 
 ```text
 https://www.willhaben.at/iad/immobilien/haus-kaufen/haus-angebote
-?sort=1
-&rows=30
+?areaId=8551
 &page=1
-&areaId=60351
 &PRICE_TO=<harte Preisgrenze>
 &ESTATE_SIZE/LIVING_AREA_FROM=<Mindestwohnfläche>
 ```
