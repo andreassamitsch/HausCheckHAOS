@@ -4,7 +4,7 @@
 
 Nach der Installation das Add-on starten und über den Home-Assistant-Ingress öffnen.
 
-## Aktueller Funktionsumfang v0.4
+## Aktueller Funktionsumfang v0.4.1
 
 - Hausakten-Dashboard
 - Direktlink-Import
@@ -16,26 +16,42 @@ Nach der Installation das Add-on starten und über den Home-Assistant-Ingress ö
 - manuelle Medien-Uploads
 - Analysebriefing pro Hausakte
 - zentrale Suchprofile mit Kriterien
-- Willhaben-Suchergebnis-URL als technische Portalquelle
+- automatisch erzeugte Willhaben-Suchquelle
+- optionale manuelle Willhaben-Such-URL für Spezialfälle
 - persistente Kandidatenliste mit Einzelimport
 - Kandidaten-Vorprüfung anhand Preis, Wohnfläche, Grundstück und HWB
 
 ## Zentrale Suchprofile verwenden
 
-1. In Willhaben eine Suche grob mit deinen Kriterien öffnen.
-2. Die Suchergebnis-URL kopieren.
-3. In HausCheck auf **Suchprofile** klicken.
-4. Name, Portal-URL und zentrale Kriterien speichern.
-5. Profil öffnen und **Suchprofil jetzt starten** klicken.
-6. Kandidaten prüfen und einzeln importieren.
+1. In HausCheck auf **Suchprofile** klicken.
+2. Name und zentrale Kriterien speichern.
+3. Die Willhaben-URL kann leer bleiben.
+4. Profil öffnen und **Suchprofil jetzt starten** klicken.
+5. Kandidaten prüfen und einzeln importieren.
 
 Die zentrale Logik lautet:
 
 ```text
 Profil-Kriterien = Wahrheit
-Portal-URL = technische Quelle
+Portalquelle = automatisch erzeugt oder optional manuell
 HausCheck-Filter = finale Kontrolle
 ```
+
+## Automatische Willhaben-Quelle
+
+Wenn keine Willhaben-URL eingetragen wird, erzeugt HausCheck eine breite Willhaben-Suche nach diesem Muster:
+
+```text
+https://www.willhaben.at/iad/immobilien/haus-kaufen/haus-angebote
+?sort=1
+&rows=30
+&page=1
+&areaId=60351
+&PRICE_TO=<harte Preisgrenze>
+&ESTATE_SIZE/LIVING_AREA_FROM=<Mindestwohnfläche>
+```
+
+Die Umkreissuche mit `lat`, `lon` und `sfId` ist noch nicht automatisiert. Dafür kann vorerst weiterhin eine manuelle Willhaben-URL als Vorlage eingetragen werden.
 
 Beispiele für Suchprofile:
 
