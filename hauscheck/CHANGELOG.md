@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.0
+
+- Suchprofile um zentrale Kriterien erweitert
+- Zielpreis, harte Preisgrenze, Mindestwohnfläche und Wunsch-Grundstück speicherbar
+- Regionen, Ausschluss-/Prüfbegriffe, HWB-Grenzen und Ölheizungsregel ergänzt
+- Suchlauf prüft Kandidaten anhand der zentralen Kriterien
+- Kandidatenstatus erweitert: neu, prüfen, gefiltert, importiert
+- Kandidaten speichern grobe Fakten: Preis, Wohnfläche, Grundstück und HWB
+- Kandidaten zeigen Filtergründe direkt in der Profilansicht
+- Portal-URL bleibt als technische Quelle erhalten, Kriterien bleiben zentral
+
 ## 0.3.0
 
 - Suchprofile dauerhaft in SQLite speichern
