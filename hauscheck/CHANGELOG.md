@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.6
+
+- Galerie korrigiert: großer Slider steht jetzt ganz oben in der Hausakte
+- unterer Bereich „Bilder“ zeigt wieder alle Bilder einzeln als Raster wie zuvor
+- Bildlinks öffnen weiterhin das jeweilige Bild groß in einem neuen Tab
+- PDF-Import übernimmt Adressen nicht mehr automatisch in die Hausakte
+- mögliche Adressen aus PDFs werden nur noch als `pdf_address_hint` in der Feldherkunft gespeichert
+- Hinweistext beim Exposé-Upload angepasst, damit klar ist: Adresse manuell prüfen und eintragen
+
 ## 0.5.5
 
 - Hausakten können jetzt gelöscht werden
@@ -144,7 +153,7 @@
 - neue Seite `/search` für Willhaben-Suchergebnis-URLs
 - Willhaben-Suchseiten werden ausgelesen
 - echte Inserat-Direktlinks werden extrahiert
-- Kandidatenliste mit Status „neu“ oder „bereits importiert“
+- Kandidatenliste mit Status „neu“ oder „bereits importiert"
 - Kandidaten können einzeln direkt importiert werden
 - Suchseiten werden nicht als Objekte gespeichert
 
