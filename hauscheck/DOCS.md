@@ -4,7 +4,7 @@
 
 Nach der Installation das Add-on starten und über den Home-Assistant-Ingress öffnen.
 
-## Aktueller Funktionsumfang v0.5.1
+## Aktueller Funktionsumfang v0.5.2
 
 - Hausakten-Dashboard
 - Direktlink-Import
@@ -25,6 +25,7 @@ Nach der Installation das Add-on starten und über den Home-Assistant-Ingress ö
 - Ladeanzeige mit Spinner und Aktionstext
 - Deduplizierung über Willhaben-Inserat-ID
 - regelbasierte Erstbewertung / Score je Kandidat und Hausakte
+- geschützte ChatGPT/API/MCP-Bridge für externe Analyse
 
 ## Zentrale Suchprofile verwenden
 
@@ -44,7 +45,50 @@ Profil-Kriterien = Wahrheit
 Portalquelle = automatisch erzeugt oder optional manuell
 HausCheck-Filter = finale Kontrolle
 HausCheck-Score = schnelle Priorisierung
+ChatGPT-Bridge = externe Analyse / Bildanalyse
 ```
+
+## ChatGPT-/MCP-Bridge
+
+Die Bridge ist standardmäßig deaktiviert. Sie wird erst aktiv, wenn in den Add-on-Optionen ein `api_token` gesetzt ist.
+
+Geschützte Endpunkte:
+
+```text
+GET  /api/chatgpt/health
+GET  /api/chatgpt/houses
+GET  /api/chatgpt/houses/{house_id}
+GET  /api/chatgpt/search-profiles
+GET  /api/chatgpt/search-profiles/{profile_id}/candidates
+POST /mcp
+GET  /mcp
+```
+
+Authentifizierung:
+
+```text
+Authorization: Bearer <api_token>
+```
+
+oder:
+
+```text
+X-HausCheck-Token: <api_token>
+```
+
+MCP-Tools:
+
+```text
+list_houses
+get_house
+get_house_images
+list_search_profiles
+get_candidates
+```
+
+`get_house_images` liefert lokale Hausbilder als Bildinhalte zurück. Damit ist eine Bildanalyse durch ein angebundenes Modell grundsätzlich möglich.
+
+Wichtig: Damit ChatGPT außerhalb deines Heimnetzes darauf zugreifen kann, braucht der Add-on-Endpunkt eine erreichbare HTTPS-Adresse oder einen sicheren Tunnel.
 
 ## Vorschaubilder
 
