@@ -29,40 +29,45 @@ path = Path('/app/app/main.py')
 if path.exists():
     text = path.read_text(encoding='utf-8')
 
-    for old in ['0.4.6', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.4']:
-        text = text.replace(f'app = FastAPI(title=APP_NAME, version="{old}")', 'app = FastAPI(title=APP_NAME, version="0.5.5")')
+    for old in ['0.4.6', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.4', '0.5.5']:
+        text = text.replace(f'app = FastAPI(title=APP_NAME, version="{old}")', 'app = FastAPI(title=APP_NAME, version="0.5.6")')
     for old_text in [
         'v0.4.6: mobile Kartenansicht und Ladehinweise.',
         'v0.5.0: regelbasierte Erstbewertung / Score vorgezogen.',
         'v0.5.1: Bewertung und Portal-Vorschaubilder.',
         'v0.5.2: Bewertung, Portal-Vorschaubilder und ChatGPT-Bridge.',
         'v0.5.4: manuelles ChatGPT-Analysepaket.',
+        'v0.5.5: Hausakten bearbeiten, löschen, Galerie und Exposé-PDF.',
     ]:
-        text = text.replace(old_text, 'v0.5.5: Hausakten bearbeiten, löschen, Galerie und Exposé-PDF.')
+        text = text.replace(old_text, 'v0.5.6: Galerie oben, Bildraster unten, PDF-Adressen nur als Hinweis.')
 
     text = text.replace(
         'from app.parser import ParsedListing, extract_listing_links, parse_listing, title_from_listing_url',
         'from app.parser import ParsedListing, extract_listing_candidates, extract_listing_links, parse_listing, title_from_listing_url'
     )
+    house_import = 'from app.house_manage import dashboard_preview_html, hero_gallery_html, image_grid_html, edit_house_form_html, delete_house_form_html, expose_upload_html, set_house_preview\n'
+    old_house_imports = [
+        'from app.house_manage import dashboard_preview_html, gallery_slider_html, edit_house_form_html, delete_house_form_html, expose_upload_html, set_house_preview\n',
+        'from app.house_manage import dashboard_preview_html, gallery_slider_html, edit_house_form_html, delete_house_form_html, expose_upload_html, set_house_preview',
+    ]
+    for old_import in old_house_imports:
+        if old_import in text:
+            text = text.replace(old_import, house_import)
     if 'from app.ui_helpers import candidate_score_html, house_score_html' not in text:
         text = text.replace(
             'from app.parser import ParsedListing, extract_listing_candidates, extract_listing_links, parse_listing, title_from_listing_url\n',
             'from app.parser import ParsedListing, extract_listing_candidates, extract_listing_links, parse_listing, title_from_listing_url\n'
             'from app.ui_helpers import candidate_score_html, house_score_html\n'
             'from app.analysis_package import analysis_status_html\n'
-            'from app.house_manage import dashboard_preview_html, gallery_slider_html, edit_house_form_html, delete_house_form_html, expose_upload_html, set_house_preview\n'
+            + house_import
         )
     elif 'from app.house_manage import dashboard_preview_html' not in text:
         text = text.replace(
             'from app.ui_helpers import candidate_score_html, house_score_html\n',
-            'from app.ui_helpers import candidate_score_html, house_score_html\n'
-            'from app.house_manage import dashboard_preview_html, gallery_slider_html, edit_house_form_html, delete_house_form_html, expose_upload_html, set_house_preview\n'
+            'from app.ui_helpers import candidate_score_html, house_score_html\n' + house_import
         )
         if 'from app.analysis_package import analysis_status_html' not in text:
-            text = text.replace(
-                'from app.house_manage import dashboard_preview_html, gallery_slider_html, edit_house_form_html, delete_house_form_html, expose_upload_html, set_house_preview\n',
-                'from app.house_manage import dashboard_preview_html, gallery_slider_html, edit_house_form_html, delete_house_form_html, expose_upload_html, set_house_preview\nfrom app.analysis_package import analysis_status_html\n'
-            )
+            text = text.replace(house_import, house_import + 'from app.analysis_package import analysis_status_html\n')
 
     if '.score-box {' not in text:
         text = text.replace(
@@ -76,13 +81,15 @@ if path.exists():
             '    .score-reasons {{ color: #aab4bd; font-size: 12px; line-height: 1.35; }}\n'
         )
 
-    if '.gallery-slider {' not in text:
+    if '.hero-gallery-card {' not in text:
         text = text.replace(
             '    .source-links {{ font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }}\n',
             '    .source-links {{ font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }}\n'
-            '    .gallery-slider {{ display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 8px; }}\n'
-            '    .gallery-slide {{ flex: 0 0 min(86vw, 760px); scroll-snap-align: start; border-radius: 16px; overflow: hidden; background: #0b0f14; border: 1px solid #26323e; }}\n'
-            '    .gallery-slide img {{ width: 100%; max-height: 520px; object-fit: contain; display: block; }}\n'
+            '    .hero-gallery-card {{ margin: 14px 0 18px; border-radius: 18px; overflow: hidden; background: #0b0f14; border: 1px solid #26323e; }}\n'
+            '    .hero-gallery {{ display: flex; gap: 0; overflow-x: auto; scroll-snap-type: x mandatory; }}\n'
+            '    .hero-slide {{ flex: 0 0 100%; scroll-snap-align: start; display: flex; align-items: center; justify-content: center; background: #0b0f14; min-height: 220px; }}\n'
+            '    .hero-slide img {{ width: 100%; max-height: 420px; object-fit: contain; display: block; }}\n'
+            '    .hero-hint {{ padding: 8px 12px; font-size: 12px; }}\n'
             '    .compact-card details {{ margin-top: 4px; }}\n'
             '    button.danger, .button.danger {{ background: #9f2d2d; color: white; }}\n'
             '    .danger-zone {{ border-color: #663333; }}\n'
@@ -110,10 +117,19 @@ if path.exists():
             '      <p class="muted">{esc(house.get(\'location_text\') or \'Lage unbekannt\')}</p>\n      {house_score_html(house)}\n      <p>'
         )
 
+    # Obere große Galerie zuerst in der Hausakte anzeigen.
+    if '{hero_gallery_html(house_id)}' not in text:
+        text = text.replace(
+            '    body = f"""\n    <div class="card">',
+            '    body = f"""\n    {hero_gallery_html(house_id)}\n    <div class="card">'
+        )
+
+    # Unten wieder Einzelbild-Raster wie früher.
     text = text.replace(
         '    media_items = []\n    for item in media:\n        if item.get("kind") == "image" and item.get("download_status") == "downloaded":\n            media_items.append(f"<a href=\'../media/{item[\'id\']}\' target=\'_blank\'><img class=\'thumb\' src=\'../media/{item[\'id\']}\' alt=\'Bild\'></a>")\n    media_html = "".join(media_items) if media_items else "<p class=\'muted\'>Noch keine heruntergeladenen Bilder.</p>"',
-        '    media_html = gallery_slider_html(house_id)'
+        '    media_html = image_grid_html(house_id)'
     )
+    text = text.replace('    media_html = gallery_slider_html(house_id)', '    media_html = image_grid_html(house_id)')
 
     if '{analysis_status_html(house_id)}' not in text:
         text = text.replace(
