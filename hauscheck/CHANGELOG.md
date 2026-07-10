@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.4
+
+- manueller ChatGPT-Analyseworkflow ergänzt
+- Button „Analysepaket exportieren“ in der Hausakte
+- ZIP enthält `README_PROMPT.md`, `listing.json`, `evidence.json`, `current_score.json`, `import_schema.json`, `image_manifest.json` und verkleinerte Bilder unter `images/`
+- Import von `hauscheck_analysis.json` oder ZIP mit enthaltener `hauscheck_analysis.json`
+- importierte KI-Analyse wird pro Hausakte unter `/share/hauscheck/projects/<house_id>/analysis/hauscheck_analysis.json` gespeichert
+- vorhandene Analyse wird vor Überschreiben automatisch gesichert
+- KI-Score, Analysedatum, Zusammenfassung, Chancen und Risiken werden in der Hausakte angezeigt
+- kein OpenAI-API-Key, kein MCP und keine Nabu-Casa-Verbindung für diesen Workflow nötig
+
 ## 0.5.3
 
 - Home-Assistant-Proxy als Custom Integration `hauscheck_proxy` ergänzt
