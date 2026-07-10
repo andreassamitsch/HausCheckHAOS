@@ -1,5 +1,5 @@
 name: "HausCheck Pro"
-version: "0.4.3"
+version: "0.4.4"
 slug: "hauscheck"
 description: "Persönlicher Immobilien-Assistent für Home Assistant"
 url: "https://github.com/andreassamitsch/HausCheckHAOS"
