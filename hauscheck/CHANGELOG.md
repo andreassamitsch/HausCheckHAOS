@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.0
+
+- Phase 7 Bewertung/Scoring vorgezogen
+- regelbasierter Kandidaten-Score von 0 bis 100 ergänzt
+- Bewertung direkt in der Kandidatenkarte sichtbar
+- Bewertung auch in der Hausakte sichtbar
+- Score nutzt nur vorhandene Inseratsdaten: Preis, Wohnfläche, Grundstück, HWB und Kandidatenstatus
+- Bewertungssicherheit ergänzt: hoch, mittel oder niedrig
+- keine Marktwertschätzung und keine erfundenen Werte
+- Bewertungsklassen: sehr interessant, interessant, prüfen, kritisch
+
 ## 0.4.6
 
 - Kandidatenansicht von Tabelle auf mobilfreundliche Immobilien-Karten umgestellt
