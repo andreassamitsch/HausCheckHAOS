@@ -14,6 +14,10 @@ ingress: true
 ingress_port: 8088
 panel_icon: mdi:home-search
 panel_title: HausCheck
+ports:
+  8088/tcp: null
+ports_description:
+  8088/tcp: "Optionale direkte API/MCP-Verbindung für ChatGPT-Bridge"
 map:
   - share:rw
 options:
