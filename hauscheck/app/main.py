@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import html
-import os
 import re
 from pathlib import Path
 from urllib.parse import urlparse
 
 import httpx
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, PlainTextResponse
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
 
 from app.parser import parse_listing
 from app.storage import (
@@ -31,7 +30,7 @@ from app.storage import (
 APP_NAME = "HausCheck Pro"
 USER_AGENT = "Mozilla/5.0 (HausCheckHAOS; private research tool) AppleWebKit/537.36"
 
-app = FastAPI(title=APP_NAME, version="0.1.0")
+app = FastAPI(title=APP_NAME, version="0.1.1")
 
 
 @app.on_event("startup")
@@ -66,7 +65,8 @@ def num(value: object, suffix: str = "") -> str:
         return f"{esc(value)}{suffix}"
 
 
-def layout(title: str, body: str) -> HTMLResponse:
+def layout(title: str, body: str, home_href: str = "./") -> HTMLResponse:
+    """Render page with relative links so it works through Home Assistant Ingress."""
     return HTMLResponse(
         f"""
 <!doctype html>
@@ -100,7 +100,7 @@ def layout(title: str, body: str) -> HTMLResponse:
   </style>
 </head>
 <body>
-<header><a href="/">🏠 HausCheck Pro</a></header>
+<header><a href="{esc(home_href)}">🏠 HausCheck Pro</a></header>
 <main>{body}</main>
 </body>
 </html>
@@ -108,10 +108,10 @@ def layout(title: str, body: str) -> HTMLResponse:
     )
 
 
-def first_local_image(house_id: str) -> str | None:
+def first_local_image(house_id: str, prefix: str = "") -> str | None:
     for media in list_media(house_id):
         if media.get("kind") == "image" and media.get("download_status") == "downloaded" and media.get("local_path"):
-            return f"/media/{media['id']}"
+            return f"{prefix}media/{media['id']}"
     return None
 
 
@@ -134,7 +134,7 @@ def dashboard() -> HTMLResponse:
                 <span class="pill">{num(house.get('plot_area_m2'), ' m² Grund')}</span>
               </p>
               <p><span class="pill">Status: {esc(house.get('status'))}</span><span class="pill">Adresse: {esc(house.get('address_status'))}</span></p>
-              <a class="button" href="/houses/{house['id']}">Hausakte öffnen</a>
+              <a class="button" href="houses/{house['id']}">Hausakte öffnen</a>
             </div>
             """
         )
@@ -143,18 +143,18 @@ def dashboard() -> HTMLResponse:
       <div class="card">
         <h2>Neue Hausakte</h2>
         <p class="muted">Direktlink importieren oder Objekt manuell anlegen.</p>
-        <a class="button" href="/import">Inserat importieren</a>
+        <a class="button" href="import">Inserat importieren</a>
       </div>
       <div class="card">
         <h2>Status</h2>
         <p><span class="pill">{len(houses)} Hausakten</span></p>
-        <p class="muted">v0.1 Fundament: HA Ingress, SQLite, Hausakte, Direktlink-Import.</p>
+        <p class="muted">v0.1.1 Fundament: HA Ingress, SQLite, Hausakte, Direktlink-Import.</p>
       </div>
     </div>
     <h2>Hausakten</h2>
     <div class="grid">{''.join(cards) if cards else '<div class="card muted">Noch keine Objekte vorhanden.</div>'}</div>
     """
-    return layout("HausCheck", body)
+    return layout("HausCheck", body, home_href="./")
 
 
 @app.get("/import", response_class=HTMLResponse)
@@ -162,7 +162,7 @@ def import_form() -> HTMLResponse:
     body = """
     <div class="card">
       <h2>Inserat importieren</h2>
-      <form method="post" action="/import">
+      <form method="post" action="import">
         <label>Direktlink</label>
         <input name="url" placeholder="https://www.willhaben.at/iad/immobilien/d/..." required>
         <button type="submit">Importieren</button>
@@ -171,7 +171,7 @@ def import_form() -> HTMLResponse:
     </div>
     <div class="card">
       <h2>Manuell anlegen</h2>
-      <form method="post" action="/manual">
+      <form method="post" action="manual">
         <label>Titel</label><input name="title" required>
         <label>Ort/Lage</label><input name="location_text">
         <label>Preis €</label><input name="price_eur" type="number">
@@ -181,7 +181,7 @@ def import_form() -> HTMLResponse:
       </form>
     </div>
     """
-    return layout("Inserat importieren", body)
+    return layout("Inserat importieren", body, home_href="../")
 
 
 async def fetch_html(url: str) -> str:
@@ -238,7 +238,7 @@ async def import_url(url: str = Form(...)) -> RedirectResponse:
     for pdf_url in parsed.pdf_urls:
         add_media(house["id"], {"source_id": source["id"], "kind": "pdf", "original_url": pdf_url, "download_status": "pending"})
 
-    return RedirectResponse(f"/houses/{house['id']}", status_code=303)
+    return RedirectResponse(f"houses/{house['id']}", status_code=303)
 
 
 @app.post("/manual")
@@ -259,7 +259,7 @@ def manual_create(
             "address_status": "unknown",
         }
     )
-    return RedirectResponse(f"/houses/{house['id']}", status_code=303)
+    return RedirectResponse(f"houses/{house['id']}", status_code=303)
 
 
 @app.get("/houses/{house_id}", response_class=HTMLResponse)
@@ -278,14 +278,22 @@ def house_detail(house_id: str) -> HTMLResponse:
     media_items = []
     for item in media:
         if item.get("kind") == "image" and item.get("download_status") == "downloaded":
-            media_items.append(f"<a href='/media/{item['id']}' target='_blank'><img class='thumb' src='/media/{item['id']}' alt='Bild'></a>")
+            media_items.append(f"<a href='../media/{item['id']}' target='_blank'><img class='thumb' src='../media/{item['id']}' alt='Bild'></a>")
     media_html = "".join(media_items) if media_items else "<p class='muted'>Noch keine heruntergeladenen Bilder.</p>"
     pending_count = len([m for m in media if m.get("download_status") == "pending"])
+    failed_count = len([m for m in media if m.get("download_status") == "failed"])
 
     evidence_rows = "".join(
         f"<tr><td>{esc(ev.get('field_name'))}</td><td>{esc(ev.get('value_text'))}</td><td>{esc(ev.get('confidence'))}</td><td>{esc(ev.get('source_text_snippet'))}</td></tr>"
         for ev in evidence[:30]
     )
+
+    failed_rows = "".join(
+        f"<tr><td>{esc(m.get('kind'))}</td><td>{esc(m.get('original_url'))}</td><td class='danger'>{esc(m.get('download_error'))}</td></tr>"
+        for m in media
+        if m.get("download_status") == "failed"
+    )
+    failed_html = f"<h3>Fehlgeschlagene Medien</h3><table><tr><th>Typ</th><th>URL</th><th>Fehler</th></tr>{failed_rows}</table>" if failed_rows else ""
 
     body = f"""
     <div class="card">
@@ -300,20 +308,21 @@ def house_detail(house_id: str) -> HTMLResponse:
         <span class="pill">Heizung: {esc(house.get('heating') or 'unbekannt')}</span>
       </p>
       <p><span class="pill">Adresse: {esc(house.get('address_status'))}</span><span class="pill">Status: {esc(house.get('status'))}</span></p>
-      <form method="post" action="/houses/{house_id}/download-media" style="display:inline">
-        <button type="submit">Medien herunterladen ({pending_count} offen)</button>
+      <form method="post" action="{house_id}/download-media" style="display:inline">
+        <button type="submit">Medien herunterladen ({pending_count} offen, {failed_count} Fehler)</button>
       </form>
-      <a class="button secondary" href="/houses/{house_id}/briefing">Analysebriefing</a>
+      <a class="button secondary" href="{house_id}/briefing">Analysebriefing</a>
     </div>
 
     <div class="card">
       <h2>Bilder</h2>
       <div class="gallery">{media_html}</div>
       <h3>Manuell hochladen</h3>
-      <form method="post" action="/houses/{house_id}/upload" enctype="multipart/form-data">
+      <form method="post" action="{house_id}/upload" enctype="multipart/form-data">
         <input type="file" name="file" required>
         <button type="submit">Hochladen</button>
       </form>
+      {failed_html}
     </div>
 
     <div class="card">
@@ -326,7 +335,7 @@ def house_detail(house_id: str) -> HTMLResponse:
       <table><tr><th>Feld</th><th>Wert</th><th>Sicherheit</th><th>Snippet</th></tr>{evidence_rows}</table>
     </div>
     """
-    return layout(str(house.get("title") or "Hausakte"), body)
+    return layout(str(house.get("title") or "Hausakte"), body, home_href="../")
 
 
 def safe_filename_from_url(url: str, fallback: str) -> str:
@@ -366,7 +375,7 @@ async def download_media(house_id: str) -> RedirectResponse:
                 )
             except Exception as exc:
                 update_media(item["id"], {"download_status": "failed", "download_error": str(exc)[:500]})
-    return RedirectResponse(f"/houses/{house_id}", status_code=303)
+    return RedirectResponse(f"../{house_id}", status_code=303)
 
 
 @app.post("/houses/{house_id}/upload")
@@ -388,7 +397,7 @@ async def upload_media(house_id: str, file: UploadFile = File(...)) -> RedirectR
             "download_status": "downloaded",
         },
     )
-    return RedirectResponse(f"/houses/{house_id}", status_code=303)
+    return RedirectResponse(f"../{house_id}", status_code=303)
 
 
 @app.get("/media/{media_id}")
