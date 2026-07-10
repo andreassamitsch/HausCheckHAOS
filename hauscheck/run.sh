@@ -22,8 +22,6 @@ PY
 )"
 fi
 
-# Runtime-UI-Migration für Installationen, bei denen app/main.py noch auf 0.4.x basiert.
-# Zusatzfunktionen liegen sauber in eigenen Modulen und werden über app.bootstrap registriert.
 python3 - <<'PY'
 from pathlib import Path
 
@@ -90,14 +88,15 @@ if path.exists():
             '    .danger-zone {{ border-color: #663333; }}\n'
         )
 
-    # Dashboard-Hauskarten: Portal-Vorschaubild bevorzugen, dann lokales Bild.
     text = text.replace(
         '        img = first_local_image(house["id"])\n        image_html = f\'<img class="thumb" src="{img}" alt="Bild">\' if img else \'<div class="muted">Noch kein lokales Bild</div>\'',
         '        image_html = dashboard_preview_html(house)'
     )
 
-    # alten Analysebriefing-Button aus früheren Versionen entfernen
+    # alte / überflüssige Buttons aus der Hausakte entfernen; Routen bleiben als Fallback vorhanden.
     text = text.replace('      <a class="button secondary" href="{house_id}/briefing">Analysebriefing</a>\n', '')
+    text = text.replace('      <form method="post" action="{house_id}/download-media" data-loading="Medien werden heruntergeladen …" style="display:inline"><button type="submit">Medien erneut herunterladen</button></form>\n', '')
+    text = text.replace('      <form method="post" action="{house_id}/cleanup-media" data-loading="Medien werden bereinigt …" style="display:inline"><button class="secondary" type="submit">Medien bereinigen</button></form>\n', '')
 
     if '{candidate_score_html(cand, status)}' not in text:
         text = text.replace(
@@ -111,7 +110,6 @@ if path.exists():
             '      <p class="muted">{esc(house.get(\'location_text\') or \'Lage unbekannt\')}</p>\n      {house_score_html(house)}\n      <p>'
         )
 
-    # Bildgalerie als Slider statt alter Thumbnail-Liste.
     text = text.replace(
         '    media_items = []\n    for item in media:\n        if item.get("kind") == "image" and item.get("download_status") == "downloaded":\n            media_items.append(f"<a href=\'../media/{item[\'id\']}\' target=\'_blank\'><img class=\'thumb\' src=\'../media/{item[\'id\']}\' alt=\'Bild\'></a>")\n    media_html = "".join(media_items) if media_items else "<p class=\'muted\'>Noch keine heruntergeladenen Bilder.</p>"',
         '    media_html = gallery_slider_html(house_id)'
@@ -132,7 +130,6 @@ if path.exists():
             '    <div class="card"><h2>Feldherkunft</h2><table><tr><th>Feld</th><th>Wert</th><th>Sicherheit</th><th>Snippet</th></tr>{evidence_rows}</table></div>\n    {delete_house_form_html(house_id)}'
         )
 
-    # Kandidatenimport: Portal-Vorschaubild an die Hausakte übergeben.
     if 'name="preview_image_url"' not in text:
         text = text.replace(
             '              <input type="hidden" name="url" value="{esc(cand.get(\'source_url\'))}">\n              <button type="submit">Importieren inkl. Bilder</button>',
@@ -149,7 +146,6 @@ if path.exists():
             '    set_house_preview(house["id"], preview_image_url)\n    hdir = project_dir(house["id"])\n'
         )
 
-    # Suchlauf mit Portal-Vorschaubildern aus Übersicht.
     start = text.find('async def run_search_profile(profile_id: str, max_results: int = 80) -> int:')
     end = text.find('\n\n@app.post("/search/profiles")', start)
     if start != -1 and end != -1:
@@ -195,7 +191,6 @@ if path.exists():
 
     path.write_text(text, encoding='utf-8')
 
-# Analysepaket-Prompt um Adresshinweise erweitern.
 ap = Path('/app/app/analysis_package.py')
 if ap.exists():
     txt = ap.read_text(encoding='utf-8')
