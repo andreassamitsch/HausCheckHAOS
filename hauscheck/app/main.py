@@ -48,7 +48,7 @@ MIN_IMAGE_PIXELS = 180_000
 WILLHABEN_AUTO_BASE = "https://www.willhaben.at/iad/immobilien/haus-kaufen/haus-angebote"
 WILLHABEN_DEFAULT_AREA_ID = "8551"
 
-app = FastAPI(title=APP_NAME, version="0.4.5")
+app = FastAPI(title=APP_NAME, version="0.4.6")
 
 
 @app.on_event("startup")
@@ -127,34 +127,109 @@ def layout(title: str, body: str, home_href: str = "./") -> HTMLResponse:
   <title>{esc(title)}</title>
   <style>
     :root {{ color-scheme: light dark; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }}
+    * {{ box-sizing: border-box; }}
     body {{ margin: 0; background: #101418; color: #eef2f4; }}
-    header {{ position: sticky; top: 0; z-index: 2; padding: 14px 16px; background: #17212b; border-bottom: 1px solid #26323e; }}
-    header a {{ color: #eef2f4; text-decoration: none; font-weight: 700; }}
-    main {{ padding: 16px; max-width: 1160px; margin: 0 auto; }}
-    .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }}
-    .card {{ background: #17212b; border: 1px solid #26323e; border-radius: 14px; padding: 14px; box-shadow: 0 2px 10px rgba(0,0,0,.18); }}
+    header {{ position: sticky; top: 0; z-index: 20; padding: 12px 14px; background: #17212b; border-bottom: 1px solid #26323e; }}
+    header a {{ color: #eef2f4; text-decoration: none; font-weight: 800; }}
+    main {{ padding: 12px; max-width: 920px; margin: 0 auto; }}
+    .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }}
+    .card {{ background: #17212b; border: 1px solid #26323e; border-radius: 16px; padding: 14px; box-shadow: 0 2px 10px rgba(0,0,0,.18); }}
     .card h2, .card h3 {{ margin-top: 0; }}
     .muted {{ color: #aab4bd; }}
-    .pill {{ display: inline-block; padding: 3px 8px; border-radius: 999px; background: #243342; margin: 2px 4px 2px 0; font-size: 12px; }}
+    .pill {{ display: inline-block; padding: 4px 9px; border-radius: 999px; background: #243342; margin: 2px 4px 2px 0; font-size: 12px; line-height: 1.25; }}
     .pill.good {{ background: #245c3a; }}
     .pill.warn {{ background: #6b5422; color: #fff3c4; }}
     .pill.bad {{ background: #6b2d2d; color: #ffd5d5; }}
     .danger {{ color: #ff9c9c; }}
     a {{ color: #8fd3ff; }}
-    input, textarea, select {{ width: 100%; box-sizing: border-box; padding: 10px; margin: 6px 0 12px; border-radius: 10px; border: 1px solid #3a4856; background: #0f151b; color: #eef2f4; }}
-    button, .button {{ display: inline-block; padding: 10px 14px; border-radius: 10px; border: 0; background: #2f80ed; color: white; text-decoration: none; font-weight: 700; cursor: pointer; margin: 3px 4px 3px 0; }}
+    input, textarea, select {{ width: 100%; padding: 11px; margin: 6px 0 12px; border-radius: 11px; border: 1px solid #3a4856; background: #0f151b; color: #eef2f4; font-size: 16px; }}
+    button, .button {{ display: inline-block; padding: 11px 14px; border-radius: 11px; border: 0; background: #2f80ed; color: white; text-decoration: none; font-weight: 800; cursor: pointer; margin: 3px 4px 3px 0; font-size: 15px; }}
     .button.secondary, button.secondary {{ background: #394957; }}
-    table {{ width: 100%; border-collapse: collapse; }}
+    button:disabled {{ opacity: .7; cursor: wait; }}
+    table {{ width: 100%; border-collapse: collapse; display: block; overflow-x: auto; }}
     th, td {{ padding: 8px; border-bottom: 1px solid #26323e; text-align: left; vertical-align: top; }}
-    img.thumb {{ width: 100%; max-height: 180px; object-fit: cover; border-radius: 10px; background: #0b0f13; }}
-    img.preview {{ width: 150px; height: 105px; object-fit: cover; border-radius: 10px; background: #0b0f13; }}
-    .gallery {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }}
+    img.thumb {{ width: 100%; max-height: 180px; object-fit: cover; border-radius: 12px; background: #0b0f13; }}
+    .gallery {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(145px, 1fr)); gap: 10px; }}
     pre {{ white-space: pre-wrap; background: #0f151b; padding: 12px; border-radius: 10px; overflow-wrap: anywhere; }}
+
+    .listing-stack {{ display: grid; gap: 12px; }}
+    .listing-card {{ display: grid; grid-template-columns: 154px 1fr; gap: 12px; background: #17212b; border: 1px solid #26323e; border-radius: 16px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,.18); }}
+    .listing-image {{ width: 154px; min-height: 132px; background: #0b0f13; display: block; }}
+    .listing-image img {{ width: 100%; height: 100%; min-height: 132px; object-fit: cover; display: block; }}
+    .listing-no-image {{ width: 100%; height: 100%; min-height: 132px; display: grid; place-items: center; color: #aab4bd; padding: 10px; text-align: center; }}
+    .listing-body {{ padding: 11px 12px 12px 0; min-width: 0; }}
+    .listing-title {{ display: block; color: #eef2f4; text-decoration: none; font-size: 16px; font-weight: 800; line-height: 1.2; margin: 0 0 7px; overflow-wrap: anywhere; }}
+    .listing-facts {{ display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }}
+    .listing-reasons {{ margin: 7px 0; color: #aab4bd; font-size: 13px; line-height: 1.35; }}
+    .listing-actions {{ margin-top: 9px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }}
+    .listing-actions form {{ margin: 0; }}
+    .listing-actions .button, .listing-actions button {{ margin: 0; }}
+    .source-links {{ font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }}
+
+    .loading-overlay {{ position: fixed; inset: 0; z-index: 9999; display: none; align-items: center; justify-content: center; background: rgba(8, 12, 16, .78); backdrop-filter: blur(3px); padding: 20px; }}
+    .loading-overlay.active {{ display: flex; }}
+    .loading-box {{ width: min(360px, 100%); background: #17212b; border: 1px solid #3a4856; border-radius: 18px; padding: 22px; text-align: center; box-shadow: 0 12px 40px rgba(0,0,0,.35); }}
+    .spinner {{ width: 42px; height: 42px; margin: 0 auto 14px; border-radius: 50%; border: 4px solid #394957; border-top-color: #8fd3ff; animation: spin .85s linear infinite; }}
+    @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+
+    @media (max-width: 680px) {{
+      main {{ max-width: 100%; padding: 10px; }}
+      header {{ padding: 11px 12px; }}
+      .card {{ border-radius: 14px; padding: 12px; }}
+      .grid {{ grid-template-columns: 1fr; gap: 10px; }}
+      .listing-card {{ grid-template-columns: 1fr; gap: 0; }}
+      .listing-image {{ width: 100%; aspect-ratio: 4 / 3; min-height: 0; }}
+      .listing-image img, .listing-no-image {{ min-height: 0; height: 100%; }}
+      .listing-body {{ padding: 12px; }}
+      .listing-title {{ font-size: 17px; }}
+      .listing-actions, .listing-actions form, .listing-actions button, .listing-actions .button {{ width: 100%; }}
+      .listing-actions button, .listing-actions .button {{ text-align: center; }}
+      button, .button {{ width: 100%; text-align: center; }}
+      form[style*="display:inline"] {{ display: block !important; }}
+      .pill {{ font-size: 12px; }}
+    }}
   </style>
 </head>
 <body>
 <header><a href="{esc(home_href)}">🏠 HausCheck Pro</a></header>
 <main>{body}</main>
+<div id="loadingOverlay" class="loading-overlay" aria-hidden="true">
+  <div class="loading-box">
+    <div class="spinner" aria-hidden="true"></div>
+    <h3 id="loadingTitle">Bitte warten …</h3>
+    <p id="loadingText" class="muted">Die Aktion wird ausgeführt.</p>
+  </div>
+</div>
+<script>
+(function() {{
+  function showLoading(text) {{
+    var overlay = document.getElementById('loadingOverlay');
+    var loadingText = document.getElementById('loadingText');
+    if (!overlay || !loadingText) return;
+    loadingText.textContent = text || 'Die Aktion wird ausgeführt.';
+    overlay.classList.add('active');
+    overlay.setAttribute('aria-hidden', 'false');
+  }}
+  function loadingTextFor(form, submitter) {{
+    if (form && form.dataset && form.dataset.loading) return form.dataset.loading;
+    if (submitter && submitter.dataset && submitter.dataset.loading) return submitter.dataset.loading;
+    var label = (submitter && submitter.textContent || '').trim().toLowerCase();
+    if (label.indexOf('suchprofil') >= 0 || label.indexOf('starten') >= 0) return 'Suchprofil wird gestartet. Kandidaten werden gesucht und geprüft …';
+    if (label.indexOf('import') >= 0) return 'Inserat wird importiert und Bilder werden geladen …';
+    if (label.indexOf('medien') >= 0 || label.indexOf('bilder') >= 0) return 'Medien werden heruntergeladen …';
+    if (label.indexOf('bereinigen') >= 0) return 'Medien werden bereinigt …';
+    if (label.indexOf('hochladen') >= 0) return 'Datei wird hochgeladen …';
+    return 'Bitte warten. Die Aktion wird ausgeführt …';
+  }}
+  document.addEventListener('submit', function(event) {{
+    var form = event.target;
+    if (!form || form.dataset.noLoading === 'true') return;
+    var submitter = event.submitter || form.querySelector('button[type="submit"], button:not([type])');
+    showLoading(loadingTextFor(form, submitter));
+    if (submitter) submitter.disabled = true;
+  }}, true);
+}})();
+</script>
 </body>
 </html>
 """
@@ -415,7 +490,7 @@ def dashboard() -> HTMLResponse:
       <div class="card">
         <h2>Status</h2>
         <p><span class="pill">{len(houses)} Hausakten</span><span class="pill">{len(profiles)} Suchprofile</span></p>
-        <p class="muted">v0.4.5: Vorschau, Dedupe nach Inserat-ID und Auto-Medienimport.</p>
+        <p class="muted">v0.4.6: mobile Kartenansicht und Ladehinweise.</p>
         {profile_buttons}
       </div>
     </div>
@@ -430,7 +505,7 @@ def import_form() -> HTMLResponse:
     body = """
     <div class="card">
       <h2>Inserat importieren</h2>
-      <form method="post" action="import">
+      <form method="post" action="import" data-loading="Inserat wird importiert und Bilder werden geladen …">
         <label>Direktlink</label>
         <input name="url" placeholder="https://www.willhaben.at/iad/immobilien/d/..." required>
         <button type="submit">Importieren inkl. Bilder</button>
@@ -455,11 +530,11 @@ def search_profiles_page() -> HTMLResponse:
         rows.append(
             f"""
             <tr>
-              <td>{esc(profile.get('name'))}<br>{criteria_summary(profile)}<br><span class="muted">{source_html}</span></td>
+              <td>{esc(profile.get('name'))}<br>{criteria_summary(profile)}<br><span class="muted source-links">{source_html}</span></td>
               <td>{esc(profile.get('source_name'))}</td>
               <td><span class="pill good">{new_count} neu</span><span class="pill warn">{review_count} prüfen</span><span class="pill bad">{filtered_count} gefiltert</span><span class="pill">{imported_count} importiert</span></td>
               <td>{esc(profile.get('last_run_at') or 'noch nie')}</td>
-              <td><a class="button" href="search/profiles/{profile['id']}">Öffnen</a><form method="post" action="search/profiles/{profile['id']}/run" style="display:inline"><button class="secondary" type="submit">Starten</button></form></td>
+              <td><a class="button" href="search/profiles/{profile['id']}">Öffnen</a><form method="post" action="search/profiles/{profile['id']}/run" data-loading="Suchprofil wird gestartet. Kandidaten werden gesucht und geprüft …" style="display:inline"><button class="secondary" type="submit">Starten</button></form></td>
             </tr>
             """
         )
@@ -467,7 +542,7 @@ def search_profiles_page() -> HTMLResponse:
     <div class="card">
       <h2>Zentrales Suchprofil anlegen</h2>
       <p class="muted">Willhaben wird über PLZ/areaIds automatisch durchsucht. Eine manuelle URL ist nur für Spezialfälle nötig.</p>
-      <form method="post" action="search/profiles">
+      <form method="post" action="search/profiles" data-loading="Suchprofil wird gespeichert …">
         <label>Name</label>
         <input name="name" placeholder="z. B. Wies/Eibiswald bis 380k" required>
         <label>Willhaben-Suchergebnis-URL optional</label>
@@ -583,34 +658,44 @@ def profile_detail(profile_id: str) -> HTMLResponse:
     if not profile:
         raise HTTPException(status_code=404, detail="Suchprofil nicht gefunden")
     candidates = visible_candidates(list_search_candidates(profile_id))
-    rows = []
+    cards = []
     for idx, cand in enumerate(candidates, start=1):
         imported = cand.get("status") == "imported" or source_url_exists(str(cand.get("source_url")))
         status = "imported" if imported else str(cand.get("status") or "new")
         reasons = reasons_from_json(cand.get("filter_reasons"))
         reason_html = "<br>".join(esc(reason) for reason in reasons[:4])
         preview = str(cand.get("preview_image_url") or "")
-        preview_html = f'<img class="preview" src="{esc(preview)}" alt="Vorschaubild">' if preview else '<span class="muted">kein Bild</span>'
+        preview_html = f'<a class="listing-image" href="{esc(cand.get("source_url"))}" target="_blank"><img src="{esc(preview)}" alt="Vorschaubild"></a>' if preview else '<a class="listing-image" href="{esc(cand.get("source_url"))}" target="_blank"><div class="listing-no-image">kein Bild</div></a>'
         action = ""
         if not imported and status != "filtered":
             action = f"""
-            <form method="post" action="../../import" style="display:inline">
+            <form method="post" action="../../import" data-loading="Inserat wird importiert und Bilder werden geladen …">
               <input type="hidden" name="url" value="{esc(cand.get('source_url'))}">
               <button type="submit">Importieren inkl. Bilder</button>
             </form>
             """
         elif status == "filtered":
             action = "<span class='muted'>ausgefiltert</span>"
-        rows.append(
+        cards.append(
             f"""
-            <tr>
-              <td>{idx}</td>
-              <td>{preview_html}</td>
-              <td>{esc(cand.get('title') or title_from_listing_url(str(cand.get('source_url'))))}<br><a href="{esc(cand.get('source_url'))}" target="_blank">Direktlink öffnen</a></td>
-              <td>{status_pill(status)}<br><span class="muted">{reason_html}</span></td>
-              <td>{money(cand.get('price_eur'))}<br>{num(cand.get('living_area_m2'), ' m² Wfl.')}<br>{num(cand.get('plot_area_m2'), ' m² Grund')}<br>HWB {num(cand.get('energy_hwb'))}</td>
-              <td>{action}</td>
-            </tr>
+            <article class="listing-card">
+              {preview_html}
+              <div class="listing-body">
+                <a class="listing-title" href="{esc(cand.get('source_url'))}" target="_blank">{esc(cand.get('title') or title_from_listing_url(str(cand.get('source_url'))))}</a>
+                <div>{status_pill(status)}</div>
+                <div class="listing-facts">
+                  <span class="pill">{money(cand.get('price_eur'))}</span>
+                  <span class="pill">{num(cand.get('living_area_m2'), ' m² Wfl.')}</span>
+                  <span class="pill">{num(cand.get('plot_area_m2'), ' m² Grund')}</span>
+                  <span class="pill">HWB {num(cand.get('energy_hwb'))}</span>
+                </div>
+                <div class="listing-reasons">{reason_html}</div>
+                <div class="listing-actions">
+                  {action}
+                  <a class="button secondary" href="{esc(cand.get('source_url'))}" target="_blank">Bei Willhaben öffnen</a>
+                </div>
+              </div>
+            </article>
             """
         )
     source_links = "<br>".join(f'<a href="{esc(url)}" target="_blank">Willhaben-Suchquelle {idx}</a>' for idx, url in enumerate(resolve_search_urls(profile), start=1))
@@ -618,15 +703,12 @@ def profile_detail(profile_id: str) -> HTMLResponse:
     <div class="card">
       <h2>{esc(profile.get('name'))}</h2>
       <p>{criteria_summary(profile)}</p>
-      <p class="muted">{source_links}</p>
+      <p class="muted source-links">{source_links}</p>
       <p><span class="pill">{len(candidates)} Kandidaten sichtbar</span><span class="pill">Letzter Lauf: {esc(profile.get('last_run_at') or 'noch nie')}</span></p>
-      <form method="post" action="{profile_id}/run" style="display:inline"><button type="submit">Suchprofil jetzt starten</button></form>
+      <form method="post" action="{profile_id}/run" data-loading="Suchprofil wird gestartet. Kandidaten werden gesucht und geprüft …" style="display:inline"><button type="submit">Suchprofil jetzt starten</button></form>
       <a class="button secondary" href="../../search">Zurück</a>
     </div>
-    <div class="card">
-      <h2>Kandidaten</h2>
-      <table><tr><th>#</th><th>Bild</th><th>Kandidat</th><th>Status / Grund</th><th>Fakten</th><th>Aktion</th></tr>{''.join(rows) if rows else '<tr><td colspan="6" class="muted">Noch keine Kandidaten. Starte das Suchprofil.</td></tr>'}</table>
-    </div>
+    <section class="listing-stack">{''.join(cards) if cards else '<div class="card muted">Noch keine Kandidaten. Starte das Suchprofil.</div>'}</section>
     """
     return layout("Suchprofil", body, home_href="../../../")
 
@@ -730,11 +812,11 @@ def house_detail(house_id: str) -> HTMLResponse:
       </p>
       <p><span class="pill">Adresse: {esc(house.get('address_status'))}</span><span class="pill">Status: {esc(house.get('status'))}</span></p>
       <p><span class="pill">{downloaded_count} geladen</span><span class="pill">{pending_count} offen</span><span class="pill">{skipped_count} übersprungen</span><span class="pill">{failed_count} Fehler</span></p>
-      <form method="post" action="{house_id}/download-media" style="display:inline"><button type="submit">Medien erneut herunterladen</button></form>
-      <form method="post" action="{house_id}/cleanup-media" style="display:inline"><button class="secondary" type="submit">Medien bereinigen</button></form>
+      <form method="post" action="{house_id}/download-media" data-loading="Medien werden heruntergeladen …" style="display:inline"><button type="submit">Medien erneut herunterladen</button></form>
+      <form method="post" action="{house_id}/cleanup-media" data-loading="Medien werden bereinigt …" style="display:inline"><button class="secondary" type="submit">Medien bereinigen</button></form>
       <a class="button secondary" href="{house_id}/briefing">Analysebriefing</a>
     </div>
-    <div class="card"><h2>Bilder</h2><div class="gallery">{media_html}</div><h3>Manuell hochladen</h3><form method="post" action="{house_id}/upload" enctype="multipart/form-data"><input type="file" name="file" required><button type="submit">Hochladen</button></form>{skipped_html}{failed_html}</div>
+    <div class="card"><h2>Bilder</h2><div class="gallery">{media_html}</div><h3>Manuell hochladen</h3><form method="post" action="{house_id}/upload" data-loading="Datei wird hochgeladen …" enctype="multipart/form-data"><input type="file" name="file" required><button type="submit">Hochladen</button></form>{skipped_html}{failed_html}</div>
     <div class="card"><h2>Quellen</h2><table><tr><th>Portal</th><th>Link</th><th>Status</th></tr>{source_rows}</table></div>
     <div class="card"><h2>Feldherkunft</h2><table><tr><th>Feld</th><th>Wert</th><th>Sicherheit</th><th>Snippet</th></tr>{evidence_rows}</table></div>
     """
