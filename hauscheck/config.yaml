@@ -1,0 +1,24 @@
+name: "HausCheck Pro"
+version: "0.1.0"
+slug: "hauscheck"
+description: "Persönlicher Immobilien-Assistent für Home Assistant"
+url: "https://github.com/andreassamitsch/HausCheckHAOS"
+arch:
+  - aarch64
+  - amd64
+  - armv7
+startup: services
+boot: auto
+init: false
+ingress: true
+ingress_port: 8088
+panel_icon: mdi:home-search
+panel_title: HausCheck
+map:
+  - share:rw
+options:
+  log_level: info
+  data_dir: /share/hauscheck
+schema:
+  log_level: list(trace|debug|info|notice|warning|error|fatal)
+  data_dir: str
