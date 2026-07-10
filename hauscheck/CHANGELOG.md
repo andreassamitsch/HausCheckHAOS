@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.3
+
+- automatische Willhaben-Suche nutzt jetzt PLZ/areaId `8551` als Standard für Wies
+- Willhaben-URL-Muster an die funktionierende PLZ-Suche angepasst
+- bestehende automatisch erzeugte Profile mit `areaId=60351` werden beim Start auf `areaId=8551` migriert
+- alte fehlerhafte Auto-URLs mit `ESTATE_SIZE/LIVING_AREA_FROM=1200` werden beim Start neu aus den Profilkriterien aufgebaut
+- manuelle Umkreis-URLs mit `sfId`, `lat` oder `lon` bleiben unverändert
+
 ## 0.4.2
 
 - Zahlenparser für Suchprofil-Kriterien korrigiert
