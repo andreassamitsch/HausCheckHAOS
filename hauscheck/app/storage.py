@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sqlite3
 import uuid
 from datetime import datetime, timezone
@@ -15,6 +16,26 @@ PROJECTS_DIR = DATA_DIR / "projects"
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def connect() -> sqlite3.Connection:
+    con = sqlite3.connect(DB_PATH)
+    con.row_factory = sqlite3.Row
+    return con
+
+
+def row_to_dict(row: sqlite3.Row | None) -> dict[str, Any] | None:
+    if row is None:
+        return None
+    return {key: row[key] for key in row.keys()}
+
+
+def ensure_columns(con: sqlite3.Connection, table: str, additions: dict[str, str]) -> None:
+    rows = con.execute(f"PRAGMA table_info({table})").fetchall()
+    existing = {row[1] for row in rows}
+    for column, definition in additions.items():
+        if column not in existing:
+            con.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
 
 def init_storage() -> None:
@@ -122,6 +143,7 @@ def init_storage() -> None:
                 living_area_m2 REAL,
                 plot_area_m2 REAL,
                 energy_hwb REAL,
+                preview_image_url TEXT,
                 filter_reasons TEXT,
                 first_seen_at TEXT NOT NULL,
                 last_seen_at TEXT NOT NULL,
@@ -152,29 +174,10 @@ def init_storage() -> None:
             "living_area_m2": "REAL",
             "plot_area_m2": "REAL",
             "energy_hwb": "REAL",
+            "preview_image_url": "TEXT",
             "filter_reasons": "TEXT",
         })
         con.commit()
-
-
-def ensure_columns(con: sqlite3.Connection, table: str, additions: dict[str, str]) -> None:
-    rows = con.execute(f"PRAGMA table_info({table})").fetchall()
-    existing = {row[1] for row in rows}
-    for column, definition in additions.items():
-        if column not in existing:
-            con.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
-
-
-def connect() -> sqlite3.Connection:
-    con = sqlite3.connect(DB_PATH)
-    con.row_factory = sqlite3.Row
-    return con
-
-
-def row_to_dict(row: sqlite3.Row | None) -> dict[str, Any] | None:
-    if row is None:
-        return None
-    return {key: row[key] for key in row.keys()}
 
 
 def project_dir(house_id: str) -> Path:
@@ -223,34 +226,16 @@ def create_house(data: dict[str, Any]) -> dict[str, Any]:
     return get_house(house_id) or {}
 
 
-def update_house(house_id: str, data: dict[str, Any]) -> dict[str, Any]:
-    allowed = {
-        "title", "status", "location_text", "address_status", "price_eur",
-        "living_area_m2", "plot_area_m2", "rooms", "year_built", "heating",
-        "energy_hwb", "energy_fgee", "energy_class_hwb", "energy_class_fgee", "notes",
-    }
-    fields = {k: v for k, v in data.items() if k in allowed}
-    if not fields:
-        return get_house(house_id) or {}
-    fields["updated_at"] = now_iso()
-    sql = ", ".join(f"{key} = ?" for key in fields)
-    values = list(fields.values()) + [house_id]
+def get_house(house_id: str) -> dict[str, Any] | None:
     with connect() as con:
-        con.execute(f"UPDATE houses SET {sql} WHERE id = ?", values)
-        con.commit()
-    return get_house(house_id) or {}
+        row = con.execute("SELECT * FROM houses WHERE id = ?", (house_id,)).fetchone()
+    return row_to_dict(row)
 
 
 def list_houses() -> list[dict[str, Any]]:
     with connect() as con:
         rows = con.execute("SELECT * FROM houses ORDER BY created_at DESC").fetchall()
     return [row_to_dict(row) or {} for row in rows]
-
-
-def get_house(house_id: str) -> dict[str, Any] | None:
-    with connect() as con:
-        row = con.execute("SELECT * FROM houses WHERE id = ?", (house_id,)).fetchone()
-    return row_to_dict(row)
 
 
 def create_source(house_id: str, data: dict[str, Any]) -> dict[str, Any]:
@@ -294,29 +279,33 @@ def list_sources(house_id: str) -> list[dict[str, Any]]:
     return [row_to_dict(row) or {} for row in rows]
 
 
+def willhaben_id_from_url(url: str) -> str | None:
+    match = re.search(r"-(\d{7,})(?:$|[/?#])", url or "")
+    return match.group(1) if match else None
+
+
 def source_url_exists(source_url: str) -> bool:
     with connect() as con:
         row = con.execute("SELECT 1 FROM listing_sources WHERE source_url = ? LIMIT 1", (source_url,)).fetchone()
+        if row is not None:
+            return True
+        external_id = willhaben_id_from_url(source_url)
+        if external_id:
+            row = con.execute("SELECT 1 FROM listing_sources WHERE source_url LIKE ? OR external_id = ? LIMIT 1", (f"%-{external_id}%", external_id)).fetchone()
     return row is not None
 
 
 def add_media(house_id: str, data: dict[str, Any]) -> dict[str, Any]:
     original_url = data.get("original_url")
     kind = data.get("kind") or "image"
-
     if original_url:
         with connect() as con:
             existing = con.execute(
-                """
-                SELECT * FROM media_assets
-                WHERE house_id = ? AND kind = ? AND original_url = ?
-                LIMIT 1
-                """,
+                "SELECT * FROM media_assets WHERE house_id = ? AND kind = ? AND original_url = ? LIMIT 1",
                 (house_id, kind, original_url),
             ).fetchone()
             if existing:
                 return row_to_dict(existing) or {}
-
     media_id = str(uuid.uuid4())[:8]
     timestamp = now_iso()
     with connect() as con:
@@ -346,14 +335,11 @@ def add_media(house_id: str, data: dict[str, Any]) -> dict[str, Any]:
             ),
         )
         con.commit()
-    return media_id and get_media(media_id) or {}
+    return get_media(media_id) or {}
 
 
 def update_media(media_id: str, data: dict[str, Any]) -> dict[str, Any]:
-    allowed = {
-        "local_path", "mime_type", "download_status", "download_error",
-        "content_hash", "width", "height", "file_size_bytes",
-    }
+    allowed = {"local_path", "mime_type", "download_status", "download_error", "content_hash", "width", "height", "file_size_bytes"}
     fields = {k: v for k, v in data.items() if k in allowed}
     if not fields:
         return get_media(media_id) or {}
@@ -377,8 +363,7 @@ def find_media_by_hash(house_id: str, kind: str, content_hash: str) -> dict[str,
             """
             SELECT * FROM media_assets
             WHERE house_id = ? AND kind = ? AND content_hash = ? AND download_status = 'downloaded'
-            ORDER BY created_at ASC
-            LIMIT 1
+            ORDER BY created_at ASC LIMIT 1
             """,
             (house_id, kind, content_hash),
         ).fetchone()
@@ -458,24 +443,6 @@ def create_search_profile(data: dict[str, Any]) -> dict[str, Any]:
     return get_search_profile(profile_id) or {}
 
 
-def update_search_profile(profile_id: str, data: dict[str, Any]) -> dict[str, Any]:
-    allowed = {
-        "name", "search_url", "enabled", "max_price_eur", "soft_max_price_eur",
-        "min_living_area_m2", "min_plot_area_m2", "regions", "exclude_roads",
-        "hwb_warn", "hwb_reject", "oil_policy",
-    }
-    fields = {k: v for k, v in data.items() if k in allowed}
-    if not fields:
-        return get_search_profile(profile_id) or {}
-    fields["updated_at"] = now_iso()
-    sql = ", ".join(f"{key} = ?" for key in fields)
-    values = list(fields.values()) + [profile_id]
-    with connect() as con:
-        con.execute(f"UPDATE search_profiles SET {sql} WHERE id = ?", values)
-        con.commit()
-    return get_search_profile(profile_id) or {}
-
-
 def list_search_profiles() -> list[dict[str, Any]]:
     with connect() as con:
         rows = con.execute("SELECT * FROM search_profiles ORDER BY created_at DESC").fetchall()
@@ -492,11 +459,7 @@ def update_search_profile_run(profile_id: str, found_count: int) -> None:
     timestamp = now_iso()
     with connect() as con:
         con.execute(
-            """
-            UPDATE search_profiles
-            SET last_run_at = ?, last_found_count = ?, updated_at = ?
-            WHERE id = ?
-            """,
+            "UPDATE search_profiles SET last_run_at = ?, last_found_count = ?, updated_at = ? WHERE id = ?",
             (timestamp, found_count, timestamp, profile_id),
         )
         con.commit()
@@ -515,10 +478,7 @@ def upsert_search_candidate(
     facts = facts or {}
     reasons_text = json.dumps(filter_reasons or [], ensure_ascii=False)
     with connect() as con:
-        existing = con.execute(
-            "SELECT * FROM search_candidates WHERE profile_id = ? AND source_url = ?",
-            (profile_id, source_url),
-        ).fetchone()
+        existing = con.execute("SELECT * FROM search_candidates WHERE profile_id = ? AND source_url = ?", (profile_id, source_url)).fetchone()
         if existing:
             con.execute(
                 """
@@ -530,6 +490,7 @@ def upsert_search_candidate(
                     living_area_m2 = COALESCE(?, living_area_m2),
                     plot_area_m2 = COALESCE(?, plot_area_m2),
                     energy_hwb = COALESCE(?, energy_hwb),
+                    preview_image_url = COALESCE(?, preview_image_url),
                     filter_reasons = ?,
                     last_seen_at = ?
                 WHERE id = ?
@@ -542,6 +503,7 @@ def upsert_search_candidate(
                     facts.get("living_area_m2"),
                     facts.get("plot_area_m2"),
                     facts.get("energy_hwb"),
+                    facts.get("preview_image_url"),
                     reasons_text,
                     timestamp,
                     existing["id"],
@@ -555,9 +517,9 @@ def upsert_search_candidate(
             """
             INSERT INTO search_candidates (
                 id, profile_id, source_url, title, status, imported_house_id,
-                price_eur, living_area_m2, plot_area_m2, energy_hwb, filter_reasons,
-                first_seen_at, last_seen_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                price_eur, living_area_m2, plot_area_m2, energy_hwb, preview_image_url,
+                filter_reasons, first_seen_at, last_seen_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 candidate_id,
@@ -570,6 +532,7 @@ def upsert_search_candidate(
                 facts.get("living_area_m2"),
                 facts.get("plot_area_m2"),
                 facts.get("energy_hwb"),
+                facts.get("preview_image_url"),
                 reasons_text,
                 timestamp,
                 timestamp,
@@ -587,21 +550,20 @@ def get_search_candidate(candidate_id: str) -> dict[str, Any] | None:
 
 def list_search_candidates(profile_id: str) -> list[dict[str, Any]]:
     with connect() as con:
-        rows = con.execute(
-            "SELECT * FROM search_candidates WHERE profile_id = ? ORDER BY first_seen_at DESC",
-            (profile_id,),
-        ).fetchall()
+        rows = con.execute("SELECT * FROM search_candidates WHERE profile_id = ? ORDER BY first_seen_at DESC", (profile_id,)).fetchall()
     return [row_to_dict(row) or {} for row in rows]
 
 
 def mark_candidates_imported(source_url: str, house_id: str) -> None:
+    external_id = willhaben_id_from_url(source_url)
     with connect() as con:
         con.execute(
-            """
-            UPDATE search_candidates
-            SET status = 'imported', imported_house_id = ?, last_seen_at = ?
-            WHERE source_url = ?
-            """,
+            "UPDATE search_candidates SET status = 'imported', imported_house_id = ?, last_seen_at = ? WHERE source_url = ?",
             (house_id, now_iso(), source_url),
         )
+        if external_id:
+            con.execute(
+                "UPDATE search_candidates SET status = 'imported', imported_house_id = ?, last_seen_at = ? WHERE source_url LIKE ?",
+                (house_id, now_iso(), f"%-{external_id}%"),
+            )
         con.commit()
