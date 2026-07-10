@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import hashlib
 import html
 import re
+from io import BytesIO
 from pathlib import Path
 from urllib.parse import urlparse
 
 import httpx
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
+from PIL import Image, UnidentifiedImageError
 
 from app.parser import parse_listing
 from app.storage import (
@@ -16,6 +19,7 @@ from app.storage import (
     add_media,
     create_house,
     create_source,
+    find_media_by_hash,
     get_house,
     get_media,
     init_storage,
@@ -29,8 +33,11 @@ from app.storage import (
 
 APP_NAME = "HausCheck Pro"
 USER_AGENT = "Mozilla/5.0 (HausCheckHAOS; private research tool) AppleWebKit/537.36"
+MIN_IMAGE_WIDTH = 400
+MIN_IMAGE_HEIGHT = 250
+MIN_IMAGE_PIXELS = 180_000
 
-app = FastAPI(title=APP_NAME, version="0.1.1")
+app = FastAPI(title=APP_NAME, version="0.1.2")
 
 
 @app.on_event("startup")
@@ -90,7 +97,7 @@ def layout(title: str, body: str, home_href: str = "./") -> HTMLResponse:
     .danger {{ color: #ff9c9c; }}
     a {{ color: #8fd3ff; }}
     input, textarea, select {{ width: 100%; box-sizing: border-box; padding: 10px; margin: 6px 0 12px; border-radius: 10px; border: 1px solid #3a4856; background: #0f151b; color: #eef2f4; }}
-    button, .button {{ display: inline-block; padding: 10px 14px; border-radius: 10px; border: 0; background: #2f80ed; color: white; text-decoration: none; font-weight: 700; cursor: pointer; }}
+    button, .button {{ display: inline-block; padding: 10px 14px; border-radius: 10px; border: 0; background: #2f80ed; color: white; text-decoration: none; font-weight: 700; cursor: pointer; margin: 3px 4px 3px 0; }}
     .button.secondary, button.secondary {{ background: #394957; }}
     table {{ width: 100%; border-collapse: collapse; }}
     th, td {{ padding: 8px; border-bottom: 1px solid #26323e; text-align: left; vertical-align: top; }}
@@ -113,6 +120,24 @@ def first_local_image(house_id: str, prefix: str = "") -> str | None:
         if media.get("kind") == "image" and media.get("download_status") == "downloaded" and media.get("local_path"):
             return f"{prefix}media/{media['id']}"
     return None
+
+
+def media_hash(content: bytes) -> str:
+    return hashlib.sha256(content).hexdigest()
+
+
+def image_dimensions(content: bytes) -> tuple[int | None, int | None]:
+    try:
+        with Image.open(BytesIO(content)) as image:
+            return image.size
+    except UnidentifiedImageError:
+        return None, None
+
+
+def is_too_small_for_gallery(width: int | None, height: int | None) -> bool:
+    if width is None or height is None:
+        return False
+    return width < MIN_IMAGE_WIDTH or height < MIN_IMAGE_HEIGHT or (width * height) < MIN_IMAGE_PIXELS
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -148,7 +173,7 @@ def dashboard() -> HTMLResponse:
       <div class="card">
         <h2>Status</h2>
         <p><span class="pill">{len(houses)} Hausakten</span></p>
-        <p class="muted">v0.1.1 Fundament: HA Ingress, SQLite, Hausakte, Direktlink-Import.</p>
+        <p class="muted">v0.1.2: Medienfilter, Deduplizierung und Logo-Erkennung.</p>
       </div>
     </div>
     <h2>Hausakten</h2>
@@ -167,7 +192,7 @@ def import_form() -> HTMLResponse:
         <input name="url" placeholder="https://www.willhaben.at/iad/immobilien/d/..." required>
         <button type="submit">Importieren</button>
       </form>
-      <p class="muted">Aktuell: erster Direktlink-Import mit Willhaben-Parser und generischem Fallback.</p>
+      <p class="muted">Aktuell: Direktlink-Import mit Willhaben-Parser, Medienfilter und generischem Fallback.</p>
     </div>
     <div class="card">
       <h2>Manuell anlegen</h2>
@@ -282,6 +307,8 @@ def house_detail(house_id: str) -> HTMLResponse:
     media_html = "".join(media_items) if media_items else "<p class='muted'>Noch keine heruntergeladenen Bilder.</p>"
     pending_count = len([m for m in media if m.get("download_status") == "pending"])
     failed_count = len([m for m in media if m.get("download_status") == "failed"])
+    skipped_count = len([m for m in media if m.get("download_status") == "skipped"])
+    downloaded_count = len([m for m in media if m.get("download_status") == "downloaded"])
 
     evidence_rows = "".join(
         f"<tr><td>{esc(ev.get('field_name'))}</td><td>{esc(ev.get('value_text'))}</td><td>{esc(ev.get('confidence'))}</td><td>{esc(ev.get('source_text_snippet'))}</td></tr>"
@@ -294,6 +321,13 @@ def house_detail(house_id: str) -> HTMLResponse:
         if m.get("download_status") == "failed"
     )
     failed_html = f"<h3>Fehlgeschlagene Medien</h3><table><tr><th>Typ</th><th>URL</th><th>Fehler</th></tr>{failed_rows}</table>" if failed_rows else ""
+
+    skipped_rows = "".join(
+        f"<tr><td>{esc(m.get('kind'))}</td><td>{esc(m.get('width'))}×{esc(m.get('height'))}</td><td>{esc(m.get('download_error'))}</td></tr>"
+        for m in media
+        if m.get("download_status") == "skipped"
+    )
+    skipped_html = f"<h3>Übersprungene Medien</h3><table><tr><th>Typ</th><th>Größe</th><th>Grund</th></tr>{skipped_rows}</table>" if skipped_rows else ""
 
     body = f"""
     <div class="card">
@@ -308,8 +342,17 @@ def house_detail(house_id: str) -> HTMLResponse:
         <span class="pill">Heizung: {esc(house.get('heating') or 'unbekannt')}</span>
       </p>
       <p><span class="pill">Adresse: {esc(house.get('address_status'))}</span><span class="pill">Status: {esc(house.get('status'))}</span></p>
+      <p>
+        <span class="pill">{downloaded_count} geladen</span>
+        <span class="pill">{pending_count} offen</span>
+        <span class="pill">{skipped_count} übersprungen</span>
+        <span class="pill">{failed_count} Fehler</span>
+      </p>
       <form method="post" action="{house_id}/download-media" style="display:inline">
-        <button type="submit">Medien herunterladen ({pending_count} offen, {failed_count} Fehler)</button>
+        <button type="submit">Medien herunterladen</button>
+      </form>
+      <form method="post" action="{house_id}/cleanup-media" style="display:inline">
+        <button class="secondary" type="submit">Medien bereinigen</button>
       </form>
       <a class="button secondary" href="{house_id}/briefing">Analysebriefing</a>
     </div>
@@ -322,6 +365,7 @@ def house_detail(house_id: str) -> HTMLResponse:
         <input type="file" name="file" required>
         <button type="submit">Hochladen</button>
       </form>
+      {skipped_html}
       {failed_html}
     </div>
 
@@ -347,6 +391,16 @@ def safe_filename_from_url(url: str, fallback: str) -> str:
     return name[:180]
 
 
+def media_payload_update(content: bytes) -> dict[str, object]:
+    width, height = image_dimensions(content)
+    return {
+        "content_hash": media_hash(content),
+        "width": width,
+        "height": height,
+        "file_size_bytes": len(content),
+    }
+
+
 @app.post("/houses/{house_id}/download-media")
 async def download_media(house_id: str) -> RedirectResponse:
     house = get_house(house_id)
@@ -355,18 +409,48 @@ async def download_media(house_id: str) -> RedirectResponse:
     hdir = project_dir(house_id)
     media = [m for m in list_media(house_id) if m.get("download_status") == "pending" and m.get("original_url")]
     async with httpx.AsyncClient(timeout=30, follow_redirects=True, headers={"User-Agent": USER_AGENT}) as client:
-        for item in media[:80]:
+        for item in media[:120]:
             try:
                 url = item["original_url"]
                 response = await client.get(url)
                 response.raise_for_status()
-                kind_dir = "pdfs" if item.get("kind") == "pdf" else "images"
-                filename = safe_filename_from_url(url, f"{item['id']}.bin")
+                content = response.content
+                kind = item.get("kind") or "image"
+                meta = media_payload_update(content) if kind == "image" else {"content_hash": media_hash(content), "file_size_bytes": len(content)}
+
+                if kind == "image" and is_too_small_for_gallery(meta.get("width"), meta.get("height")):
+                    update_media(
+                        item["id"],
+                        {
+                            **meta,
+                            "mime_type": response.headers.get("content-type"),
+                            "download_status": "skipped",
+                            "download_error": f"zu kleines Bild / vermutlich Logo oder UI-Grafik ({meta.get('width')}x{meta.get('height')})",
+                        },
+                    )
+                    continue
+
+                duplicate = find_media_by_hash(house_id, kind, str(meta["content_hash"]))
+                if duplicate and duplicate.get("id") != item.get("id"):
+                    update_media(
+                        item["id"],
+                        {
+                            **meta,
+                            "mime_type": response.headers.get("content-type"),
+                            "download_status": "skipped",
+                            "download_error": f"Duplikat von Medium {duplicate.get('id')}",
+                        },
+                    )
+                    continue
+
+                kind_dir = "pdfs" if kind == "pdf" else "images"
+                filename = f"{item['id']}_{safe_filename_from_url(url, f'{item['id']}.bin')}"
                 target = hdir / kind_dir / filename
-                target.write_bytes(response.content)
+                target.write_bytes(content)
                 update_media(
                     item["id"],
                     {
+                        **meta,
                         "local_path": str(target),
                         "mime_type": response.headers.get("content-type"),
                         "download_status": "downloaded",
@@ -378,6 +462,41 @@ async def download_media(house_id: str) -> RedirectResponse:
     return RedirectResponse(f"../{house_id}", status_code=303)
 
 
+@app.post("/houses/{house_id}/cleanup-media")
+def cleanup_media(house_id: str) -> RedirectResponse:
+    if not get_house(house_id):
+        raise HTTPException(status_code=404, detail="Hausakte nicht gefunden")
+    seen_hashes: dict[str, str] = {}
+    items = sorted(
+        [m for m in list_media(house_id) if m.get("kind") == "image" and m.get("download_status") == "downloaded" and m.get("local_path")],
+        key=lambda item: item.get("created_at") or "",
+    )
+    for item in items:
+        try:
+            path = Path(str(item["local_path"]))
+            path.relative_to(PROJECTS_DIR)
+            content = path.read_bytes()
+            meta = media_payload_update(content)
+            content_hash = str(meta["content_hash"])
+            if is_too_small_for_gallery(meta.get("width"), meta.get("height")):
+                update_media(
+                    item["id"],
+                    {**meta, "download_status": "skipped", "download_error": f"zu kleines Bild / vermutlich Logo oder UI-Grafik ({meta.get('width')}x{meta.get('height')})"},
+                )
+                continue
+            if content_hash in seen_hashes:
+                update_media(
+                    item["id"],
+                    {**meta, "download_status": "skipped", "download_error": f"Duplikat von Medium {seen_hashes[content_hash]}"},
+                )
+                continue
+            seen_hashes[content_hash] = str(item["id"])
+            update_media(item["id"], meta)
+        except Exception as exc:
+            update_media(item["id"], {"download_status": "failed", "download_error": f"Bereinigung fehlgeschlagen: {str(exc)[:300]}"})
+    return RedirectResponse(f"../{house_id}", status_code=303)
+
+
 @app.post("/houses/{house_id}/upload")
 async def upload_media(house_id: str, file: UploadFile = File(...)) -> RedirectResponse:
     if not get_house(house_id):
@@ -386,11 +505,14 @@ async def upload_media(house_id: str, file: UploadFile = File(...)) -> RedirectR
     ext = Path(filename).suffix.lower()
     kind = "pdf" if ext == ".pdf" else "image"
     sub = "pdfs" if kind == "pdf" else "images"
+    content = await file.read()
     target = project_dir(house_id) / sub / filename
-    target.write_bytes(await file.read())
+    target.write_bytes(content)
+    meta = media_payload_update(content) if kind == "image" else {"content_hash": media_hash(content), "file_size_bytes": len(content)}
     add_media(
         house_id,
         {
+            **meta,
             "kind": kind,
             "local_path": str(target),
             "mime_type": file.content_type,
@@ -430,6 +552,7 @@ def briefing(house_id: str) -> PlainTextResponse:
     )
     local_images = len([m for m in media if m.get("kind") == "image" and m.get("download_status") == "downloaded"])
     pending = len([m for m in media if m.get("download_status") == "pending"])
+    skipped = len([m for m in media if m.get("download_status") == "skipped"])
     text = f"""# Analysebriefing: {house.get('title')}
 
 ## Stammdaten
@@ -452,6 +575,7 @@ def briefing(house_id: str) -> PlainTextResponse:
 
 - Lokale Bilder: {local_images}
 - Offene Downloads: {pending}
+- Übersprungen: {skipped}
 
 ## Feldherkunft
 
