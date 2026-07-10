@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.6
+
+- Kandidatenansicht von Tabelle auf mobilfreundliche Immobilien-Karten umgestellt
+- Layout schmaler und besser für Handy-Nutzung optimiert
+- Vorschaubild, Titel, Status, Preis, Wohnfläche, Grundstück und HWB stehen jetzt direkt in einer Karte
+- Import-Button ist mobil besser bedienbar
+- globale Ladeanzeige mit Spinner ergänzt
+- Ladehinweise für Suchlauf, Import, Medien-Download, Bereinigung und Upload ergänzt
+- Tabellen bleiben nur noch für Nebenbereiche wie Quellen/Feldherkunft erhalten und sind horizontal scrollbar
+
 ## 0.4.5
 
 - Feld „Regionen / Orte“ aus der Suchprofil-Maske entfernt, weil Willhaben jetzt über PLZ/areaIds gesucht wird
