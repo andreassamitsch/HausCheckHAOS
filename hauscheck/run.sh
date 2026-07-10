@@ -9,19 +9,35 @@ mkdir -p "${DATA_DIR}/logs"
 export HAUSCHECK_DATA_DIR="${DATA_DIR}"
 export PYTHONUNBUFFERED=1
 
-# v0.5.1 runtime migration:
+if [ -f /data/options.json ]; then
+  export HAUSCHECK_API_TOKEN="$(python3 - <<'PY'
+import json
+from pathlib import Path
+try:
+    data = json.loads(Path('/data/options.json').read_text(encoding='utf-8'))
+    print(str(data.get('api_token') or '').strip())
+except Exception:
+    print('')
+PY
+)"
+fi
+
+# v0.5.2 runtime migration:
 # - Bewertungs-MVP in die UI einblenden
 # - Vorschaubilder bevorzugt aus der Portal-/Willhaben-Übersicht übernehmen
+# - API/MCP-Bridge wird über app.bootstrap registriert
 python3 - <<'PY'
 from pathlib import Path
 
 path = Path('/app/app/main.py')
 if path.exists():
     text = path.read_text(encoding='utf-8')
-    text = text.replace('app = FastAPI(title=APP_NAME, version="0.4.6")', 'app = FastAPI(title=APP_NAME, version="0.5.1")')
-    text = text.replace('app = FastAPI(title=APP_NAME, version="0.5.0")', 'app = FastAPI(title=APP_NAME, version="0.5.1")')
-    text = text.replace('v0.4.6: mobile Kartenansicht und Ladehinweise.', 'v0.5.1: Bewertung und Portal-Vorschaubilder.')
-    text = text.replace('v0.5.0: regelbasierte Erstbewertung / Score vorgezogen.', 'v0.5.1: Bewertung und Portal-Vorschaubilder.')
+    text = text.replace('app = FastAPI(title=APP_NAME, version="0.4.6")', 'app = FastAPI(title=APP_NAME, version="0.5.2")')
+    text = text.replace('app = FastAPI(title=APP_NAME, version="0.5.0")', 'app = FastAPI(title=APP_NAME, version="0.5.2")')
+    text = text.replace('app = FastAPI(title=APP_NAME, version="0.5.1")', 'app = FastAPI(title=APP_NAME, version="0.5.2")')
+    text = text.replace('v0.4.6: mobile Kartenansicht und Ladehinweise.', 'v0.5.2: Bewertung, Portal-Vorschaubilder und ChatGPT-Bridge.')
+    text = text.replace('v0.5.0: regelbasierte Erstbewertung / Score vorgezogen.', 'v0.5.2: Bewertung, Portal-Vorschaubilder und ChatGPT-Bridge.')
+    text = text.replace('v0.5.1: Bewertung und Portal-Vorschaubilder.', 'v0.5.2: Bewertung, Portal-Vorschaubilder und ChatGPT-Bridge.')
 
     text = text.replace(
         'from app.parser import ParsedListing, extract_listing_links, parse_listing, title_from_listing_url',
@@ -258,4 +274,4 @@ def house_score_html(house: dict[str, object]) -> str:
     path.write_text(text, encoding='utf-8')
 PY
 
-exec uvicorn app.main:app --host 0.0.0.0 --port 8088
+exec uvicorn app.bootstrap:app --host 0.0.0.0 --port 8088
