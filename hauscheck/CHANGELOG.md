@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0
+
+- Suchprofile dauerhaft in SQLite speichern
+- mehrere Willhaben-Suchprofile möglich
+- Suchprofile aus Dashboard und Suchprofilseite starten
+- gefundene Kandidaten werden persistent gespeichert
+- Kandidatenstatus: neu oder importiert
+- Kandidatenliste bleibt nach Neustart erhalten
+- Import aus Kandidatenliste markiert passende Kandidaten automatisch als importiert
+
 ## 0.2.0
 
 - Dashboard-Button „Suchlauf starten“ ergänzt
