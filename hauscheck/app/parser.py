@@ -5,7 +5,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from typing import Any
-from urllib.parse import urlparse, urlsplit, urlunsplit
+from urllib.parse import urljoin, urlparse, urlsplit, urlunsplit
 
 from bs4 import BeautifulSoup
 
@@ -36,19 +36,8 @@ class ParsedListing:
 
 
 BAD_IMAGE_MARKERS = (
-    "logo",
-    "avatar",
-    "profile",
-    "profil",
-    "company",
-    "makler",
-    "agent",
-    "favicon",
-    "sprite",
-    "icon",
-    "placeholder",
-    "banner",
-    "tracking",
+    "logo", "avatar", "profile", "profil", "company", "makler", "agent",
+    "favicon", "sprite", "icon", "placeholder", "banner", "tracking",
 )
 
 
@@ -119,11 +108,14 @@ def extract_json_ld(soup: BeautifulSoup) -> list[dict[str, Any]]:
     return objects
 
 
-def normalize_image_url(url: str) -> str:
+def normalize_url(url: str) -> str:
     url = html_lib.unescape(url).replace("\\/", "/").strip()
     parts = urlsplit(url)
-    # Query strings often only represent srcset/image-size variants. Removing them makes dedupe robust.
     return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+
+
+def normalize_image_url(url: str) -> str:
+    return normalize_url(url)
 
 
 def looks_like_logo_or_ui_asset(url: str) -> bool:
@@ -140,7 +132,6 @@ def extract_image_urls(raw_html: str, *, willhaben_gallery_only: bool = False) -
             r"https://cache\.willhaben\.at/mmo/[^\"'\\\s<>]+?\.(?:jpg|jpeg|png|webp)",
             r"https://[^\"'\\\s<>]+?\.(?:jpg|jpeg|png|webp)",
         ]
-
     for pattern in patterns:
         for match in re.finditer(pattern, raw_html, re.IGNORECASE):
             url = normalize_image_url(match.group(0))
@@ -155,6 +146,47 @@ def extract_pdf_urls(raw_html: str) -> list[str]:
     for match in re.finditer(r"https://[^\"'\\\s<>]+?\.pdf", raw_html, re.IGNORECASE):
         urls.add(html_lib.unescape(match.group(0)).replace("\\/", "/"))
     return sorted(urls)
+
+
+def extract_listing_links(raw_html: str, base_url: str) -> list[str]:
+    """Extract real detail listing links from a portal/search HTML page.
+
+    Search/category pages are intentionally ignored. Currently optimized for
+    Willhaben detail URLs like /iad/immobilien/d/...-1234567890.
+    """
+    links: set[str] = set()
+    soup = BeautifulSoup(raw_html, "html.parser")
+
+    candidates: list[str] = []
+    for tag in soup.find_all("a", href=True):
+        candidates.append(str(tag.get("href") or ""))
+
+    regexes = [
+        r"https://www\.willhaben\.at/iad/immobilien/d/[^\"'\\\s<>]+?-\d{7,}",
+        r"/iad/immobilien/d/[^\"'\\\s<>]+?-\d{7,}",
+    ]
+    for regex in regexes:
+        candidates.extend(match.group(0) for match in re.finditer(regex, raw_html, re.IGNORECASE))
+
+    for candidate in candidates:
+        candidate = html_lib.unescape(candidate).replace("\\/", "/")
+        if "/iad/immobilien/d/" not in candidate:
+            continue
+        if not re.search(r"-\d{7,}(?:$|[/?#])", candidate):
+            continue
+        absolute = urljoin(base_url, candidate)
+        normalized = normalize_url(absolute)
+        links.add(normalized)
+
+    return sorted(links)
+
+
+def title_from_listing_url(url: str) -> str:
+    path = urlsplit(url).path.rstrip("/")
+    slug = path.split("/")[-1]
+    slug = re.sub(r"-\d{7,}$", "", slug)
+    slug = slug.replace("-", " ").strip()
+    return slug[:1].upper() + slug[1:] if slug else url
 
 
 def parse_willhaben_id(url: str) -> str | None:
@@ -186,7 +218,6 @@ def parse_willhaben(url: str, raw_html: str) -> ParsedListing:
     if result.price_eur:
         add_evidence(result, "price_eur", result.price_eur, "text/price", "Kaufpreis/€ im Seitentext", "derived")
 
-    # Strict field parsing: only explicit labels may populate area fields.
     living_patterns = [
         r"Wohnfläche\s*([0-9][0-9\.,\s]*)\s*m",
         r"Wohnnutzfläche\s*([0-9][0-9\.,\s]*)\s*m",
