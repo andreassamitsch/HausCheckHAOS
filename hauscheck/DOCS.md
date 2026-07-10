@@ -4,7 +4,7 @@
 
 Nach der Installation das Add-on starten und über den Home-Assistant-Ingress öffnen.
 
-## Aktueller Funktionsumfang v0.2
+## Aktueller Funktionsumfang v0.3
 
 - Hausakten-Dashboard
 - Direktlink-Import
@@ -15,21 +15,30 @@ Nach der Installation das Add-on starten und über den Home-Assistant-Ingress ö
 - Medienfilter gegen Logos, Icons und Duplikate
 - manuelle Medien-Uploads
 - Analysebriefing pro Hausakte
-- Suchlauf-MVP für Willhaben-Suchergebnis-URLs
-- Kandidatenliste mit Einzelimport
+- gespeicherte Suchprofile für Willhaben-Suchergebnis-URLs
+- persistente Kandidatenliste mit Einzelimport
 
-## Suchlauf verwenden
+## Suchprofile verwenden
 
 1. In Willhaben eine Suche mit deinen Kriterien öffnen.
 2. Die Suchergebnis-URL kopieren.
-3. In HausCheck auf **Suchlauf starten** klicken.
-4. URL einfügen und auslesen.
-5. Kandidaten einzeln importieren.
+3. In HausCheck auf **Suchprofile** klicken.
+4. Name und Such-URL speichern.
+5. Profil öffnen und **Suchprofil jetzt starten** klicken.
+6. Kandidaten einzeln importieren.
+
+Beispiele für Suchprofile:
+
+- Wies/Eibiswald bis 380k
+- Oberhaag/Obergreith Grenzfälle
+- Deutschlandsberg größere Grundstücke
+- Preisgrenze 400k als Beobachtung
 
 Wichtig:
 
 - Suchseiten werden nicht als Hausakten gespeichert.
 - Nur echte Inserat-Direktlinks werden als Kandidaten angezeigt.
+- Kandidaten bleiben gespeichert und werden beim Import als importiert markiert.
 - Wenn keine Kandidaten erscheinen, wurde die Seite vermutlich dynamisch geladen oder durch Willhaben blockiert.
 
 ## Hinweise
