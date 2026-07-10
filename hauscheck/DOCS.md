@@ -4,7 +4,7 @@
 
 Nach der Installation das Add-on starten und über den Home-Assistant-Ingress öffnen.
 
-## Aktueller Funktionsumfang v0.5.3
+## Aktueller Funktionsumfang v0.5.4
 
 - Hausakten-Dashboard
 - Direktlink-Import
@@ -25,8 +25,89 @@ Nach der Installation das Add-on starten und über den Home-Assistant-Ingress ö
 - Ladeanzeige mit Spinner und Aktionstext
 - Deduplizierung über Willhaben-Inserat-ID
 - regelbasierte Erstbewertung / Score je Kandidat und Hausakte
-- geschützte ChatGPT/API/MCP-Bridge für externe Analyse
-- Home-Assistant-Proxy für Nabu-Casa-Zugriff über `/api/hauscheck/...`
+- manueller ChatGPT-Analyseworkflow per ZIP Export/JSON Import
+- geschützte ChatGPT/API/MCP-Bridge bleibt optional vorhanden, kann aber ignoriert werden
+
+## Empfohlener Analyseworkflow ohne API-Kosten
+
+1. Hausakte öffnen.
+2. Im Bereich **ChatGPT-Analyse** auf **Analysepaket exportieren** klicken.
+3. Die ZIP-Datei in ChatGPT hochladen.
+4. ChatGPT soll anhand der enthaltenen `README_PROMPT.md` eine Datei `hauscheck_analysis.json` erzeugen.
+5. Diese JSON-Datei in HausCheck bei **KI-Analyse importieren** hochladen.
+6. HausCheck zeigt KI-Score, Analysedatum, Zusammenfassung, Chancen und Risiken in der Hausakte an.
+
+Der Workflow benötigt:
+
+```text
+kein OpenAI API-Key
+kein MCP
+keine Nabu-Casa-Verbindung
+keinen offenen Home-Assistant-Zugriff
+```
+
+## Inhalt des Analysepakets
+
+Das ZIP enthält:
+
+```text
+hauscheck_export_<house_id>_<titel>.zip
+├── README_PROMPT.md
+├── listing.json
+├── evidence.json
+├── current_score.json
+├── import_schema.json
+├── image_manifest.json
+├── images/
+│   ├── 01.jpg
+│   ├── 02.jpg
+│   └── ...
+└── original/
+    └── source_urls.txt
+```
+
+Die Bilder werden beim Export verkleinert, damit das Paket uploadfreundlich bleibt. Standard:
+
+```text
+max. 12 Bilder
+max. 1600 px Kantenlänge
+JPEG Qualität 84
+```
+
+## Erwartete Rückgabedatei von ChatGPT
+
+Name exakt:
+
+```text
+hauscheck_analysis.json
+```
+
+Mindeststruktur:
+
+```json
+{
+  "house_id": "abc12345",
+  "analysis_date": "2026-07-10T12:00:00+00:00",
+  "new_score": 78,
+  "confidence": "mittel",
+  "summary": "Kurze Zusammenfassung.",
+  "positive_findings": [],
+  "risk_findings": [],
+  "estimated_investment_eur": {
+    "low": 15000,
+    "high": 45000,
+    "confidence": "niedrig",
+    "comment": "Nur grobe Bild-/Inseratsschätzung."
+  },
+  "image_findings": [],
+  "recommendation": "Besichtigung sinnvoll, Unterlagen prüfen.",
+  "next_steps": [],
+  "score_reasoning": "Begründung des neuen Scores.",
+  "limitations": []
+}
+```
+
+HausCheck prüft, ob die `house_id` zur geöffneten Hausakte passt. Bestehende Analysen werden vor dem Überschreiben gesichert.
 
 ## Zentrale Suchprofile verwenden
 
@@ -46,115 +127,14 @@ Profil-Kriterien = Wahrheit
 Portalquelle = automatisch erzeugt oder optional manuell
 HausCheck-Filter = finale Kontrolle
 HausCheck-Score = schnelle Priorisierung
-ChatGPT-Bridge = externe Analyse / Bildanalyse
-Home-Assistant-Proxy = Nabu-Casa-Zugriff
+Manueller ChatGPT-Export = ausführliche Bild-/Inseratanalyse ohne API-Kosten
 ```
 
-## Nabu-Casa-Zugriff über Home Assistant Proxy
+## Optionale API-/MCP-Bridge
 
-Zusätzlich zum Add-on enthält das Repository eine Custom Integration:
+Die frühere API-/MCP-Bridge bleibt im Code vorhanden, ist aber für den empfohlenen manuellen Workflow nicht nötig.
 
-```text
-custom_components/hauscheck_proxy/
-```
-
-Diese Integration registriert Home-Assistant-API-Endpunkte:
-
-```text
-GET  /api/hauscheck/health
-GET  /api/hauscheck/houses
-GET  /api/hauscheck/houses/{house_id}
-GET  /api/hauscheck/search-profiles
-GET  /api/hauscheck/search-profiles/{profile_id}/candidates
-GET  /api/hauscheck/mcp
-POST /api/hauscheck/mcp
-```
-
-Dadurch kann der Zugriff über deine Nabu-Casa-URL laufen:
-
-```text
-https://<deine-instanz>.ui.nabu.casa/api/hauscheck/health
-```
-
-Nach außen gilt die Home-Assistant-Authentifizierung, also z. B. ein Long-Lived Access Token. Nach innen leitet der Proxy mit dem HausCheck-`api_token` an das Add-on weiter.
-
-### Installation der Custom Integration
-
-1. Ordner kopieren:
-
-```text
-custom_components/hauscheck_proxy
-→ /config/custom_components/hauscheck_proxy
-```
-
-2. In den HausCheck-Add-on-Optionen einen langen `api_token` setzen.
-
-3. In `configuration.yaml` ergänzen:
-
-```yaml
-hauscheck_proxy:
-  base_url: http://127.0.0.1:8088
-  token: "DEIN_HAUSCHECK_API_TOKEN"
-  timeout: 120
-```
-
-4. Home Assistant neu starten.
-
-5. Mit lokalem HA-Zugriff testen:
-
-```bash
-curl -H "Authorization: Bearer HA_LONG_LIVED_TOKEN" \
-http://HOMEASSISTANT-IP:8123/api/hauscheck/health
-```
-
-6. Danach über Nabu Casa testen:
-
-```bash
-curl -H "Authorization: Bearer HA_LONG_LIVED_TOKEN" \
-https://<deine-instanz>.ui.nabu.casa/api/hauscheck/health
-```
-
-Wenn `127.0.0.1:8088` aus Home Assistant nicht erreichbar ist, muss `base_url` auf die erreichbare interne Adresse des Add-ons angepasst werden.
-
-## ChatGPT-/MCP-Bridge im Add-on
-
-Die Bridge ist standardmäßig deaktiviert. Sie wird erst aktiv, wenn in den Add-on-Optionen ein `api_token` gesetzt ist.
-
-Interne Add-on-Endpunkte:
-
-```text
-GET  /api/chatgpt/health
-GET  /api/chatgpt/houses
-GET  /api/chatgpt/houses/{house_id}
-GET  /api/chatgpt/search-profiles
-GET  /api/chatgpt/search-profiles/{profile_id}/candidates
-POST /mcp
-GET  /mcp
-```
-
-Authentifizierung intern:
-
-```text
-Authorization: Bearer <api_token>
-```
-
-oder:
-
-```text
-X-HausCheck-Token: <api_token>
-```
-
-MCP-Tools:
-
-```text
-list_houses
-get_house
-get_house_images
-list_search_profiles
-get_candidates
-```
-
-`get_house_images` liefert lokale Hausbilder als Bildinhalte zurück. Damit ist eine Bildanalyse durch ein angebundenes Modell grundsätzlich möglich.
+Solange in den Add-on-Optionen kein `api_token` gesetzt ist, bleibt diese Bridge deaktiviert.
 
 ## Vorschaubilder
 
@@ -228,6 +208,7 @@ Bei länger laufenden Aktionen zeigt HausCheck einen Ladehinweis mit Spinner:
 - Medien erneut herunterladen
 - Medien bereinigen
 - Datei hochladen
+- ChatGPT-Analyse importieren
 
 ## Kandidatenstatus
 
@@ -264,5 +245,10 @@ Dies ist eine frühe MVP-Version. Die Parser sind bewusst konservativ:
 /share/hauscheck/
 ├── hauscheck.db
 ├── projects/
+│   └── <house_id>/
+│       ├── images/
+│       ├── exports/
+│       └── analysis/
+│           └── hauscheck_analysis.json
 └── logs/
 ```
