@@ -29,8 +29,8 @@ path = Path('/app/app/main.py')
 if path.exists():
     text = path.read_text(encoding='utf-8')
 
-    for old in ['0.4.6', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.4', '0.5.5']:
-        text = text.replace(f'app = FastAPI(title=APP_NAME, version="{old}")', 'app = FastAPI(title=APP_NAME, version="0.5.6")')
+    for old in ['0.4.6', '0.5.0', '0.5.1', '0.5.2', '0.5.3', '0.5.4', '0.5.5', '0.5.6']:
+        text = text.replace(f'app = FastAPI(title=APP_NAME, version="{old}")', 'app = FastAPI(title=APP_NAME, version="0.5.7")')
     for old_text in [
         'v0.4.6: mobile Kartenansicht und Ladehinweise.',
         'v0.5.0: regelbasierte Erstbewertung / Score vorgezogen.',
@@ -38,8 +38,9 @@ if path.exists():
         'v0.5.2: Bewertung, Portal-Vorschaubilder und ChatGPT-Bridge.',
         'v0.5.4: manuelles ChatGPT-Analysepaket.',
         'v0.5.5: Hausakten bearbeiten, löschen, Galerie und Exposé-PDF.',
+        'v0.5.6: Galerie oben, Bildraster unten, PDF-Adressen nur als Hinweis.',
     ]:
-        text = text.replace(old_text, 'v0.5.6: Galerie oben, Bildraster unten, PDF-Adressen nur als Hinweis.')
+        text = text.replace(old_text, 'v0.5.7: stabile Suchprofilansicht.')
 
     text = text.replace(
         'from app.parser import ParsedListing, extract_listing_links, parse_listing, title_from_listing_url',
@@ -100,7 +101,6 @@ if path.exists():
         '        image_html = dashboard_preview_html(house)'
     )
 
-    # alte / überflüssige Buttons aus der Hausakte entfernen; Routen bleiben als Fallback vorhanden.
     text = text.replace('      <a class="button secondary" href="{house_id}/briefing">Analysebriefing</a>\n', '')
     text = text.replace('      <form method="post" action="{house_id}/download-media" data-loading="Medien werden heruntergeladen …" style="display:inline"><button type="submit">Medien erneut herunterladen</button></form>\n', '')
     text = text.replace('      <form method="post" action="{house_id}/cleanup-media" data-loading="Medien werden bereinigt …" style="display:inline"><button class="secondary" type="submit">Medien bereinigen</button></form>\n', '')
@@ -117,14 +117,12 @@ if path.exists():
             '      <p class="muted">{esc(house.get(\'location_text\') or \'Lage unbekannt\')}</p>\n      {house_score_html(house)}\n      <p>'
         )
 
-    # Obere große Galerie zuerst in der Hausakte anzeigen.
     if '{hero_gallery_html(house_id)}' not in text:
         text = text.replace(
             '    body = f"""\n    <div class="card">',
             '    body = f"""\n    {hero_gallery_html(house_id)}\n    <div class="card">'
         )
 
-    # Unten wieder Einzelbild-Raster wie früher.
     text = text.replace(
         '    media_items = []\n    for item in media:\n        if item.get("kind") == "image" and item.get("download_status") == "downloaded":\n            media_items.append(f"<a href=\'../media/{item[\'id\']}\' target=\'_blank\'><img class=\'thumb\' src=\'../media/{item[\'id\']}\' alt=\'Bild\'></a>")\n    media_html = "".join(media_items) if media_items else "<p class=\'muted\'>Noch keine heruntergeladenen Bilder.</p>"',
         '    media_html = image_grid_html(house_id)'
