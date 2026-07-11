@@ -1,5 +1,5 @@
 name: "HausCheck Pro"
-version: "0.5.8"
+version: "0.5.9"
 slug: "hauscheck"
 description: "Persönlicher Immobilien-Assistent für Home Assistant"
 url: "https://github.com/andreassamitsch/HausCheckHAOS"
@@ -24,8 +24,8 @@ options:
   log_level: info
   data_dir: /share/hauscheck
   api_token: ""
-  github_exchange_enabled: false
-  github_repo: "andreassamitsch/HausCheckHAOS"
+  github_exchange_enabled: true
+  github_repo: "andreassamitsch/HausCheckAIExchange"
   github_branch: "main"
   github_token: ""
   github_export_path: "ai_exchange/exports/pending"
