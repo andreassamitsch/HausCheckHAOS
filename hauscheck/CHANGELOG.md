@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.11
+
+- automatischer GitHub-Rückimport für fertige KI-Analysen ergänzt
+- neue Add-on-Optionen `github_auto_import_results` und `github_auto_import_interval_minutes`
+- Standard: HausCheck prüft alle 5 Minuten `ai_exchange/results/pending`
+- gefundene `hauscheck_analysis.json` werden automatisch in die passende Hausakte importiert
+- erfolgreiche Ergebnisse werden wie bisher nach `results/done` archiviert und pending-Dateien/Export-ZIPs aufgeräumt
+- Auto-Import läuft im Hintergrund und protokolliert Import/Fehler im Add-on-Log
+
 ## 0.5.10
 
 - automatischer GitHub-AI-Export nach Inserat-Import ergänzt
