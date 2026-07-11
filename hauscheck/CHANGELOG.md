@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.8
+
+- GitHub AI Exchange ergänzt
+- neue Add-on-Optionen für GitHub-Repo, Branch, Token und Austauschpfade
+- Hausakte enthält jetzt einen Bereich „GitHub AI Exchange“
+- Button „Analysepaket nach GitHub exportieren“ lädt das ZIP nach `ai_exchange/exports/pending/<house_id>.zip`
+- Button „GitHub-Ergebnisse importieren“ liest `ai_exchange/results/pending/.../hauscheck_analysis.json`
+- importierte Ergebnisse werden lokal in der Hausakte gespeichert
+- nach erfolgreichem Import wird das JSON nach `ai_exchange/results/done/<house_id>/...json` archiviert
+- exportierte ZIPs und pending-Ergebnisse werden nach erfolgreichem Import aus GitHub aufgeräumt, wenn `github_cleanup_after_import` aktiv ist
+- Hausdetailansicht wird robuster über eine eigene Route registriert und enthält die GitHub-Exchange-Karte
+
 ## 0.5.6
 
 - Galerie korrigiert: großer Slider steht jetzt ganz oben in der Hausakte
@@ -153,7 +165,7 @@
 - neue Seite `/search` für Willhaben-Suchergebnis-URLs
 - Willhaben-Suchseiten werden ausgelesen
 - echte Inserat-Direktlinks werden extrahiert
-- Kandidatenliste mit Status „neu“ oder „bereits importiert"
+- Kandidatenliste mit Status „neu“ oder „bereits importiert“
 - Kandidaten können einzeln direkt importiert werden
 - Suchseiten werden nicht als Objekte gespeichert
 
