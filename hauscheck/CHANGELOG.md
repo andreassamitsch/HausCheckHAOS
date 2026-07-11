@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.10
+
+- automatischer GitHub-AI-Export nach Inserat-Import ergänzt
+- neue Add-on-Option `github_auto_export_on_import`
+- Standard: Nach erfolgreichem Import und Medien-Download wird automatisch `<house_id>.zip` nach `ai_exchange/exports/pending` geschrieben
+- Fehler beim Auto-Export blockieren den Hausimport nicht; Details stehen im Add-on-Log
+- Import-Route über Patch-Modul stabilisiert, damit Direktimport und Kandidatenimport denselben Auto-Export nutzen
+
 ## 0.5.8
 
 - GitHub AI Exchange ergänzt
