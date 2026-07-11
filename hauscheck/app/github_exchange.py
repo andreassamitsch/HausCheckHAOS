@@ -11,11 +11,13 @@ from typing import Any
 
 import httpx
 from fastapi import FastAPI, Form, HTTPException
-from fastapi.responses import RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
-from app.analysis_package import create_analysis_zip, extract_analysis_json_from_upload, save_analysis
-from app.storage import get_house
-from app.ui_helpers import esc
+from app.analysis_package import analysis_status_html, create_analysis_zip, extract_analysis_json_from_upload, save_analysis
+from app.house_manage import delete_house_form_html, edit_house_form_html, expose_upload_html, hero_gallery_html, image_grid_html
+from app.main import layout, money, num
+from app.storage import get_house, list_evidence, list_media, list_sources
+from app.ui_helpers import esc, house_score_html
 
 
 OPTIONS_PATH = Path("/data/options.json")
@@ -36,6 +38,10 @@ class GitHubExchangeSettings:
     @property
     def ready(self) -> bool:
         return bool(self.enabled and self.repo and self.token)
+
+
+def _methods(route: Any) -> set[str]:
+    return set(getattr(route, "methods", set()) or set())
 
 
 def _clean_path(value: str, default: str) -> str:
@@ -219,7 +225,6 @@ async def _delete_export_zip_for_house(client: GitHubExchangeClient, settings: G
     exact = exchange_export_path(settings, house_id)
     if await client.delete_file(exact, f"HausCheck cleanup export {house_id}"):
         deleted.append(exact)
-    # Fallback: ältere oder manuell benannte Dateien mit house_id im Namen entfernen.
     for item in await client.list_dir(settings.export_path):
         path = str(item.get("path") or "")
         name = str(item.get("name") or "")
@@ -265,7 +270,82 @@ async def import_results_from_github() -> dict[str, Any]:
     return {"imported": imported, "errors": errors, "cleaned": cleaned, "checked": len(result_paths)}
 
 
+def register_house_detail_with_github(app: FastAPI) -> None:
+    app.router.routes = [
+        route
+        for route in app.router.routes
+        if not (getattr(route, "path", "") == "/houses/{house_id}" and "GET" in _methods(route))
+    ]
+
+    @app.get("/houses/{house_id}", response_class=HTMLResponse)
+    def house_detail_github(house_id: str) -> HTMLResponse:
+        house = get_house(house_id)
+        if not house:
+            raise HTTPException(status_code=404, detail="Hausakte nicht gefunden")
+
+        sources = list_sources(house_id)
+        media = list_media(house_id)
+        evidence = list_evidence(house_id)
+
+        source_rows = "".join(
+            f"<tr><td>{esc(src.get('source_name'))}</td><td><a href='{esc(src.get('source_url'))}' target='_blank'>Direktlink</a></td><td>{esc(src.get('parser_status'))}</td></tr>"
+            for src in sources
+        )
+        media_html = image_grid_html(house_id)
+        pending_count = len([m for m in media if m.get("download_status") == "pending"])
+        failed_count = len([m for m in media if m.get("download_status") == "failed"])
+        skipped_count = len([m for m in media if m.get("download_status") == "skipped"])
+        downloaded_count = len([m for m in media if m.get("download_status") == "downloaded"])
+
+        evidence_rows = "".join(
+            f"<tr><td>{esc(ev.get('field_name'))}</td><td>{esc(ev.get('value_text'))}</td><td>{esc(ev.get('confidence'))}</td><td>{esc(ev.get('source_text_snippet'))}</td></tr>"
+            for ev in evidence[:40]
+        )
+        failed_rows = "".join(
+            f"<tr><td>{esc(m.get('kind'))}</td><td>{esc(m.get('original_url'))}</td><td class='danger'>{esc(m.get('download_error'))}</td></tr>"
+            for m in media
+            if m.get("download_status") == "failed"
+        )
+        failed_html = f"<h3>Fehlgeschlagene Medien</h3><table><tr><th>Typ</th><th>URL</th><th>Fehler</th></tr>{failed_rows}</table>" if failed_rows else ""
+        skipped_rows = "".join(
+            f"<tr><td>{esc(m.get('kind'))}</td><td>{esc(m.get('width'))}×{esc(m.get('height'))}</td><td>{esc(m.get('download_error'))}</td></tr>"
+            for m in media
+            if m.get("download_status") == "skipped"
+        )
+        skipped_html = f"<h3>Übersprungene Medien</h3><table><tr><th>Typ</th><th>Größe</th><th>Grund</th></tr>{skipped_rows}</table>" if skipped_rows else ""
+
+        body = f"""
+        {hero_gallery_html(house_id)}
+        <div class="card">
+          <h2>{esc(house.get('title'))}</h2>
+          <p class="muted">{esc(house.get('location_text') or 'Lage unbekannt')}</p>
+          {house_score_html(house)}
+          <p>
+            <span class="pill">{money(house.get('price_eur'))}</span>
+            <span class="pill">{num(house.get('living_area_m2'), ' m² Wfl.')}</span>
+            <span class="pill">{num(house.get('plot_area_m2'), ' m² Grund')}</span>
+            <span class="pill">HWB {num(house.get('energy_hwb'))}</span>
+            <span class="pill">fGEE {num(house.get('energy_fgee'))}</span>
+            <span class="pill">Heizung: {esc(house.get('heating') or 'unbekannt')}</span>
+          </p>
+          <p><span class="pill">Adresse: {esc(house.get('address_status'))}</span><span class="pill">Status: {esc(house.get('status'))}</span></p>
+          <p><span class="pill">{downloaded_count} geladen</span><span class="pill">{pending_count} offen</span><span class="pill">{skipped_count} übersprungen</span><span class="pill">{failed_count} Fehler</span></p>
+        </div>
+        {analysis_status_html(house_id)}
+        {github_exchange_card_html(house_id)}
+        {edit_house_form_html(house)}
+        {expose_upload_html(house_id)}
+        <div class="card"><h2>Bilder</h2>{media_html}{failed_html}{skipped_html}</div>
+        <div class="card"><h2>Quellen</h2><table><tr><th>Quelle</th><th>Link</th><th>Status</th></tr>{source_rows}</table></div>
+        <div class="card"><h2>Feldherkunft</h2><table><tr><th>Feld</th><th>Wert</th><th>Sicherheit</th><th>Snippet</th></tr>{evidence_rows}</table></div>
+        {delete_house_form_html(house_id)}
+        """
+        return layout(str(house.get("title") or "Hausakte"), body)
+
+
 def register_github_exchange(app: FastAPI) -> None:
+    register_house_detail_with_github(app)
+
     @app.post("/houses/{house_id}/github-export")
     async def github_export_house(house_id: str) -> RedirectResponse:
         await export_house_to_github(house_id)
