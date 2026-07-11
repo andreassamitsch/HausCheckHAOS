@@ -4,7 +4,7 @@
 
 Nach der Installation das Add-on starten und über den Home-Assistant-Ingress öffnen.
 
-## Aktueller Funktionsumfang v0.5.8
+## Aktueller Funktionsumfang v0.5.10
 
 - Hausakten-Dashboard
 - Direktlink-Import
@@ -16,12 +16,12 @@ Nach der Installation das Add-on starten und über den Home-Assistant-Ingress ö
 - Kandidatenkarten mit Portal-/Willhaben-Vorschaubild
 - Hauskarten nutzen bevorzugt das Portal-/Willhaben-Vorschaubild
 - regelbasierte Erstbewertung / Score je Kandidat und Hausakte
-- manueller ChatGPT-Analyseworkflow per ZIP Export/JSON Import
 - GitHub AI Exchange für ZIP-Export und JSON-Rückimport
+- automatischer GitHub-AI-Export direkt nach Inserat-Import
+- manueller ChatGPT-Analyseworkflow per ZIP Export/JSON Import bleibt verfügbar
 - Hausakte manuell bearbeiten und vollständig löschen
 - Galerie/Slider oben in der Hausakte; unten alle Bilder einzeln
 - Exposé-PDF hochladen und Textdaten auslesen
-- optionale API-/MCP-Bridge bleibt vorhanden, kann aber ignoriert werden
 
 ## GitHub AI Exchange
 
@@ -29,8 +29,10 @@ Der GitHub AI Exchange ist der halbautomatische Austausch mit ChatGPT:
 
 ```text
 HausCheck
-→ Analysepaket nach GitHub exportieren
-→ ChatGPT Task analysiert ZIP
+→ Inserat importieren
+→ Bilder/PDFs laden
+→ Analysepaket automatisch nach GitHub exportieren
+→ ChatGPT Task analysiert ZIP stündlich
 → ChatGPT schreibt hauscheck_analysis.json nach GitHub
 → HausCheck importiert GitHub-Ergebnisse
 ```
@@ -54,7 +56,8 @@ ai_exchange/
 
 ```yaml
 github_exchange_enabled: true
-github_repo: "andreassamitsch/HausCheckHAOS"
+github_auto_export_on_import: true
+github_repo: "andreassamitsch/HausCheckAIExchange"
 github_branch: "main"
 github_token: "DEIN_GITHUB_TOKEN"
 github_export_path: "ai_exchange/exports/pending"
@@ -63,58 +66,32 @@ github_done_path: "ai_exchange/results/done"
 github_cleanup_after_import: true
 ```
 
-Der Token braucht Schreibrechte auf das verwendete Repository. Am sichersten ist ein eigener Fine-Grained Token nur für dieses Repo mit Inhaltszugriff Lesen/Schreiben.
+Der Token braucht Schreibrechte auf das Austausch-Repository. Am sichersten ist ein eigener Fine-Grained Token nur für `HausCheckAIExchange` mit Inhaltszugriff Lesen/Schreiben.
 
-### Ablauf in der Hausakte
+### Ablauf automatisch
+
+1. Inserat aus Suchprofil oder Direktlink importieren.
+2. HausCheck erstellt die Hausakte und lädt Medien.
+3. Wenn `github_auto_export_on_import` aktiv ist, wird automatisch `<house_id>.zip` nach `ai_exchange/exports/pending/` geschrieben.
+4. Der stündliche ChatGPT Task prüft diesen Ordner.
+5. ChatGPT schreibt das Ergebnis nach `ai_exchange/results/pending/<house_id>/hauscheck_analysis.json`.
+6. In HausCheck **GitHub-Ergebnisse importieren** klicken.
+7. Bei aktivem Cleanup werden pending-JSON und Export-ZIP aus GitHub entfernt; das JSON wird nach `results/done` archiviert.
+
+Fehler beim automatischen GitHub-Export blockieren den Hausimport nicht. Details stehen im Add-on-Log.
+
+### Ablauf manuell
 
 In jeder Hausakte gibt es den Bereich **GitHub AI Exchange**.
 
-1. **Analysepaket nach GitHub exportieren** klicken.
-2. HausCheck schreibt `<house_id>.zip` nach `ai_exchange/exports/pending/`.
-3. Der stündliche ChatGPT Task prüft diesen Ordner.
-4. ChatGPT schreibt das Ergebnis nach `ai_exchange/results/pending/<house_id>/hauscheck_analysis.json`.
-5. In HausCheck **GitHub-Ergebnisse importieren** klicken.
-6. HausCheck speichert die Analyse in der Hausakte.
-7. Bei aktivem Cleanup werden pending-JSON und Export-ZIP aus GitHub entfernt; das JSON wird nach `results/done` archiviert.
+- **Analysepaket nach GitHub exportieren** erzeugt/überschreibt das ZIP im Austausch-Repo.
+- **GitHub-Ergebnisse importieren** liest alle fertigen `hauscheck_analysis.json` aus `results/pending` ein.
 
 ## Hausakte bearbeiten und löschen
 
-In der Hausakte gibt es aufklappbare Bereiche:
+Bearbeitbar sind Titel, Adresse/Lage, Adressstatus, Preis, Wohnfläche, Grundstück, Zimmer, Baujahr, HWB, fGEE, Heizung, Portal-Vorschaubild-URL und Notizen.
 
-```text
-Hausakte bearbeiten
-Exposé PDF
-Hausakte löschen
-```
-
-Bearbeitbar sind:
-
-```text
-Titel
-Adresse / Lage
-Adressstatus
-Preis
-Wohnfläche
-Grundstück
-Zimmer
-Baujahr
-HWB
-fGEE
-Heizung
-Portal-Vorschaubild URL
-Notizen
-```
-
-Beim Löschen werden entfernt:
-
-```text
-Hausakte
-Quellen
-Feldherkunft
-Medien-Datenbankeinträge
-KI-Analysen
-Projektordner unter /share/hauscheck/projects/<house_id>
-```
+Beim Löschen werden Hausakte, Quellen, Feldherkunft, Medien-Datenbankeinträge, KI-Analysen und der Projektordner unter `/share/hauscheck/projects/<house_id>` entfernt.
 
 ## Exposé PDF
 
@@ -135,8 +112,6 @@ Heizung
 
 Adressen aus PDFs werden **nicht automatisch** übernommen, weil PDFs oft Makler- oder Büroanschriften enthalten. Mögliche Adressen werden nur als `pdf_address_hint` in der Feldherkunft gespeichert.
 
-Zusätzlich versucht HausCheck, Bilder aus dem PDF zu extrahieren und der Hausakte hinzuzufügen. Je nach PDF-Aufbau kann das vollständig, teilweise oder gar nicht funktionieren.
-
 ## Manueller Analyseworkflow ohne GitHub
 
 1. Hausakte öffnen.
@@ -144,15 +119,6 @@ Zusätzlich versucht HausCheck, Bilder aus dem PDF zu extrahieren und der Hausak
 3. ZIP in ChatGPT hochladen.
 4. ChatGPT soll anhand der enthaltenen `README_PROMPT.md` eine Datei `hauscheck_analysis.json` erzeugen.
 5. JSON-Datei in HausCheck bei **KI-Analyse importieren** hochladen.
-
-Der Workflow benötigt:
-
-```text
-kein OpenAI API-Key
-kein MCP
-keine Nabu-Casa-Verbindung
-keinen offenen Home-Assistant-Zugriff
-```
 
 ## Inhalt des Analysepakets
 
@@ -205,13 +171,7 @@ Mindeststruktur:
     "confidence": "niedrig",
     "comment": "Nur grobe Bild-/Inseratsschätzung."
   },
-  "address_hints": [
-    {
-      "hint": "möglicher Ortsteil / Lagehinweis",
-      "basis": "z. B. Text, Aussicht, Straßenhinweis, Bildmerkmal",
-      "confidence": "niedrig"
-    }
-  ],
+  "address_hints": [],
   "image_findings": [],
   "recommendation": "Besichtigung sinnvoll, Unterlagen prüfen.",
   "next_steps": [],
@@ -220,7 +180,7 @@ Mindeststruktur:
 }
 ```
 
-HausCheck prüft, ob die `house_id` zur geöffneten Hausakte passt. Bestehende Analysen werden vor dem Überschreiben gesichert.
+HausCheck prüft, ob die `house_id` zur Hausakte passt. Bestehende Analysen werden vor dem Überschreiben gesichert.
 
 ## Zentrale Suchprofile verwenden
 
@@ -229,9 +189,7 @@ HausCheck prüft, ob die `house_id` zur geöffneten Hausakte passt. Bestehende A
 3. Die Willhaben-URL kann leer bleiben.
 4. Profil öffnen und **Suchprofil jetzt starten** klicken.
 5. Kandidaten anhand Vorschaubild, Fakten und Score prüfen.
-6. Kandidaten einzeln importieren. Bilder werden beim Import automatisch geladen.
-
-Die Kandidatenansicht ist für Mobilgeräte optimiert: Bild, Titel, Fakten, Status, Score und Import-Schaltfläche stehen in einer Immobilien-Karte.
+6. Kandidaten einzeln importieren. Bilder werden beim Import automatisch geladen und danach wird das Analysepaket automatisch nach GitHub exportiert.
 
 ## Optionale API-/MCP-Bridge
 
@@ -239,17 +197,7 @@ Die frühere API-/MCP-Bridge bleibt im Code vorhanden, ist aber für den empfohl
 
 ## Regelbasierte Erstbewertung
 
-Der Score bewertet aktuell nur vorhandene Daten aus dem Inserat:
-
-```text
-Preis
-Wohnfläche
-Grundstück
-HWB
-Kandidatenstatus
-```
-
-Ergebnis:
+Der Score bewertet aktuell nur vorhandene Daten aus dem Inserat: Preis, Wohnfläche, Grundstück, HWB und Kandidatenstatus.
 
 ```text
 82-100  sehr interessant
@@ -283,8 +231,6 @@ Mehrere PLZ/areaIds können kommagetrennt eingetragen werden:
 ```text
 8551,8552,8544,8553
 ```
-
-Die Umkreissuche mit `lat`, `lon` und `sfId` ist noch nicht automatisiert. Dafür kann weiterhin eine manuelle Willhaben-URL als Vorlage eingetragen werden.
 
 ## Datenablage
 
