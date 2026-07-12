@@ -4,6 +4,7 @@ from app.main import app
 from app.analysis_package import register_analysis_package
 from app.chatgpt_api import register_chatgpt_api
 from app.github_auto_import import register_github_auto_import
+from app.github_b64_export import register_github_b64_export
 from app.github_exchange import register_github_exchange
 from app.gmail_exchange import register_gmail_exchange
 from app.house_manage import register_house_management
@@ -16,5 +17,6 @@ register_house_management(app)
 register_search_profile_patch(app)
 register_github_exchange(app)
 register_gmail_exchange(app)
+register_github_b64_export(app)
 register_import_patch(app)
 register_github_auto_import(app)
