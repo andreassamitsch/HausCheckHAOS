@@ -3,7 +3,6 @@ from __future__ import annotations
 import base64
 import io
 import json
-import math
 import os
 import re
 from datetime import datetime, timezone
@@ -60,6 +59,7 @@ def b64_options() -> dict[str, Any]:
         "image_max_size": _int_option(opt("github_b64_image_max_size", 1800), 1800, 400, 4096),
         "image_quality": _int_option(opt("github_b64_image_quality", 90), 90, 50, 98),
         "chunk_size": _int_option(opt("github_b64_chunk_size", 40000), 40000, 10000, 200000),
+        "line_length": _int_option(opt("github_b64_line_length", 4000), 4000, 500, 8000),
     }
 
 
@@ -82,6 +82,7 @@ def _image_bytes_for_b64(path: Path, max_size: int, quality: int) -> tuple[bytes
                 meta["export_width"] = image.width
                 meta["export_height"] = image.height
                 meta["export_format"] = "original_jpeg"
+                meta["export_size_bytes"] = len(original)
                 return original, meta
 
             image = image.convert("RGB")
@@ -96,11 +97,16 @@ def _image_bytes_for_b64(path: Path, max_size: int, quality: int) -> tuple[bytes
             return data, meta
     except UnidentifiedImageError:
         meta["export_format"] = "original_unknown_image"
+        meta["export_size_bytes"] = len(original)
         return original, meta
 
 
 def _chunks(text: str, size: int) -> list[str]:
     return [text[i:i + size] for i in range(0, len(text), size)] or [""]
+
+
+def _wrap_text(text: str, line_length: int) -> str:
+    return "\n".join(text[i:i + line_length] for i in range(0, len(text), line_length)) + "\n"
 
 
 def _prompt_text(house_id: str) -> str:
@@ -113,19 +119,21 @@ Dieses Verzeichnis testet einen binärfreien GitHub-Bildtransport.
 1. Lies `manifest.json`.
 2. Lies pro Bild alle in `chunks` gelisteten `part_*.txt` Dateien.
 3. Setze die Textteile exakt in Reihenfolge zusammen.
-4. Base64-decode den zusammengesetzten Text zu einer JPG-Datei.
-5. Öffne das rekonstruierte Bild und prüfe, ob echte visuelle Analyse möglich ist.
-6. Antworte zunächst nur mit einem kurzen Testergebnis: Bild decodierbar ja/nein, Bild sichtbar ja/nein, grobe Bildbeschreibung.
+4. Entferne alle Whitespaces/Zeilenumbrüche aus dem Base64-Text.
+5. Base64-decode den zusammengesetzten Text zu einer JPG-Datei.
+6. Öffne das rekonstruierte Bild und prüfe, ob echte visuelle Analyse möglich ist.
+7. Antworte zunächst nur mit einem kurzen Testergebnis: Bild decodierbar ja/nein, Bild sichtbar ja/nein, grobe Bildbeschreibung.
 
 ## Python-Beispiel
 
 ```python
-import base64, json
+import base64, json, re
 from pathlib import Path
 
 manifest = json.loads(Path('manifest.json').read_text())
 for image in manifest['images']:
-    b64 = ''.join(Path(part).read_text().strip() for part in image['chunks'])
+    raw = ''.join(Path(part).read_text() for part in image['chunks'])
+    b64 = ''.join(raw.split())
     Path(image['output_file']).write_bytes(base64.b64decode(b64))
 ```
 
@@ -159,7 +167,8 @@ async def export_base64_image_test(house_id: str) -> dict[str, Any]:
         chunk_paths: list[str] = []
         for part_index, part in enumerate(parts, start=1):
             part_path = f"{image_dir}/part_{part_index:03d}.txt"
-            await client.put_file(part_path, part.encode("ascii"), f"HausCheck b64 image {house_id} {index:02d}/{part_index:03d}")
+            wrapped = _wrap_text(part, int(opts["line_length"]))
+            await client.put_file(part_path, wrapped.encode("ascii"), f"HausCheck b64 image {house_id} {index:02d}/{part_index:03d}")
             chunk_paths.append(part_path)
 
         image_meta = {
@@ -171,6 +180,7 @@ async def export_base64_image_test(house_id: str) -> dict[str, Any]:
             "output_file": f"image_{index:02d}.jpg",
             "base64_chars": len(b64_text),
             "chunk_count": len(parts),
+            "line_length": int(opts["line_length"]),
             "chunks": chunk_paths,
             **meta,
         }
@@ -184,7 +194,7 @@ async def export_base64_image_test(house_id: str) -> dict[str, Any]:
 
     manifest = {
         "kind": "hauscheck_base64_image_test",
-        "version": 1,
+        "version": 2,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "house_id": house_id,
         "repo": settings.repo,
@@ -196,8 +206,8 @@ async def export_base64_image_test(house_id: str) -> dict[str, Any]:
         "evidence": [evidence_export(item) for item in list_evidence(house_id)],
         "import_schema": analysis_schema(house_id),
         "images": manifest_images,
-        "decode_instruction": "Concatenate chunks in listed order, base64-decode to output_file, then open as JPEG.",
-        "decode_python": "b64=''.join(Path(p).read_text().strip() for p in image['chunks']); Path(image['output_file']).write_bytes(base64.b64decode(b64))",
+        "decode_instruction": "Concatenate chunk files in listed order, remove whitespace/newlines, base64-decode to output_file, then open as JPEG.",
+        "decode_python": "raw=''.join(Path(p).read_text() for p in image['chunks']); b64=''.join(raw.split()); Path(image['output_file']).write_bytes(base64.b64decode(b64))",
     }
     await client.put_file(
         f"{base_dir}/manifest.json",
