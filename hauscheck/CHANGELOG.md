@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.12
+
+- Gmail AI Exchange ergänzt
+- Analysepakete können nach Inserat-Import automatisch per Gmail/SMTP versendet werden
+- fertige KI-Analysen können per Gmail/IMAP automatisch aus ungelesenen `HAUSCHECK_RESULT <house_id>`-Mails importiert werden
+- Rückgabe kann als JSON-Anhang oder als reiner JSON-Mailbody erfolgen
+- neue Add-on-Optionen für Gmail SMTP, IMAP, Benutzer, App-Passwort, Empfänger und Importintervall
+- bestehender GitHub Exchange bleibt als Fallback erhalten
+- ChatGPT-Automation wurde auf Gmail-Exchange umgestellt
+
 ## 0.5.11
 
 - automatischer GitHub-Rückimport für fertige KI-Analysen ergänzt
@@ -182,7 +192,7 @@
 - neue Seite `/search` für Willhaben-Suchergebnis-URLs
 - Willhaben-Suchseiten werden ausgelesen
 - echte Inserat-Direktlinks werden extrahiert
-- Kandidatenliste mit Status „neu“ oder „bereits importiert“
+- Kandidatenliste mit Status „neu“ oder „bereits importiert"
 - Kandidaten können einzeln direkt importiert werden
 - Suchseiten werden nicht als Objekte gespeichert
 
