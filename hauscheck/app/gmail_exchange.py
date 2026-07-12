@@ -3,9 +3,11 @@ from __future__ import annotations
 import asyncio
 import imaplib
 import json
+import mimetypes
 import os
 import re
 import smtplib
+import zipfile
 from dataclasses import dataclass
 from email import policy
 from email.headerregistry import Address
@@ -42,6 +44,10 @@ class GmailExchangeSettings:
     to: str = ""
     from_name: str = "HausCheck Pro"
     mark_results_seen: bool = True
+    inline_package: bool = True
+    attach_images: bool = True
+    image_limit: int = 8
+    send_zip_attachment: bool = False
 
     @property
     def send_ready(self) -> bool:
@@ -109,6 +115,10 @@ def load_gmail_settings() -> GmailExchangeSettings:
         to=to,
         from_name=str(env_or_option("gmail_from_name", "HausCheck Pro") or "HausCheck Pro").strip(),
         mark_results_seen=_truthy(env_or_option("gmail_mark_results_seen", True), True),
+        inline_package=_truthy(env_or_option("gmail_inline_package", True), True),
+        attach_images=_truthy(env_or_option("gmail_attach_images", True), True),
+        image_limit=_int_option(env_or_option("gmail_image_limit", 8), 8, 0, 20),
+        send_zip_attachment=_truthy(env_or_option("gmail_send_zip_attachment", False), False),
     )
 
 
@@ -175,25 +185,105 @@ def _extract_analysis_from_message(msg: EmailMessage) -> dict[str, Any] | None:
     return None
 
 
+def _zip_text(zf: zipfile.ZipFile, name: str, max_chars: int = 120_000) -> str:
+    try:
+        with zf.open(name) as handle:
+            text = handle.read().decode("utf-8", errors="replace")
+    except Exception:
+        return ""
+    if len(text) > max_chars:
+        return text[:max_chars] + "\n\n[GEKÜRZT]"
+    return text
+
+
+def _mail_package_body(house_id: str, zip_path: Path) -> str:
+    parts: list[str] = [
+        "HAUSCHECK_MAIL_PACKAGE_V2",
+        f"HOUSE_ID: {house_id}",
+        "",
+        "AUFGABE:",
+        "Analysiere dieses HausCheck-Paket anhand der unten eingefügten Daten.",
+        "Antworte mit einer neuen E-Mail mit exakt diesem Betreff:",
+        f"HAUSCHECK_RESULT {house_id}",
+        "",
+        "Antwortformat:",
+        "Nur reines JSON als Mailbody. Kein Markdown. Kein Codeblock. Kein zusätzlicher Text.",
+        "Die JSON-Struktur muss zur import_schema.json passen und house_id exakt übernehmen.",
+        "",
+        "BILDER:",
+        "Wenn Bildanhänge vorhanden und lesbar sind, beziehe sie in die Bewertung ein.",
+        "Wenn Bildanhänge nicht lesbar sind, analysiere nur die Text-/Inseratsdaten und nenne das in limitations.",
+        "",
+    ]
+    file_names = [
+        "README_PROMPT.md",
+        "listing.json",
+        "evidence.json",
+        "current_score.json",
+        "import_schema.json",
+        "image_manifest.json",
+        "original/source_urls.txt",
+    ]
+    try:
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            for name in file_names:
+                text = _zip_text(zf, name)
+                if not text:
+                    continue
+                parts.append(f"\n--- BEGIN {name} ---\n{text}\n--- END {name} ---\n")
+    except Exception as exc:
+        parts.append(f"\nWARNUNG: ZIP-Inhalt konnte nicht vollständig gelesen werden: {exc}\n")
+    return "\n".join(parts)
+
+
+def _image_entries(zip_path: Path, limit: int) -> list[tuple[str, bytes, str]]:
+    if limit <= 0:
+        return []
+    items: list[tuple[str, bytes, str]] = []
+    try:
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            names = [name for name in zf.namelist() if name.lower().startswith("images/") and not name.endswith("/")]
+            names.sort()
+            for idx, name in enumerate(names[:limit], start=1):
+                data = zf.read(name)
+                suffix = Path(name).suffix.lower() or ".jpg"
+                filename = f"hauscheck_image_{idx:02d}{suffix}"
+                content_type = mimetypes.guess_type(filename)[0] or "image/jpeg"
+                items.append((filename, data, content_type))
+    except Exception as exc:
+        print(f"HausCheck Gmail Bildanhänge konnten nicht vorbereitet werden: {exc}", flush=True)
+    return items
+
+
 def _build_export_mail(settings: GmailExchangeSettings, house_id: str, zip_path: Path) -> EmailMessage:
     msg = EmailMessage()
     msg["Subject"] = f"HAUSCHECK_EXPORT {house_id}"
     msg["From"] = Address(display_name=settings.from_name or "HausCheck Pro", addr_spec=settings.username)
     msg["To"] = settings.to
-    msg.set_content(
-        "HausCheck Analysepaket.\n\n"
-        f"house_id: {house_id}\n\n"
-        "Bitte die ZIP-Datei anhand der enthaltenen README_PROMPT.md analysieren.\n"
-        "Antwort bitte als neue E-Mail mit Betreff:\n\n"
-        f"HAUSCHECK_RESULT {house_id}\n\n"
-        "Die Datei `hauscheck_analysis.json` entweder als Anhang mitschicken oder als reinen JSON-Body senden.\n"
-    )
-    data = zip_path.read_bytes()
-    msg.add_attachment(data, maintype="application", subtype="zip", filename=zip_path.name)
+
+    if settings.inline_package:
+        msg.set_content(_mail_package_body(house_id, zip_path))
+    else:
+        msg.set_content(
+            "HausCheck Analysepaket.\n\n"
+            f"house_id: {house_id}\n\n"
+            "Bitte anhand der Anhänge analysieren.\n"
+            f"Antwort bitte mit Betreff: HAUSCHECK_RESULT {house_id}\n"
+            "Antwortbody bitte als reines JSON ohne Markdown.\n"
+        )
+
+    if settings.attach_images:
+        for filename, data, content_type in _image_entries(zip_path, settings.image_limit):
+            maintype, subtype = content_type.split("/", 1)
+            msg.add_attachment(data, maintype=maintype, subtype=subtype, filename=filename)
+
+    if settings.send_zip_attachment:
+        msg.add_attachment(zip_path.read_bytes(), maintype="application", subtype="zip", filename=zip_path.name)
+
     return msg
 
 
-def _send_zip_sync(settings: GmailExchangeSettings, house_id: str, zip_path: Path) -> None:
+def _send_mail_sync(settings: GmailExchangeSettings, house_id: str, zip_path: Path) -> None:
     msg = _build_export_mail(settings, house_id, zip_path)
     with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=90) as smtp:
         smtp.ehlo()
@@ -212,7 +302,7 @@ async def send_analysis_zip_via_gmail(house_id: str) -> bool:
         return False
     try:
         zip_path = create_analysis_zip(house_id)
-        await asyncio.to_thread(_send_zip_sync, settings, house_id, zip_path)
+        await asyncio.to_thread(_send_mail_sync, settings, house_id, zip_path)
         print(f"HausCheck Gmail Export OK: HAUSCHECK_EXPORT {house_id} an {settings.to}", flush=True)
         return True
     except Exception as exc:
@@ -221,7 +311,6 @@ async def send_analysis_zip_via_gmail(house_id: str) -> bool:
 
 
 def _imap_search_result_messages(imap: imaplib.IMAP4_SSL) -> list[bytes]:
-    # Gmail/IMAP Suche: zuerst ungelesene Result-Mails, als Fallback alle ungelesenen HAUSCHECK-Mails.
     queries = [
         '(UNSEEN SUBJECT "HAUSCHECK_RESULT")',
         '(UNSEEN SUBJECT "HAUSCHECK")',
@@ -257,7 +346,6 @@ def _import_results_sync(settings: GmailExchangeSettings) -> dict[str, Any]:
                 msg = BytesParser(policy=policy.default).parsebytes(raw)
                 subject = str(msg.get("Subject") or "")
                 if "HAUSCHECK_RESULT" not in subject.upper():
-                    # Exportmails oder sonstige HausCheck-Mails nicht als Ergebnis behandeln.
                     continue
                 subject_house_id = ""
                 match = _result_subject_re.search(subject)
