@@ -1,62 +1,68 @@
 # HausCheck Pro Add-on
 
-## Start
+## Aktueller Funktionsumfang v0.5.12
 
-Nach der Installation das Add-on starten und über den Home-Assistant-Ingress öffnen.
+- Direktlink-Import und Suchprofil-Import von Immobilieninseraten
+- automatischer Medien-Download
+- Hausakten-Dashboard mit Galerie, Score und Bearbeitung
+- ChatGPT-Analysepaket mit Bildern und strukturierter Rückgabe
+- Gmail AI Exchange als bevorzugter Austauschweg
+- GitHub AI Exchange bleibt als Fallback erhalten
+- automatischer Import fertiger KI-Analysen
 
-## Aktueller Funktionsumfang v0.5.10
-
-- Hausakten-Dashboard
-- Direktlink-Import
-- konservativer Willhaben-Parser
-- SQLite-Datenbank unter `/share/hauscheck/hauscheck.db`
-- lokale Medienablage unter `/share/hauscheck/projects/`
-- Bild-URL-Erkennung und automatischer Bilddownload beim Import
-- zentrale Suchprofile mit Kriterien und Willhaben-PLZ/areaIds
-- Kandidatenkarten mit Portal-/Willhaben-Vorschaubild
-- Hauskarten nutzen bevorzugt das Portal-/Willhaben-Vorschaubild
-- regelbasierte Erstbewertung / Score je Kandidat und Hausakte
-- GitHub AI Exchange für ZIP-Export und JSON-Rückimport
-- automatischer GitHub-AI-Export direkt nach Inserat-Import
-- manueller ChatGPT-Analyseworkflow per ZIP Export/JSON Import bleibt verfügbar
-- Hausakte manuell bearbeiten und vollständig löschen
-- Galerie/Slider oben in der Hausakte; unten alle Bilder einzeln
-- Exposé-PDF hochladen und Textdaten auslesen
-
-## GitHub AI Exchange
-
-Der GitHub AI Exchange ist der halbautomatische Austausch mit ChatGPT:
+## Empfohlener Workflow: Gmail AI Exchange
 
 ```text
 HausCheck
 → Inserat importieren
 → Bilder/PDFs laden
-→ Analysepaket automatisch nach GitHub exportieren
-→ ChatGPT Task analysiert ZIP stündlich
-→ ChatGPT schreibt hauscheck_analysis.json nach GitHub
-→ HausCheck importiert GitHub-Ergebnisse
+→ ZIP automatisch per Gmail senden
+
+ChatGPT Task
+→ liest stündlich Gmail-Mails mit Betreff HAUSCHECK_EXPORT <house_id>
+→ analysiert ZIP anhand README_PROMPT.md
+→ sendet Mail mit Betreff HAUSCHECK_RESULT <house_id>
+→ JSON steht direkt im Mailbody
+
+HausCheck
+→ prüft alle 5 Minuten Gmail per IMAP
+→ importiert fertige JSON-Analyse automatisch
 ```
 
-Standardpfade:
+## Gmail Add-on-Optionen
 
-```text
-ai_exchange/
-├── exports/
-│   └── pending/
-│       └── <house_id>.zip
-├── results/
-│   └── pending/
-│       └── <house_id>/hauscheck_analysis.json
-└── results/
-    └── done/
-        └── <house_id>/hauscheck_analysis_<datum>.json
+```yaml
+gmail_exchange_enabled: true
+gmail_auto_send_on_import: true
+gmail_auto_import_results: true
+gmail_import_interval_minutes: 5
+gmail_smtp_host: "smtp.gmail.com"
+gmail_smtp_port: 587
+gmail_imap_host: "imap.gmail.com"
+gmail_imap_port: 993
+gmail_username: "deineadresse@gmail.com"
+gmail_app_password: "DEIN_GOOGLE_APP_PASSWORT"
+gmail_to: "deineadresse@gmail.com"
+gmail_from_name: "HausCheck Pro"
+gmail_mark_results_seen: true
 ```
 
-### Add-on-Optionen
+Hinweise:
+
+- `gmail_username` ist deine Gmail-Adresse.
+- `gmail_to` kann dieselbe Adresse sein.
+- `gmail_app_password` ist nicht dein normales Google-Passwort, sondern ein Google-App-Passwort.
+- Export-Mails haben den Betreff `HAUSCHECK_EXPORT <house_id>`.
+- Ergebnis-Mails müssen den Betreff `HAUSCHECK_RESULT <house_id>` haben.
+- HausCheck akzeptiert `hauscheck_analysis.json` als Anhang oder reinen JSON-Text im Mailbody.
+
+## GitHub AI Exchange Fallback
 
 ```yaml
 github_exchange_enabled: true
 github_auto_export_on_import: true
+github_auto_import_results: true
+github_auto_import_interval_minutes: 5
 github_repo: "andreassamitsch/HausCheckAIExchange"
 github_branch: "main"
 github_token: "DEIN_GITHUB_TOKEN"
@@ -66,59 +72,7 @@ github_done_path: "ai_exchange/results/done"
 github_cleanup_after_import: true
 ```
 
-Der Token braucht Schreibrechte auf das Austausch-Repository. Am sichersten ist ein eigener Fine-Grained Token nur für `HausCheckAIExchange` mit Inhaltszugriff Lesen/Schreiben.
-
-### Ablauf automatisch
-
-1. Inserat aus Suchprofil oder Direktlink importieren.
-2. HausCheck erstellt die Hausakte und lädt Medien.
-3. Wenn `github_auto_export_on_import` aktiv ist, wird automatisch `<house_id>.zip` nach `ai_exchange/exports/pending/` geschrieben.
-4. Der stündliche ChatGPT Task prüft diesen Ordner.
-5. ChatGPT schreibt das Ergebnis nach `ai_exchange/results/pending/<house_id>/hauscheck_analysis.json`.
-6. In HausCheck **GitHub-Ergebnisse importieren** klicken.
-7. Bei aktivem Cleanup werden pending-JSON und Export-ZIP aus GitHub entfernt; das JSON wird nach `results/done` archiviert.
-
-Fehler beim automatischen GitHub-Export blockieren den Hausimport nicht. Details stehen im Add-on-Log.
-
-### Ablauf manuell
-
-In jeder Hausakte gibt es den Bereich **GitHub AI Exchange**.
-
-- **Analysepaket nach GitHub exportieren** erzeugt/überschreibt das ZIP im Austausch-Repo.
-- **GitHub-Ergebnisse importieren** liest alle fertigen `hauscheck_analysis.json` aus `results/pending` ein.
-
-## Hausakte bearbeiten und löschen
-
-Bearbeitbar sind Titel, Adresse/Lage, Adressstatus, Preis, Wohnfläche, Grundstück, Zimmer, Baujahr, HWB, fGEE, Heizung, Portal-Vorschaubild-URL und Notizen.
-
-Beim Löschen werden Hausakte, Quellen, Feldherkunft, Medien-Datenbankeinträge, KI-Analysen und der Projektordner unter `/share/hauscheck/projects/<house_id>` entfernt.
-
-## Exposé PDF
-
-PDFs können direkt in der Hausakte hochgeladen werden.
-
-HausCheck versucht daraus zu erkennen und zu aktualisieren:
-
-```text
-Preis
-Wohnfläche
-Grundstück
-Zimmer
-Baujahr
-HWB
-fGEE
-Heizung
-```
-
-Adressen aus PDFs werden **nicht automatisch** übernommen, weil PDFs oft Makler- oder Büroanschriften enthalten. Mögliche Adressen werden nur als `pdf_address_hint` in der Feldherkunft gespeichert.
-
-## Manueller Analyseworkflow ohne GitHub
-
-1. Hausakte öffnen.
-2. Im Bereich **ChatGPT-Analyse** auf **Analysepaket exportieren** klicken.
-3. ZIP in ChatGPT hochladen.
-4. ChatGPT soll anhand der enthaltenen `README_PROMPT.md` eine Datei `hauscheck_analysis.json` erzeugen.
-5. JSON-Datei in HausCheck bei **KI-Analyse importieren** hochladen.
+GitHub bleibt verfügbar, falls Gmail deaktiviert wird oder größere ZIPs anders transportiert werden sollen.
 
 ## Inhalt des Analysepakets
 
@@ -146,15 +100,15 @@ max. 1600 px Kantenlänge
 JPEG Qualität 84
 ```
 
-## Erwartete Rückgabedatei von ChatGPT
+## Erwartete Rückgabe von ChatGPT
 
-Name exakt:
+Betreff:
 
 ```text
-hauscheck_analysis.json
+HAUSCHECK_RESULT <house_id>
 ```
 
-Mindeststruktur:
+Mailbody als reines JSON, ohne Markdown:
 
 ```json
 {
@@ -180,57 +134,22 @@ Mindeststruktur:
 }
 ```
 
-HausCheck prüft, ob die `house_id` zur Hausakte passt. Bestehende Analysen werden vor dem Überschreiben gesichert.
+HausCheck prüft, ob die `house_id` zur lokalen Hausakte passt. Bestehende Analysen werden vor dem Überschreiben gesichert.
 
-## Zentrale Suchprofile verwenden
+## Exposé PDF
+
+PDFs können direkt in der Hausakte hochgeladen werden. HausCheck versucht daraus Preis, Wohnfläche, Grundstück, Zimmer, Baujahr, HWB, fGEE und Heizung zu erkennen.
+
+Adressen aus PDFs werden **nicht automatisch** übernommen, weil PDFs oft Makler- oder Büroanschriften enthalten. Mögliche Adressen werden nur als `pdf_address_hint` in der Feldherkunft gespeichert.
+
+## Zentrale Suchprofile
 
 1. In HausCheck auf **Suchprofile** klicken.
 2. Name, zentrale Kriterien und Willhaben-PLZ/areaIds speichern.
 3. Die Willhaben-URL kann leer bleiben.
 4. Profil öffnen und **Suchprofil jetzt starten** klicken.
-5. Kandidaten anhand Vorschaubild, Fakten und Score prüfen.
-6. Kandidaten einzeln importieren. Bilder werden beim Import automatisch geladen und danach wird das Analysepaket automatisch nach GitHub exportiert.
-
-## Optionale API-/MCP-Bridge
-
-Die frühere API-/MCP-Bridge bleibt im Code vorhanden, ist aber für den empfohlenen Workflow nicht nötig. Solange in den Add-on-Optionen kein `api_token` gesetzt ist, bleibt diese Bridge deaktiviert.
-
-## Regelbasierte Erstbewertung
-
-Der Score bewertet aktuell nur vorhandene Daten aus dem Inserat: Preis, Wohnfläche, Grundstück, HWB und Kandidatenstatus.
-
-```text
-82-100  sehr interessant
-68-81   interessant
-50-67   prüfen
-0-49    kritisch
-```
-
-Wichtig: Der Score ist noch keine Marktwertschätzung. Fehlende Werte werden nicht erfunden.
-
-## Automatische Willhaben-Quelle
-
-Wenn keine Willhaben-URL eingetragen wird, erzeugt HausCheck pro PLZ/areaId eine Willhaben-Suche nach diesem Muster:
-
-```text
-https://www.willhaben.at/iad/immobilien/haus-kaufen/haus-angebote
-?areaId=<PLZ oder areaId>
-&page=1
-&PRICE_TO=<harte Preisgrenze>
-&ESTATE_SIZE/LIVING_AREA_FROM=<Mindestwohnfläche>
-```
-
-Beispiel Wies:
-
-```text
-areaId=8551
-```
-
-Mehrere PLZ/areaIds können kommagetrennt eingetragen werden:
-
-```text
-8551,8552,8544,8553
-```
+5. Kandidaten prüfen und einzeln importieren.
+6. Nach dem Import startet Gmail/GitHub Exchange automatisch, wenn konfiguriert.
 
 ## Datenablage
 
