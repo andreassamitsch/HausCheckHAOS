@@ -166,6 +166,9 @@ def github_exchange_card_html(house_id: str) -> str:
         <form method="post" action="{esc(house_id)}/github-export" data-loading="Analysepaket wird nach GitHub exportiert …" style="display:inline">
           <button type="submit">Analysepaket nach GitHub exportieren</button>
         </form>
+        <form method="post" action="{esc(house_id)}/github-base64-test-export" data-loading="Base64-Bildtest wird nach GitHub exportiert …" style="display:inline">
+          <button class="secondary" type="submit">Base64-Bildtest exportieren</button>
+        </form>
         <form method="post" action="{esc(house_id)}/github-import-results" data-loading="GitHub-Ergebnisse werden importiert …" style="display:inline">
           <button class="secondary" type="submit">GitHub-Ergebnisse importieren</button>
         </form>
