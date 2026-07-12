@@ -6,6 +6,7 @@ from fastapi import FastAPI, Form, HTTPException
 from fastapi.responses import RedirectResponse
 
 from app.github_auto_export import auto_export_house_to_github
+from app.gmail_exchange import send_analysis_zip_via_gmail
 from app.house_manage import set_house_preview
 from app.main import download_pending_media_files, fetch_html, parse_listing
 from app.storage import add_evidence, add_media, create_house, create_source, mark_candidates_imported, project_dir
@@ -69,4 +70,5 @@ def register_import_patch(app: FastAPI) -> None:
 
         await download_pending_media_files(house["id"])
         await auto_export_house_to_github(str(house["id"]))
+        await send_analysis_zip_via_gmail(str(house["id"]))
         return RedirectResponse(f"houses/{house['id']}", status_code=303)
