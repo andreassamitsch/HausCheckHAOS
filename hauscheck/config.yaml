@@ -1,5 +1,5 @@
 name: "HausCheck Pro"
-version: "0.5.12"
+version: "0.5.13"
 slug: "hauscheck"
 description: "Persönlicher Immobilien-Assistent für Home Assistant"
 url: "https://github.com/andreassamitsch/HausCheckHAOS"
@@ -48,6 +48,10 @@ options:
   gmail_to: ""
   gmail_from_name: "HausCheck Pro"
   gmail_mark_results_seen: true
+  gmail_inline_package: true
+  gmail_attach_images: true
+  gmail_image_limit: 8
+  gmail_send_zip_attachment: false
 schema:
   log_level: list(trace|debug|info|notice|warning|error|fatal)
   data_dir: str
@@ -76,3 +80,7 @@ schema:
   gmail_to: str
   gmail_from_name: str
   gmail_mark_results_seen: bool
+  gmail_inline_package: bool
+  gmail_attach_images: bool
+  gmail_image_limit: int
+  gmail_send_zip_attachment: bool
