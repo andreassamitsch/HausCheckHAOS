@@ -65,7 +65,7 @@ register_search_lifecycle_ui(app)
 register_house_merge(app)
 # Finale UI-Schicht: moderne Navigation, sichtbare Aktionen, dedizierte Merge-/Titelbild-Seiten.
 register_modern_ui(app)
-register_modern_ui_fix(app)
-# Muss wirklich zuletzt laufen: repariert relative Links unter Home-Assistant-Ingress
-# und ergänzt das Aktualisieren der aktuell sichtbaren Seite.
+# Die Ingress-Auflösung wird vor den letzten Kompatibilitätsrouten registriert,
+# damit auch deren Seiten Layout, Links und den echten Seiten-Reload erhalten.
 register_ingress_link_fix(app)
+register_modern_ui_fix(app)
