@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.12.0
+
+- Oberfläche konsequent mobile-first und für schmale Smartphone-Displays neu aufgebaut
+- Karten, Aktionsleisten, Formulare, Fakten und Navigation passen sich stufenweise an Tablet und Desktop an
+- Kopfbereich einer Hausakte zeigt im Bild nur Ort, Preis, Wohnfläche, Grundstück und HWB
+- langer Inseratstitel steht getrennt und gut lesbar unter dem Titelbild
+- Antippen des Titelbilds öffnet eine In-App-Galerie statt einen direkten Medienlink
+- neue Lightbox mit Vor/Zurück, Schließen, Mausrad-Zoom, Schaltflächen-Zoom und Zwei-Finger-Zoom
+- dadurch keine Navigation mehr auf den unter Home-Assistant-Ingress problematischen direkten Bildlink
+- Bilderbereich der Hausakte ist auf Smartphones zweispaltig
+- beim Import hat das von Willhaben gelieferte Titelbild Vorrang, solange kein Bild manuell gewählt wurde
+- manuell ausgewähltes Titelbild überschreibt weiterhin die automatische Auswahl
+- kompakte, standardmäßig eingeklappte Sortier- und Filterfunktion für Importzeitpunkt, Bewertung, Ort, Preis, HWB, Wohnfläche und Grundstück ergänzt
+- nicht importierte Suchkandidaten werden auf der Hauptseite nur noch als dezenter Link mit Zähler angezeigt
+- Ablehnen-Symbol in Hauskarten rötlich gestaltet und auf dieselbe Höhe wie „Hausakte öffnen“ gebracht
+- sichtbare Aktionen für Aktualisieren, Zusammenlegen, Titelbild und Bearbeiten bleiben in der mobilen Hausakte erreichbar
+- eigener automatischer Mobil-UI-Test für Filter, Titelbildpriorität, Lightbox, Galerie und manuelle Bildauswahl ergänzt
+- Add-on-Version auf 0.12.0 erhöht
+
 ## 0.11.1
 
 - interne Links, Formulare und Medienpfade für Home-Assistant-Ingress korrigiert
