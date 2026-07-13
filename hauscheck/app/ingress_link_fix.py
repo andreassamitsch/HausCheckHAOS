@@ -135,7 +135,10 @@ def _decorate_response(response: HTMLResponse) -> HTMLResponse:
     html = _inject_refresh_button(html)
     html = _rename_source_refresh(html)
     html = html.replace("</body>", INGRESS_LINK_SCRIPT + "</body>", 1)
-    return HTMLResponse(content=html, status_code=response.status_code, headers=dict(response.headers))
+    # Die ursprüngliche Content-Length passt nach der HTML-Erweiterung nicht mehr.
+    # HTMLResponse berechnet sie deshalb anhand des neuen Inhalts erneut.
+    headers = {key: value for key, value in response.headers.items() if key.lower() != "content-length"}
+    return HTMLResponse(content=html, status_code=response.status_code, headers=headers)
 
 
 def register_ingress_link_fix(app: FastAPI) -> None:
