@@ -1,8 +1,10 @@
 # HausCheck Pro Add-on
 
-## Aktueller Funktionsumfang v0.9.0
+## Aktueller Funktionsumfang v0.10.0
 
 - fokussierte Startseite mit aktiven Hausakten
+- zwei Makler-Inserate desselben Objekts zu einer Hausakte zusammenführen
+- frei wählbares Galeriebild als Vorschaubild
 - Willhaben-Suche direkt über die Lupe
 - Suchprofile unter **Einstellungen → Suchprofile**
 - neues Suchprofil oben über den Plus-Button
@@ -13,6 +15,48 @@
 - KI-Gesamtbewertung mit Kaufpreis- und Investitionsempfehlung
 - Ablehnungsarchiv für Hausakten und Kandidaten
 - lokale Zeitanzeige im Format `TT.MM.JJJJ HH:MM`
+
+## Zwei Hausakten zusammenführen
+
+Die Funktion befindet sich in der geöffneten Hausakte unter:
+
+```text
+Hausakte bearbeiten
+→ Zwei Hausakten zusammenlegen
+```
+
+Die aktuell geöffnete Hausakte bleibt die Hauptakte. Die ausgewählte zweite Hausakte wird eingegliedert und danach aus der Übersicht entfernt.
+
+Übernommen werden:
+
+- alle Inseratsquellen und Maklerbeschreibungen,
+- Feldnachweise und Parserhinweise,
+- Bilder, PDFs und andere Medien,
+- Kandidatenzuordnungen und Preisverläufe,
+- fehlende Stammdaten der Hauptakte,
+- frühere KI-Analysen als archivierte Dateien.
+
+Bereits vorhandene Werte der Hauptakte werden nicht durch abweichende Werte der zweiten Hausakte überschrieben. Dadurch bleibt beispielsweise der bewusst gewählte Hauptpreis erhalten. Abweichende Maklerangaben bleiben über Quellen und Feldnachweise nachvollziehbar.
+
+Doppelte Medien werden anhand Datei-Hash oder Original-URL entfernt. Nach dem Zusammenführen erzeugt HausCheck automatisch ein neues Analysepaket. Die Bildauswahl wird dabei auf die verschiedenen Maklerquellen verteilt, damit die KI nicht nur Bilder eines Inserats erhält.
+
+Zusammenführungen werden in der Hausakte mit Zeitpunkt, ehemaligem Titel, übernommenen Quellen, Medien und entfernten Duplikaten protokolliert.
+
+## Galeriebild als Vorschaubild
+
+Unter **Bilder** besitzt jedes geladene Bild die Aktion:
+
+```text
+Als Vorschaubild
+```
+
+Das gewählte Bild:
+
+- erscheint in der Hausaktenübersicht,
+- wird in der großen Galerie zuerst angezeigt,
+- wird bei der nächsten KI-Analyse bevorzugt berücksichtigt.
+
+Über **Automatische Bildauswahl verwenden** kann die feste Auswahl wieder aufgehoben werden.
 
 ## Bedienung der Startseite
 
@@ -38,18 +82,11 @@ Einstellungen
 
 Oben rechts legt **＋** ein neues Suchprofil an. Jedes bestehende Profil hat eine eigene Löschaktion.
 
-Beim Löschen eines Suchprofils werden gelöscht:
-
-- das Profil,
-- seine Kandidaten,
-- deren Preisverlauf,
-- deren Änderungsereignisse.
-
-Bereits angelegte Hausakten bleiben erhalten.
+Beim Löschen eines Suchprofils werden das Profil, seine Kandidaten, deren Preisverlauf und Änderungsereignisse entfernt. Bereits angelegte Hausakten bleiben erhalten.
 
 ## Kandidaten-Lifecycle
 
-HausCheck unterscheidet jetzt:
+HausCheck unterscheidet:
 
 ```text
 new          neu gefunden
@@ -61,28 +98,17 @@ imported     als Hausakte angelegt
 rejected     abgelehnt
 ```
 
-Ein Suchlauf mit null Treffern setzt keine Inserate auf offline, weil dies auch eine vorübergehende Portalstörung sein kann. Erst zwei erfolgreiche Suchläufe ohne erneuten Fund markieren einen Kandidaten als offline.
-
-Wird ein Offline-Inserat wieder gefunden, erscheint es als **wieder online**.
+Ein Suchlauf mit null Treffern setzt keine Inserate auf offline. Erst zwei erfolgreiche Suchläufe ohne erneuten Fund markieren einen Kandidaten als offline. Wird das Inserat später wieder gefunden, erscheint es als **wieder online**.
 
 ## Preisverlauf und Änderungen
 
-Je Kandidat werden Preisbeobachtungen und relevante Änderungen gespeichert. Überwacht werden:
+Je Kandidat werden Preisbeobachtungen und relevante Änderungen gespeichert. Überwacht werden Preis, Titel, Wohnfläche, Grundstücksfläche, HWB und Vorschaubild.
 
-- Preis,
-- Titel,
-- Wohnfläche,
-- Grundstücksfläche,
-- HWB,
-- Vorschaubild.
-
-Preisänderungen werden beispielsweise so angezeigt:
+Beispiel:
 
 ```text
 389.000 € → 359.000 € (-7,7 %)
 ```
-
-Zusätzlich sind Datum, frühere Preise und Änderungsereignisse in der Kandidatenkarte einsehbar.
 
 Hat ein bereits importiertes Objekt relevante Änderungen, zeigt die Hauskarte **Neue Analyse empfohlen**. Nach einem erfolgreichen neuen Analyseimport wird dieser Hinweis automatisch zurückgesetzt.
 
@@ -144,13 +170,7 @@ HausCheck aktualisiert die Kandidatenliste zeitgesteuert. Eine Hausakte wird ers
 
 ### Automatisch suchen und importieren
 
-HausCheck importiert Kandidaten mit Status `new`, `changed` oder `reactivated`, sofern:
-
-- noch keine Hausakte vorhanden ist,
-- der konfigurierte Mindestscore erreicht wird,
-- der Kandidat nicht abgelehnt oder offline ist.
-
-Die Anzahl automatischer Importe je Suchlauf ist begrenzt.
+HausCheck importiert Kandidaten mit Status `new`, `changed` oder `reactivated`, sofern noch keine Hausakte vorhanden ist, der Mindestscore erreicht wird und der Kandidat nicht abgelehnt oder offline ist.
 
 ## Empfohlenes Suchprofil
 
@@ -178,8 +198,6 @@ display_timezone: "Europe/Vienna"
 search_automation_enabled: true
 search_scheduler_poll_seconds: 60
 ```
-
-`search_scheduler_poll_seconds` ist nur das interne Prüfintervall. Der tatsächliche Suchabstand wird pro Suchprofil eingestellt und beträgt mindestens 15 Minuten.
 
 ## GitHub AI Exchange
 
@@ -222,7 +240,8 @@ Fehler und technische Ereignisse befinden sich unter **Diagnose und technische D
         ├── pdfs/
         ├── exports/
         └── analysis/
-            └── hauscheck_analysis.json
+            ├── hauscheck_analysis.json
+            └── merged_from_<alte_house_id>_hauscheck_analysis.json
 ```
 
 ## Hinweise
