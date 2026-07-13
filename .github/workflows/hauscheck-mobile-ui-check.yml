@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "hauscheck/app/mobile_first_ui.py"
+      - "hauscheck/app/mobile_interaction_fix.py"
       - "hauscheck/app/bootstrap.py"
       - ".github/workflows/hauscheck-mobile-ui-check.yml"
   workflow_dispatch:
@@ -88,6 +89,9 @@ jobs:
               dashboard = client.get("/")
               assert dashboard.status_code == 200
               assert "Sortieren &amp; filtern" in dashboard.text or "Sortieren & filtern" in dashboard.text
+              assert "hc-mobile-interaction-fix-v1" in dashboard.text
+              assert ".filter-panel:not([open])" in dashboard.text
+              assert ".filter-summary svg" in dashboard.text
               assert "reject-button" in dashboard.text
               assert "house-card-actions" in dashboard.text
               assert "Importiert:" in dashboard.text
@@ -95,7 +99,7 @@ jobs:
               filtered = client.get("/?sort=price_asc&max_price=400000&max_hwb=150")
               assert filtered.status_code == 200
               assert "1 von 1 Hausakten angezeigt" in filtered.text
-              print("dashboard_filter_sort_mobile_actions=ok")
+              print("dashboard_compact_filter_sort_mobile_actions=ok")
 
               detail = client.get(f"/houses/{house_id}")
               assert detail.status_code == 200
@@ -104,13 +108,18 @@ jobs:
               assert "Mobiles Testhaus mit langem Inseratstitel" in detail.text
               assert detail.text.index("object-hero-meta") < detail.text.index("object-heading")
               assert "hc-lightbox" in detail.text
+              assert "hc-lightbox-swipe-v1" in detail.text
+              assert "stage.dataset.swipeReady" in detail.text
+              assert "next.click()" in detail.text
+              assert "previous.click()" in detail.text
+              assert "currentScale() > 1.02" in detail.text
               assert "gallery-mobile" in detail.text
               assert detail.text.count("gallery-item js-lightbox") == 2
               assert '<a class="gallery-item' not in detail.text
               assert f"{house_id}/refresh" in detail.text
               assert f"{house_id}/merge" in detail.text
               assert f"{house_id}/cover" in detail.text
-              print("house_header_lightbox_two_column_gallery=ok")
+              print("house_header_lightbox_touch_swipe_two_column_gallery=ok")
 
               set_preview_media(house_id, str(other["id"]))
               detail_manual = client.get(f"/houses/{house_id}")
