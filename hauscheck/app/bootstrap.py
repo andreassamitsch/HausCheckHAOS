@@ -13,6 +13,8 @@ from app.pipeline_integration import register_pipeline_integration
 from app.pipeline_status import ensure_pipeline_schema
 from app.product_ui import register_product_ui
 from app.product_ui_fix import register_product_ui_fix
+from app.search_automation import register_search_automation
+from app.search_automation_ui import register_search_automation_ui
 from app.search_ui_patch import register_search_profile_patch
 from app.storage import init_storage
 
@@ -30,6 +32,9 @@ register_gmail_exchange(app)
 register_github_b64_export(app)
 register_import_patch(app)
 register_github_auto_import(app)
+register_search_automation(app)
 # Muss zuletzt registriert werden: ersetzt die technischen Zwischen-UIs durch die Produktansicht.
 register_product_ui(app)
 register_product_ui_fix(app)
+# Automatik-Einstellungen ersetzen abschließend die vorbereitende Suchprofil-UI aus v0.6.0.
+register_search_automation_ui(app)
