@@ -107,9 +107,9 @@ jobs:
               assert "gallery-mobile" in detail.text
               assert detail.text.count("gallery-item js-lightbox") == 2
               assert '<a class="gallery-item' not in detail.text
-              assert "Aktualisieren" in detail.text
-              assert "Zusammenlegen" in detail.text
-              assert "Titelbild" in detail.text
+              assert f"{house_id}/refresh" in detail.text
+              assert f"{house_id}/merge" in detail.text
+              assert f"{house_id}/cover" in detail.text
               print("house_header_lightbox_two_column_gallery=ok")
 
               set_preview_media(house_id, str(other["id"]))
