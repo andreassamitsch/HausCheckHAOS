@@ -172,8 +172,8 @@ jobs:
 
               detail = client.get(f"/houses/{main_id}")
               assert detail.status_code == 200
-              for label in ["Aktualisieren", "Zwei Hausakten zusammenlegen", "Vorschaubild", "Bearbeiten"]:
-                  assert label in detail.text, label
+              for action in [f"{main_id}/refresh", f"{main_id}/merge", f"{main_id}/cover", f"{main_id}/edit"]:
+                  assert action in detail.text, action
               assert "Zuletzt aktualisiert" in detail.text
               assert "hc-lightbox-pan-v1" in detail.text
               print("modern_house_detail_pan_zoom=ok")
