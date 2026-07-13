@@ -1,8 +1,8 @@
 {
-  "created_at": "2026-07-13T20:37:54.567706+00:00",
-  "commit": "3649b3606876ade48732230afcae9ca5e0f179c5",
-  "run_id": 29283136837,
-  "status": "failed",
-  "audit_code": 1,
-  "log_tail": "HausCheck Gmail Exchange gestartet\nHausCheck GitHub Auto-Import gestartet\nHausCheck Such-Scheduler gestartet\nTraceback (most recent call last):\n  File \"<stdin>\", line 121, in <module>\nAssertionError\n"
+  "created_at": "2026-07-13T20:39:16.195788+00:00",
+  "commit": "2bc30f30611da4c2f37f8a0c442a073fcf6b4198",
+  "run_id": 29283229153,
+  "status": "success",
+  "audit_code": 0,
+  "log_tail": "HausCheck Gmail Exchange gestartet\nHausCheck GitHub Auto-Import gestartet\nHausCheck Such-Scheduler gestartet\nlink_audit=ok checked=105\n"
 }
