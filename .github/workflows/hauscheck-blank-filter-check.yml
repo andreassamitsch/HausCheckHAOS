@@ -58,7 +58,7 @@ jobs:
           cat /tmp/hauscheck-filter-check.log
           exit "$CODE"
 
-      - name: Publish result
+      - name: Publish result and release 0.12.1
         if: always()
         shell: bash
         env:
@@ -85,9 +85,29 @@ jobs:
           Path('ci/latest_blank_filter_check.json').write_text(
               json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8'
           )
+
+          config = Path('hauscheck/config.yaml')
+          config_text = config.read_text(encoding='utf-8')
+          config_text = config_text.replace('version: "0.12.0"', 'version: "0.12.1"', 1)
+          config.write_text(config_text, encoding='utf-8')
+
+          changelog = Path('hauscheck/CHANGELOG.md')
+          changelog_text = changelog.read_text(encoding='utf-8')
+          entry = '''## 0.12.1
+
+- leere optionale Zahlenfelder in „Sortieren & filtern“ werden als nicht gesetzte Filter behandelt
+- Fehler 422 bei leerer Mindestbewertung, leerem Maximalpreis oder leerem maximalen HWB behoben
+- ausgefüllte Zahlenfilter funktionieren unverändert
+- automatischer Test für leere und ausgefüllte Filterparameter ergänzt
+- Add-on-Version auf 0.12.1 erhöht
+
+'''
+          if '## 0.12.1' not in changelog_text:
+              changelog_text = changelog_text.replace('# Changelog\n\n', '# Changelog\n\n' + entry, 1)
+              changelog.write_text(changelog_text, encoding='utf-8')
           PY
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add ci/latest_blank_filter_check.json
-          git commit -m "Update HausCheck blank filter check [skip ci]" || true
+          git add ci/latest_blank_filter_check.json hauscheck/config.yaml hauscheck/CHANGELOG.md
+          git commit -m "Release HausCheck 0.12.1 blank filter fix [skip ci]" || true
           git push || true
