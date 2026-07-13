@@ -1,12 +1,14 @@
 # HausCheck Pro Add-on
 
-## Aktueller Funktionsumfang v0.8.0
+## Aktueller Funktionsumfang v0.9.0
 
 - fokussierte Startseite mit aktiven Hausakten
 - Willhaben-Suche direkt über die Lupe
 - Suchprofile unter **Einstellungen → Suchprofile**
+- neues Suchprofil oben über den Plus-Button
+- Suchprofile inklusive Kandidaten- und Preisverlauf löschbar
 - zeitgesteuerte oder vollautomatische Willhaben-Suche
-- automatische Kandidatenprüfung und optionaler Vollimport
+- Preisverlauf, Änderungsstatus sowie Offline-/Wieder-online-Erkennung
 - automatischer Medien-Download und GitHub-Analyseworkflow
 - KI-Gesamtbewertung mit Kaufpreis- und Investitionsempfehlung
 - Ablehnungsarchiv für Hausakten und Kandidaten
@@ -23,14 +25,66 @@ Die Startseite zeigt nur aktive Hausakten. Oben stehen vier kompakte Aktionen:
 ⚙️  Einstellungen öffnen
 ```
 
-Jede Hausakte kann direkt über das Mülleimer-Symbol abgelehnt werden. Dabei wird sie nicht sofort gelöscht, sondern aus der Hauptübersicht ausgeblendet und in das Ablehnungsarchiv verschoben.
+Jede Hausakte kann direkt über das Mülleimer-Symbol abgelehnt werden. Sie verschwindet aus der Hauptübersicht und bleibt im Ablehnungsarchiv erhalten. Dort kann sie wiederhergestellt oder endgültig inklusive Projektdateien gelöscht werden.
 
-Im Ablehnungsarchiv kann ein Objekt:
+## Suchprofile verwalten
 
-- wiederhergestellt oder
-- endgültig inklusive Projektdateien gelöscht werden.
+Pfad:
 
-Abgelehnte Kandidaten bleiben auch bei späteren Suchläufen abgelehnt.
+```text
+Einstellungen
+→ Suchprofile
+```
+
+Oben rechts legt **＋** ein neues Suchprofil an. Jedes bestehende Profil hat eine eigene Löschaktion.
+
+Beim Löschen eines Suchprofils werden gelöscht:
+
+- das Profil,
+- seine Kandidaten,
+- deren Preisverlauf,
+- deren Änderungsereignisse.
+
+Bereits angelegte Hausakten bleiben erhalten.
+
+## Kandidaten-Lifecycle
+
+HausCheck unterscheidet jetzt:
+
+```text
+new          neu gefunden
+review       manuell prüfen
+changed      relevante Daten geändert
+reactivated  nach Offline-Status wieder online
+offline      in zwei erfolgreichen Suchläufen nicht mehr gefunden
+imported     als Hausakte angelegt
+rejected     abgelehnt
+```
+
+Ein Suchlauf mit null Treffern setzt keine Inserate auf offline, weil dies auch eine vorübergehende Portalstörung sein kann. Erst zwei erfolgreiche Suchläufe ohne erneuten Fund markieren einen Kandidaten als offline.
+
+Wird ein Offline-Inserat wieder gefunden, erscheint es als **wieder online**.
+
+## Preisverlauf und Änderungen
+
+Je Kandidat werden Preisbeobachtungen und relevante Änderungen gespeichert. Überwacht werden:
+
+- Preis,
+- Titel,
+- Wohnfläche,
+- Grundstücksfläche,
+- HWB,
+- Vorschaubild.
+
+Preisänderungen werden beispielsweise so angezeigt:
+
+```text
+389.000 € → 359.000 € (-7,7 %)
+```
+
+Zusätzlich sind Datum, frühere Preise und Änderungsereignisse in der Kandidatenkarte einsehbar.
+
+Hat ein bereits importiertes Objekt relevante Änderungen, zeigt die Hauskarte **Neue Analyse empfohlen**. Nach einem erfolgreichen neuen Analyseimport wird dieser Hinweis automatisch zurückgesetzt.
 
 ## HWB- und Dezimalwerte
 
@@ -41,13 +95,14 @@ Für HWB und fGEE gelten Punkt und Komma als Dezimaltrennzeichen:
 306,1  → 306,1
 ```
 
-HausCheck priorisiert Energiekennzahlen aus strukturierten Tabellen, Definitionslisten und Wertelisten. Erst wenn dort kein Wert gefunden wird, wird der allgemeine Seitentext verwendet. Dadurch überschreibt eine unklare Nebenfundstelle keinen eindeutig angegebenen Listenwert mehr.
+HausCheck priorisiert Energiekennzahlen aus Tabellen, Definitionslisten und Wertelisten. Erst wenn dort kein Wert gefunden wird, wird der allgemeine Seitentext verwendet.
 
 ## Produktiver Ablauf
 
 ```text
 Willhaben-Suche
 → Kandidat speichern und filtern
+→ Preis- und Änderungsverlauf aktualisieren
 → optional Hausakte automatisch anlegen
 → Bilder und PDFs laden
 → Analyse-ZIP nach GitHub exportieren
@@ -81,7 +136,7 @@ Die Kaufpreiseinschätzung ist kein Verkehrswertgutachten. Fehlende oder nicht s
 
 ### Nur manuell
 
-Das Suchprofil läuft nur über die Lupe beziehungsweise **Jetzt ausführen**.
+Das Suchprofil läuft nur über die Lupe.
 
 ### Automatisch suchen, manuell importieren
 
@@ -89,11 +144,11 @@ HausCheck aktualisiert die Kandidatenliste zeitgesteuert. Eine Hausakte wird ers
 
 ### Automatisch suchen und importieren
 
-HausCheck importiert nur Kandidaten, die:
+HausCheck importiert Kandidaten mit Status `new`, `changed` oder `reactivated`, sofern:
 
-- den Status `new` haben,
-- noch nicht als Hausakte vorhanden sind,
-- mindestens den konfigurierten Auto-Import-Score erreichen.
+- noch keine Hausakte vorhanden ist,
+- der konfigurierte Mindestscore erreicht wird,
+- der Kandidat nicht abgelehnt oder offline ist.
 
 Die Anzahl automatischer Importe je Suchlauf ist begrenzt.
 
@@ -140,23 +195,6 @@ github_export_path: "ai_exchange/exports/pending"
 github_result_path: "ai_exchange/results/pending"
 github_done_path: "ai_exchange/results/done"
 github_cleanup_after_import: true
-```
-
-## Inhalt des Analysepakets
-
-```text
-hauscheck_export_<house_id>_<titel>.zip
-├── README_PROMPT.md
-├── listing.json
-├── evidence.json
-├── current_score.json
-├── import_schema.json
-├── image_manifest.json
-├── images/
-│   ├── 01.jpg
-│   └── ...
-└── original/
-    └── source_urls.txt
 ```
 
 ## Pipeline-Status
