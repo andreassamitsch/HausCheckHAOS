@@ -1,4 +1,5 @@
 name: HausCheck Mobile UI Check
+# Validiert Live-Filter, Swipe, Zoom und verschiebbaren Bildausschnitt.
 
 on:
   push:
