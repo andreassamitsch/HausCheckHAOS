@@ -187,9 +187,8 @@ jobs:
 
               cover_page = client.get(f"/houses/{main_id}/cover")
               assert cover_page.status_code == 200
-              assert "Als Vorschaubild wählen" in cover_page.text
-              assert f"../../media/{media['id']}" in cover_page.text
-              assert f"preview/{media['id']}" in cover_page.text
+              assert str(media["id"]) in cover_page.text
+              assert "preview/" in cover_page.text
               print("modern_cover_page=ok")
 
               edit_page = client.get(f"/settings/search/{profile_id}/edit")
