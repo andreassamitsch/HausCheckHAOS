@@ -63,5 +63,6 @@ register_search_lifecycle_ui(app)
 # Zwei Makler-Inserate zusammenführen und Galeriebild als Vorschau wählen.
 register_house_merge(app)
 # Finale UI-Schicht: moderne Navigation, sichtbare Aktionen, dedizierte Merge-/Titelbild-Seiten und Aktualisieren.
+# Diese Registrierung bleibt bewusst zuletzt, damit alle älteren Zwischenansichten ersetzt werden.
 register_modern_ui(app)
 register_modern_ui_fix(app)
