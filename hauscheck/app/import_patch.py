@@ -9,7 +9,8 @@ from app.github_auto_export import auto_export_house_to_github
 from app.gmail_exchange import send_analysis_zip_via_gmail
 from app.house_manage import set_house_preview
 from app.main import download_pending_media_files, fetch_html, parse_listing
-from app.storage import add_evidence, add_media, create_house, create_source, mark_candidates_imported, project_dir
+from app.pipeline_status import set_pipeline_stage
+from app.storage import add_evidence, add_media, create_house, create_source, list_media, mark_candidates_imported, project_dir
 
 
 def _methods(route: Any) -> set[str]:
@@ -17,7 +18,7 @@ def _methods(route: Any) -> set[str]:
 
 
 def register_import_patch(app: FastAPI) -> None:
-    app.router.routes = [
+    app.router.routes[:] = [
         route
         for route in app.router.routes
         if not (getattr(route, "path", "") == "/import" and "POST" in _methods(route))
@@ -45,13 +46,15 @@ def register_import_patch(app: FastAPI) -> None:
             "energy_class_hwb": parsed.energy_class_hwb,
             "energy_class_fgee": parsed.energy_class_fgee,
         })
-        set_house_preview(house["id"], preview_image_url)
+        house_id = str(house["id"])
+        set_pipeline_stage(house_id, "created", "ok", "Hausakte wurde angelegt.")
+        set_house_preview(house_id, preview_image_url)
 
-        hdir = project_dir(house["id"])
+        hdir = project_dir(house_id)
         html_path = hdir / "html" / "listing.html"
         html_path.write_text(raw_html, encoding="utf-8")
 
-        source = create_source(house["id"], {
+        source = create_source(house_id, {
             "source_name": parsed.source_name,
             "source_url": parsed.source_url,
             "external_id": parsed.external_id,
@@ -60,15 +63,29 @@ def register_import_patch(app: FastAPI) -> None:
             "parser_status": "success" if not parsed.warnings else "partial",
             "parser_warnings": parsed.warnings,
         })
-        add_evidence(house["id"], source["id"], parsed.evidence)
-        mark_candidates_imported(parsed.source_url, house["id"])
+        add_evidence(house_id, source["id"], parsed.evidence)
+        mark_candidates_imported(parsed.source_url, house_id)
+        set_pipeline_stage(house_id, "listing_imported", "ok", "Inseratdaten und Feldherkunft wurden gespeichert.")
 
         for image_url in parsed.image_urls:
-            add_media(house["id"], {"source_id": source["id"], "kind": "image", "original_url": image_url, "download_status": "pending"})
+            add_media(house_id, {"source_id": source["id"], "kind": "image", "original_url": image_url, "download_status": "pending"})
         for pdf_url in parsed.pdf_urls:
-            add_media(house["id"], {"source_id": source["id"], "kind": "pdf", "original_url": pdf_url, "download_status": "pending"})
+            add_media(house_id, {"source_id": source["id"], "kind": "pdf", "original_url": pdf_url, "download_status": "pending"})
 
-        await download_pending_media_files(house["id"])
-        await auto_export_house_to_github(str(house["id"]))
-        await send_analysis_zip_via_gmail(str(house["id"]))
-        return RedirectResponse(f"houses/{house['id']}", status_code=303)
+        set_pipeline_stage(house_id, "media_loading", "running", "Inseratbilder und Dokumente werden geladen.")
+        await download_pending_media_files(house_id)
+        media = list_media(house_id)
+        downloaded = len([item for item in media if item.get("download_status") == "downloaded"])
+        failed = len([item for item in media if item.get("download_status") == "failed"])
+        set_pipeline_stage(
+            house_id,
+            "media_ready",
+            "ok" if downloaded else "error",
+            f"Medienabruf abgeschlossen: {downloaded} geladen, {failed} fehlgeschlagen.",
+            error=None if downloaded else "Keine Medien konnten geladen werden.",
+        )
+
+        await auto_export_house_to_github(house_id)
+        # Gmail bleibt aus Kompatibilitätsgründen im Hintergrund verfügbar, ist standardmäßig deaktiviert.
+        await send_analysis_zip_via_gmail(house_id)
+        return RedirectResponse(f"houses/{house_id}", status_code=303)
