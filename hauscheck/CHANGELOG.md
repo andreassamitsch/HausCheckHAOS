@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.6.0
+
+- normale Hausaktenansicht auf den produktiven Workflow reduziert
+- frühere GitHub-, Base64-, Gmail- und manuelle Analysepaket-Schaltflächen aus der normalen Oberfläche entfernt
+- neue zentrale Aktion `Analyse erneut anstoßen`
+- technische Medien-, Quellen- und Pipeline-Details in einen eingeklappten Diagnosebereich verschoben
+- persistentes Pipeline-Statusmodell mit Ereignishistorie ergänzt
+- sichtbare Schritte: Inserat erfasst, Medien geladen, zur Analyse bereitgestellt, ChatGPT-Analyse importiert
+- Dashboard zeigt wartende, abgeschlossene und fehlerhafte Verarbeitungsvorgänge
+- Suchprofil-Datenbank für Automatikmodus, Intervall, areaIds und maximale Trefferzahl erweitert
+- Kandidaten-Datenbank um Provider, externe Inserat-ID, kanonische URL, Inhalts-Hash, Änderungszeitpunkt, Änderungszähler, Entscheidung und Rohdaten ergänzt
+- Suchprofil- und Kandidatenansicht für die kommende automatische Willhaben-Suche vorbereitet
+- Add-on-Version auf 0.6.0 erhöht
+
+## 0.5.15
+
+- Base64-Chunks werden für Connector-Lesezugriffe in kurze Zeilen umgebrochen
+- neue Option `github_b64_line_length`
+
 ## 0.5.14
 
 - GitHub Base64-Bildtest ergänzt
@@ -54,6 +73,5 @@
 - Button „Analysepaket nach GitHub exportieren“ lädt das ZIP nach `ai_exchange/exports/pending/<house_id>.zip`
 - Button „GitHub-Ergebnisse importieren“ liest `ai_exchange/results/pending/.../hauscheck_analysis.json`
 - importierte Ergebnisse werden lokal in der Hausakte gespeichert
-- nach erfolgreichem Import wird das JSON nach `ai_exchange/results/done/<house_id>/...json` archiviert
+- nach erfolgreichem Import wird das JSON nach `results/done/<house_id>/...json` archiviert
 - exportierte ZIPs und pending-Ergebnisse werden nach erfolgreichem Import aus GitHub aufgeräumt, wenn `github_cleanup_after_import` aktiv ist
-- Hausdetailansicht wird robuster über eine eigene Route registriert und enthält die GitHub-Exchange-Karte
