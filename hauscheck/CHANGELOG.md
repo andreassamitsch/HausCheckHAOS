@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.9.0
+
+- Preisverlauf je Kandidat ergänzt
+- Preisänderungen werden mit altem Wert, neuem Wert, Prozentänderung und Zeitpunkt hervorgehoben
+- relevante Änderungen an Titel, Preis, Wohnfläche, Grundstück, HWB und Vorschaubild werden protokolliert
+- neue Kandidatenstatus `changed`, `offline` und `reactivated`
+- ein Inserat gilt erst nach zwei erfolgreichen Suchläufen ohne erneuten Fund als offline
+- Null-Treffer-Läufe setzen keine Inserate vorschnell auf offline
+- wieder erschienene Inserate werden als „wieder online“ markiert
+- bei Änderungen an bereits importierten Objekten wird auf der Hauskarte eine erneute Analyse empfohlen
+- die Empfehlung wird nach erfolgreichem Analyseimport automatisch zurückgesetzt
+- geänderte und wieder aktive Kandidaten können in der Vollautomatik erneut berücksichtigt werden
+- Suchprofile können inklusive Kandidaten- und Preisverlauf gelöscht werden; bestehende Hausakten bleiben erhalten
+- neues Suchprofil wird unter `Einstellungen → Suchprofile` oben über einen Plus-Button angelegt
+- Add-on-Version auf 0.9.0 erhöht
+
 ## 0.8.0
 
 - HWB-Werte werden mit Punkt oder Komma als Dezimaltrennzeichen gelesen
