@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from urllib.parse import urlencode
-from typing import Any
+from typing import Any, Callable
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -254,9 +254,26 @@ def _filter_panel_with_reset(
     return panel.replace('href="./">Zurücksetzen', 'href="dashboard/reset">Zurücksetzen')
 
 
+def _patch_action_labels() -> None:
+    current: Callable[[str, str, str], HTMLResponse] = modern_ui.modern_layout
+    if getattr(current, "_mobile_action_labels_patched", False):
+        return
+
+    def polished_layout(title: str, body: str, home_href: str = "./") -> HTMLResponse:
+        body = body.replace(" Zusammenlegen</a>", " Zwei Hausakten zusammenlegen</a>")
+        body = body.replace(" Titelbild</a>", " Vorschaubild</a>")
+        body = body.replace("Titelbild wählen", "Als Vorschaubild wählen")
+        body = body.replace("<h1>Hausakten zusammenlegen</h1>", "<h1>Zwei Hausakten zusammenlegen</h1>")
+        return current(title, body, home_href)
+
+    setattr(polished_layout, "_mobile_action_labels_patched", True)
+    modern_ui.modern_layout = polished_layout
+
+
 def register_mobile_layout_state_fix(app: FastAPI) -> None:
     if _PATCH_MARKER not in modern_ui.MODERN_CSS:
         modern_ui.MODERN_CSS += MOBILE_LAYOUT_CSS
+    _patch_action_labels()
 
     _remove_route(app, "/", "GET")
 
