@@ -11,6 +11,7 @@ from typing import Any
 import httpx
 
 from app.analysis_package import create_analysis_zip
+from app.pipeline_status import set_pipeline_stage
 from app.storage import get_house
 
 
@@ -121,21 +122,43 @@ class GitHubAutoClient:
 async def auto_export_house_to_github(house_id: str) -> bool:
     """Best-effort Export nach GitHub direkt nach Inserat-Import.
 
-    Fehler blockieren bewusst nicht den eigentlichen Hausimport. Details stehen im Add-on-Log.
+    Fehler blockieren bewusst nicht den eigentlichen Hausimport. Der persistente
+    Pipeline-Status macht den aktuellen Stand in der Hausakte sichtbar.
     """
     settings = load_auto_export_settings()
     if not settings.ready:
+        set_pipeline_stage(
+            house_id,
+            "error",
+            "error",
+            "Automatischer GitHub-Export ist nicht vollständig konfiguriert.",
+            error="github_exchange_enabled, github_auto_export_on_import, github_repo oder github_token prüfen",
+        )
         return False
     try:
         house = get_house(house_id)
         if not house:
             print(f"HausCheck GitHub Auto-Export übersprungen: Hausakte nicht gefunden: {house_id}", flush=True)
             return False
+        set_pipeline_stage(house_id, "exporting", "running", "Analysepaket wird erstellt und nach GitHub übertragen.")
         zip_path = create_analysis_zip(house_id)
         target = f"{settings.export_path}/{house_id}.zip"
         await GitHubAutoClient(settings).put_file(target, zip_path.read_bytes(), f"HausCheck auto export {house_id}")
+        set_pipeline_stage(
+            house_id,
+            "waiting_analysis",
+            "pending",
+            "Analysepaket wurde bereitgestellt. ChatGPT-Ergebnis wird automatisch erwartet.",
+        )
         print(f"HausCheck GitHub Auto-Export OK: {settings.repo}/{target}", flush=True)
         return True
     except Exception as exc:
+        set_pipeline_stage(
+            house_id,
+            "error",
+            "error",
+            "Analysepaket konnte nicht nach GitHub exportiert werden.",
+            error=str(exc),
+        )
         print(f"HausCheck GitHub Auto-Export fehlgeschlagen für {house_id}: {exc}", flush=True)
         return False
