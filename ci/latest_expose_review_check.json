@@ -1,8 +1,8 @@
 {
-  "created_at": "2026-07-13T21:09:46.619802+00:00",
-  "commit": "f87af670d7f727b097d392b8140870218f7a6f7b",
-  "run_id": 29285257796,
-  "status": "failed",
-  "test_code": 1,
-  "log_tail": "Traceback (most recent call last):\n  File \"<stdin>\", line 24, in <module>\nAssertionError: [{'address_text': 'Kowaldstraße 2, 8551 Wies', 'context_text': 'Objektadresse: Kowaldstraße 2 8551 Wies Kontakt Makler GmbH Hauptstraße 9 8010 Graz', 'confidence': 'high'}, {'address_text': 'Kontakt Makler GmbH Hauptstraße 9, 8010 Graz', 'context_text': 'Objektadresse: Kowaldstraße 2 8551 Wies Kontakt Makler GmbH Hauptstraße 9 8010 Graz', 'confidence': 'high'}, {'address_text': 'Kontakt Makler GmbH Hauptstraße 9, 8551 Wies', 'context_text': 'Objektadresse: Kowaldstraße 2 8551 Wies Kontakt Makler GmbH Hauptstraße 9 8010 Graz', 'confidence': 'high'}]\n"
+  "created_at": "2026-07-13T21:16:06.814336+00:00",
+  "commit": "840ff1f31fc7d679e87df57382c6f83d4c1b482d",
+  "run_id": 29285671900,
+  "status": "success",
+  "test_code": 0,
+  "log_tail": "object_address_without_broker_address=ok\nrural_austrian_address_without_broker_address=ok\npostcode_first_object_address=ok\nHausCheck Gmail Exchange gestartet\nHausCheck GitHub Auto-Import gestartet\nHausCheck Such-Scheduler gestartet\nexpose_pdf_visible_and_address_review=ok\nexpose_pdf_download=ok\napproved_address_written_to_house=ok\naddress_decision_history=ok\n"
 }
