@@ -1,6 +1,6 @@
 # HausCheck Pro Add-on
 
-## Aktueller Funktionsumfang v0.7.0
+## Aktueller Funktionsumfang v0.7.1
 
 - Direktlink-Import von Immobilieninseraten
 - zeitgesteuerte Willhaben-Suchprofile
@@ -10,7 +10,9 @@
 - automatische Erstellung und Übertragung des Analysepakets nach GitHub
 - ChatGPT-Bildanalyse über GitHub-Actions-Artefakte
 - automatischer Rückimport fertiger Analysen
+- KI-Gesamtbewertung mit Kaufpreis- und Investitionsempfehlung
 - Hausakten-Dashboard mit Galerie, Score, Pipeline-Status und Diagnosebereich
+- lokale Zeitanzeige im Format `TT.MM.JJJJ HH:MM`
 
 ## Produktiver Ablauf
 
@@ -27,6 +29,36 @@ Willhaben-Suchprofil
 → hauscheck_analysis.json nach results/pending schreiben
 → HausCheck importiert das Ergebnis automatisch
 ```
+
+## Bewertungssystem
+
+Vor der KI-Analyse verwendet HausCheck eine regelbasierte Daten-Vorprüfung aus Preis, Wohnfläche, Grundstück, HWB und Kandidatenstatus.
+
+Nach dem Import einer ChatGPT-Analyse wird `new_score` zur maßgeblichen Gesamtbewertung. Die frühere Regelbewertung bleibt in der Hausakte nur noch als einklappbare **Daten-Vorprüfung** sichtbar.
+
+Die KI-Auswertung kann zusätzlich enthalten:
+
+```text
+fairer Kaufpreisbereich
+erstes Verhandlungsangebot
+realistischer Zielpreis
+empfohlene Preisobergrenze
+Gesamtsumme möglicher Investitionen
+einzelne Investitionsposten mit Priorität und Kostenspanne
+grobe Projektkosten aus Zielkaufpreis plus Investitionen
+```
+
+Die Kaufpreiseinschätzung ist kein Verkehrswertgutachten. Ohne belastbare Vergleichsobjekte wird sie mit niedriger oder mittlerer Sicherheit ausgewiesen.
+
+Bereits vorhandene Analysen im alten Format bleiben lesbar. Über **Analyse erneut anstoßen** wird das erweiterte Format mit Kaufpreis- und Investitionsfeldern erzeugt.
+
+## Zeitzone
+
+```yaml
+display_timezone: "Europe/Vienna"
+```
+
+Alle sichtbaren Zeitpunkte werden auf diese Zeitzone umgerechnet und als `TT.MM.JJJJ HH:MM` angezeigt.
 
 ## Suchmodi
 
@@ -185,3 +217,4 @@ Adressen aus PDFs werden nicht automatisch übernommen, weil PDFs häufig Makler
 - Ohne genaue Adresse erfolgt keine belastbare Lageprüfung.
 - Captchas oder Login-Sperren werden nicht umgangen.
 - Werbe- und KI-generierte Inseratbilder werden bei der ChatGPT-Analyse nicht als Zustandsnachweis verwendet.
+- Kaufnebenkosten, Finanzierung und Steuern werden in der Projektkostenspanne nur berücksichtigt, wenn dies ausdrücklich dokumentiert ist.
