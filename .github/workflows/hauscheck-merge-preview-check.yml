@@ -1,0 +1,148 @@
+name: HausCheck Merge Preview Check
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "hauscheck/app/house_merge.py"
+      - "hauscheck/app/bootstrap.py"
+      - ".github/workflows/hauscheck-merge-preview-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        working-directory: hauscheck
+        run: python -m pip install -r requirements.txt
+
+      - name: Test merge and selected preview
+        working-directory: hauscheck
+        env:
+          HAUSCHECK_DATA_DIR: /tmp/hauscheck-merge-test
+        run: |
+          rm -rf /tmp/hauscheck-merge-test
+          python - <<'PY'
+          from pathlib import Path
+
+          from PIL import Image
+          from fastapi.testclient import TestClient
+
+          import app.bootstrap
+          from app.house_merge import (
+              list_merge_events,
+              merge_houses,
+              set_preview_media,
+          )
+          from app.storage import (
+              add_evidence,
+              add_media,
+              create_house,
+              create_search_profile,
+              create_source,
+              get_house,
+              get_search_candidate,
+              list_media,
+              list_sources,
+              project_dir,
+              upsert_search_candidate,
+          )
+
+          def make_image(house_id: str, name: str, size: tuple[int, int]) -> Path:
+              path = project_dir(house_id) / "images" / name
+              Image.new("RGB", size, (180, 180, 180)).save(path, "JPEG")
+              return path
+
+          target = create_house({"title": "Hauptmakler Haus", "price_eur": 390000, "living_area_m2": 140})
+          source = create_house({"title": "Zweitmakler Haus", "plot_area_m2": 920, "energy_hwb": 110})
+          spare = create_house({"title": "Weitere Hausakte"})
+          target_id = str(target["id"])
+          source_id = str(source["id"])
+
+          target_source = create_source(target_id, {
+              "source_name": "Makler A",
+              "source_url": "https://example.test/makler-a",
+              "external_id": "A-1",
+              "description": "Inserat A",
+          })
+          source_source = create_source(source_id, {
+              "source_name": "Makler B",
+              "source_url": "https://example.test/makler-b",
+              "external_id": "B-1",
+              "description": "Inserat B",
+          })
+
+          target_path = make_image(target_id, "target.jpg", (800, 600))
+          source_path = make_image(source_id, "source.jpg", (1200, 800))
+          target_media = add_media(target_id, {
+              "source_id": target_source["id"], "kind": "image", "original_url": "https://img.test/a.jpg",
+              "local_path": str(target_path), "mime_type": "image/jpeg", "download_status": "downloaded",
+              "content_hash": "hash-a", "width": 800, "height": 600, "file_size_bytes": target_path.stat().st_size,
+          })
+          source_media = add_media(source_id, {
+              "source_id": source_source["id"], "kind": "image", "original_url": "https://img.test/b.jpg",
+              "local_path": str(source_path), "mime_type": "image/jpeg", "download_status": "downloaded",
+              "content_hash": "hash-b", "width": 1200, "height": 800, "file_size_bytes": source_path.stat().st_size,
+          })
+          add_evidence(source_id, str(source_source["id"]), [{
+              "field_name": "price_eur", "value": 385000, "source_label": "Makler B Preis",
+              "source_text_snippet": "Kaufpreis 385.000 Euro", "confidence": "verified",
+          }])
+          set_preview_media(source_id, str(source_media["id"]))
+
+          profile = create_search_profile({
+              "name": "Merge Profil", "source_name": "willhaben.at", "search_url": "https://example.test/search"
+          })
+          candidate = upsert_search_candidate(
+              str(profile["id"]), "https://example.test/makler-b", "Zweitmakler Haus",
+              status="imported", imported_house_id=source_id, facts={"price_eur": 385000},
+          )
+
+          result = merge_houses(target_id, source_id)
+          assert result["moved_sources"] == 1, result
+          assert result["moved_media"] == 1, result
+          assert get_house(source_id) is None
+          merged = get_house(target_id)
+          assert merged is not None
+          assert merged["plot_area_m2"] == 920
+          assert merged["energy_hwb"] == 110
+          assert merged["price_eur"] == 390000
+          assert merged["preview_media_id"] == source_media["id"]
+          assert len(list_sources(target_id)) == 2
+          merged_media = list_media(target_id)
+          assert len(merged_media) == 2
+          selected = next(item for item in merged_media if item["id"] == source_media["id"])
+          assert Path(selected["local_path"]).exists()
+          assert str(project_dir(target_id)) in str(selected["local_path"])
+          assert get_search_candidate(str(candidate["id"]))["imported_house_id"] == target_id
+          assert len(list_merge_events(target_id)) == 1
+          print("merge_houses=ok")
+
+          set_preview_media(target_id, str(target_media["id"]))
+          assert get_house(target_id)["preview_media_id"] == target_media["id"]
+          print("set_preview_media=ok")
+
+          with TestClient(app.bootstrap.app) as client:
+              response = client.get(f"/houses/{target_id}")
+              assert response.status_code == 200
+              assert "Als Vorschaubild" in response.text
+              assert "Zwei Hausakten zusammenlegen" in response.text
+              response = client.post(f"/houses/{target_id}/preview/{source_media['id']}", follow_redirects=False)
+              assert response.status_code == 303
+              assert get_house(target_id)["preview_media_id"] == source_media["id"]
+              response = client.get("/")
+              assert response.status_code == 200
+              assert f"media/{source_media['id']}" in response.text
+          print("preview_ui=ok")
+          PY
