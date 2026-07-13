@@ -29,7 +29,7 @@ jobs:
           python -m pip install -r requirements.txt
           python -m pip install pillow
 
-      - name: Compile and import application
+      - name: Compile, import and smoke-test application
         id: check
         shell: bash
         run: |
@@ -42,8 +42,50 @@ jobs:
           if [ "$COMPILE_CODE" -eq 0 ]; then
             HAUSCHECK_DATA_DIR=/tmp/hauscheck-test python - <<'PY' >> /tmp/hauscheck-check.log 2>&1
           import app.bootstrap
-          print(f"routes={len(app.bootstrap.app.router.routes)}")
+          from fastapi.testclient import TestClient
+
+          application = app.bootstrap.app
+          print(f"routes={len(application.router.routes)}")
           print("bootstrap_import=ok")
+
+          with TestClient(application) as client:
+              for path in ["/", "/search", "/import", "/github/status"]:
+                  response = client.get(path)
+                  assert response.status_code == 200, (path, response.status_code, response.text[:500])
+                  print(f"GET {path}=ok")
+
+              response = client.post(
+                  "/search/profiles",
+                  data={
+                      "name": "CI Suchprofil",
+                      "area_ids": "8551",
+                      "soft_max_price_eur": "380000",
+                      "max_price_eur": "400000",
+                      "min_living_area_m2": "120",
+                      "min_plot_area_m2": "700",
+                      "automation_mode": "review",
+                      "run_interval_minutes": "60",
+                      "max_results": "80",
+                  },
+                  follow_redirects=False,
+              )
+              assert response.status_code == 303, (response.status_code, response.text[:500])
+              profile_location = response.headers["location"]
+              response = client.get(f"/search/{profile_location}" if not profile_location.startswith("/") else profile_location)
+              assert response.status_code == 200, (profile_location, response.status_code, response.text[:500])
+              print("search_profile_create=ok")
+
+              response = client.post(
+                  "/manual",
+                  data={"title": "CI Testhaus", "location_text": "8551 Wies"},
+                  follow_redirects=False,
+              )
+              assert response.status_code == 303, (response.status_code, response.text[:500])
+              house_location = response.headers["location"]
+              response = client.get(f"/{house_location}" if not house_location.startswith("/") else house_location)
+              assert response.status_code == 200, (house_location, response.status_code, response.text[:500])
+              assert "Verarbeitungsstatus" in response.text
+              print("house_detail_product_ui=ok")
           PY
             IMPORT_CODE=$?
           else
@@ -81,7 +123,7 @@ jobs:
               'status': os.environ.get('CHECK_STATUS') or 'failed',
               'compile_code': int(os.environ.get('COMPILE_CODE') or -1),
               'import_code': int(os.environ.get('IMPORT_CODE') or -1),
-              'log_tail': log[-4000:],
+              'log_tail': log[-6000:],
           }
           Path('ci/latest_python_check.json').write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
           PY
