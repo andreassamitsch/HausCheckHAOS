@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.8.0
+
+- HWB-Werte werden mit Punkt oder Komma als Dezimaltrennzeichen gelesen
+- `306.1` und `306,1` ergeben beide korrekt `306,1`
+- strukturierte Werte aus Tabellen, Definitionslisten und Wertelisten haben Vorrang vor allgemeinen Seitentexten
+- fehlerhafte Nebenfundstellen können dadurch einen klaren Listenwert nicht mehr überschreiben
+- PDF- und manuelle Dezimalwerte werden ebenfalls ohne Verlust der Nachkommastelle verarbeitet
+- Startseite konsequent auf aktive Hausakten reduziert
+- Suche wird direkt über eine Lupen-Schaltfläche gestartet
+- Suchprofile und Automatikparameter befinden sich unter `Einstellungen → Suchprofile`
+- Hausakten können in der Übersicht über ein Mülleimer-Symbol abgelehnt werden
+- abgelehnte Hausakten verschwinden aus der Hauptübersicht und bleiben im Ablehnungsarchiv erhalten
+- eigene Seite für abgelehnte Hausakten und Kandidaten ergänzt
+- Wiederherstellen und endgültiges Löschen sind im Ablehnungsarchiv möglich
+- abgelehnte Kandidaten bleiben auch nach späteren Suchläufen abgelehnt
+- Add-on-Version auf 0.8.0 erhöht
+
 ## 0.7.1
 
 - alle sichtbaren Zeitangaben auf `Europe/Vienna` umgestellt
