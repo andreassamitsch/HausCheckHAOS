@@ -1,0 +1,90 @@
+name: HausCheck Python Check
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "hauscheck/app/**"
+      - "hauscheck/requirements.txt"
+      - ".github/workflows/hauscheck-python-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        working-directory: hauscheck
+        run: python -m pip install -r requirements.txt
+
+      - name: Compile and import application
+        id: check
+        shell: bash
+        run: |
+          set +e
+          rm -rf /tmp/hauscheck-test
+          mkdir -p /tmp/hauscheck-test
+          cd hauscheck
+          python -m compileall -q app > /tmp/hauscheck-check.log 2>&1
+          COMPILE_CODE=$?
+          if [ "$COMPILE_CODE" -eq 0 ]; then
+            HAUSCHECK_DATA_DIR=/tmp/hauscheck-test python - <<'PY' >> /tmp/hauscheck-check.log 2>&1
+          import app.bootstrap
+          print(f"routes={len(app.bootstrap.app.router.routes)}")
+          print("bootstrap_import=ok")
+          PY
+            IMPORT_CODE=$?
+          else
+            IMPORT_CODE=99
+          fi
+          echo "compile_code=$COMPILE_CODE" >> "$GITHUB_OUTPUT"
+          echo "import_code=$IMPORT_CODE" >> "$GITHUB_OUTPUT"
+          if [ "$COMPILE_CODE" -eq 0 ] && [ "$IMPORT_CODE" -eq 0 ]; then
+            echo "status=success" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "status=failed" >> "$GITHUB_OUTPUT"
+          exit 1
+
+      - name: Publish validation result
+        if: always()
+        shell: bash
+        env:
+          CHECK_STATUS: ${{ steps.check.outputs.status }}
+          COMPILE_CODE: ${{ steps.check.outputs.compile_code }}
+          IMPORT_CODE: ${{ steps.check.outputs.import_code }}
+        run: |
+          mkdir -p ci
+          python - <<'PY'
+          import json
+          import os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          log = Path('/tmp/hauscheck-check.log').read_text(encoding='utf-8', errors='replace') if Path('/tmp/hauscheck-check.log').exists() else ''
+          result = {
+              'created_at': datetime.now(timezone.utc).isoformat(),
+              'commit': os.environ['GITHUB_SHA'],
+              'run_id': int(os.environ['GITHUB_RUN_ID']),
+              'status': os.environ.get('CHECK_STATUS') or 'failed',
+              'compile_code': int(os.environ.get('COMPILE_CODE') or -1),
+              'import_code': int(os.environ.get('IMPORT_CODE') or -1),
+              'log_tail': log[-4000:],
+          }
+          Path('ci/latest_python_check.json').write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ci/latest_python_check.json
+          git commit -m "Update HausCheck Python check [skip ci]" || true
+          git push || true
