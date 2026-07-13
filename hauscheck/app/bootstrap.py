@@ -4,12 +4,14 @@ from app.main import app
 from app.analysis_package import register_analysis_package
 from app.chatgpt_api import register_chatgpt_api
 from app.dashboard_automation_ui import register_dashboard_automation_ui
+from app.focused_ui import register_focused_ui
 from app.github_auto_import import register_github_auto_import
 from app.github_b64_export import register_github_b64_export
 from app.github_exchange import register_github_exchange
 from app.gmail_exchange import register_gmail_exchange
 from app.house_manage import register_house_management
 from app.import_patch import register_import_patch
+from app.parser_quality import register_parser_quality
 from app.pipeline_integration import register_pipeline_integration
 from app.pipeline_status import ensure_pipeline_schema
 from app.product_ui import register_product_ui
@@ -25,6 +27,7 @@ from app.valuation_ui import register_valuation_ui
 # Deshalb muss die Basisdatenbank auch bei einer frischen Installation vorher existieren.
 init_storage()
 ensure_pipeline_schema()
+register_parser_quality()
 register_valuation_schema()
 register_chatgpt_api(app)
 register_analysis_package(app)
@@ -37,11 +40,12 @@ register_github_b64_export(app)
 register_import_patch(app)
 register_github_auto_import(app)
 register_search_automation(app)
-# Muss zuletzt registriert werden: ersetzt die technischen Zwischen-UIs durch die Produktansicht.
+# Ersetzt die technischen Zwischen-UIs durch die Produktansicht.
 register_product_ui(app)
 register_product_ui_fix(app)
-# Automatik-Einstellungen ersetzen abschließend die vorbereitende Suchprofil-UI aus v0.6.0.
 register_search_automation_ui(app)
 register_dashboard_automation_ui(app)
 # Formatiert Zeiten lokal und erweitert die Hausansicht um KI-Kaufpreis und Investitionsposten.
 register_valuation_ui(app)
+# Letzte UI-Schicht: Hausakten im Fokus, Suche per Lupe, Profile unter Einstellungen und Ablehnungsarchiv.
+register_focused_ui(app)
