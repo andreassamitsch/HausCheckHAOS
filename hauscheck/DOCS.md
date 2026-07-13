@@ -1,40 +1,67 @@
 # HausCheck Pro Add-on
 
-## Aktueller Funktionsumfang v0.7.1
+## Aktueller Funktionsumfang v0.8.0
 
-- Direktlink-Import von Immobilieninseraten
-- zeitgesteuerte Willhaben-Suchprofile
-- automatische Kandidatenprüfung anhand der hinterlegten Muss- und Wunschkriterien
-- optionaler automatischer Vollimport geeigneter Kandidaten
-- automatischer Medien-Download
-- automatische Erstellung und Übertragung des Analysepakets nach GitHub
-- ChatGPT-Bildanalyse über GitHub-Actions-Artefakte
-- automatischer Rückimport fertiger Analysen
+- fokussierte Startseite mit aktiven Hausakten
+- Willhaben-Suche direkt über die Lupe
+- Suchprofile unter **Einstellungen → Suchprofile**
+- zeitgesteuerte oder vollautomatische Willhaben-Suche
+- automatische Kandidatenprüfung und optionaler Vollimport
+- automatischer Medien-Download und GitHub-Analyseworkflow
 - KI-Gesamtbewertung mit Kaufpreis- und Investitionsempfehlung
-- Hausakten-Dashboard mit Galerie, Score, Pipeline-Status und Diagnosebereich
+- Ablehnungsarchiv für Hausakten und Kandidaten
 - lokale Zeitanzeige im Format `TT.MM.JJJJ HH:MM`
+
+## Bedienung der Startseite
+
+Die Startseite zeigt nur aktive Hausakten. Oben stehen vier kompakte Aktionen:
+
+```text
+＋   Inserat direkt hinzufügen
+🔍  alle aktiven Suchprofile sofort ausführen
+🗑️  abgelehnte Hausakten und Kandidaten öffnen
+⚙️  Einstellungen öffnen
+```
+
+Jede Hausakte kann direkt über das Mülleimer-Symbol abgelehnt werden. Dabei wird sie nicht sofort gelöscht, sondern aus der Hauptübersicht ausgeblendet und in das Ablehnungsarchiv verschoben.
+
+Im Ablehnungsarchiv kann ein Objekt:
+
+- wiederhergestellt oder
+- endgültig inklusive Projektdateien gelöscht werden.
+
+Abgelehnte Kandidaten bleiben auch bei späteren Suchläufen abgelehnt.
+
+## HWB- und Dezimalwerte
+
+Für HWB und fGEE gelten Punkt und Komma als Dezimaltrennzeichen:
+
+```text
+306.1  → 306,1
+306,1  → 306,1
+```
+
+HausCheck priorisiert Energiekennzahlen aus strukturierten Tabellen, Definitionslisten und Wertelisten. Erst wenn dort kein Wert gefunden wird, wird der allgemeine Seitentext verwendet. Dadurch überschreibt eine unklare Nebenfundstelle keinen eindeutig angegebenen Listenwert mehr.
 
 ## Produktiver Ablauf
 
 ```text
-Willhaben-Suchprofil
-→ Suchlauf nach konfiguriertem Intervall
-→ Kandidaten speichern und gegen Filter prüfen
-→ bei Vollautomatik: Kandidat ab Mindestscore importieren
-→ Hausakte anlegen
+Willhaben-Suche
+→ Kandidat speichern und filtern
+→ optional Hausakte automatisch anlegen
 → Bilder und PDFs laden
-→ Analyse-ZIP nach GitHub pending exportieren
+→ Analyse-ZIP nach GitHub exportieren
 → GitHub Action erzeugt ein binäres Artifact
-→ ChatGPT lädt und analysiert ZIP und Bilder
-→ hauscheck_analysis.json nach results/pending schreiben
-→ HausCheck importiert das Ergebnis automatisch
+→ ChatGPT analysiert Inseratsdaten und Bilder
+→ Ergebnis nach GitHub zurückschreiben
+→ HausCheck importiert die Analyse automatisch
 ```
 
 ## Bewertungssystem
 
 Vor der KI-Analyse verwendet HausCheck eine regelbasierte Daten-Vorprüfung aus Preis, Wohnfläche, Grundstück, HWB und Kandidatenstatus.
 
-Nach dem Import einer ChatGPT-Analyse wird `new_score` zur maßgeblichen Gesamtbewertung. Die frühere Regelbewertung bleibt in der Hausakte nur noch als einklappbare **Daten-Vorprüfung** sichtbar.
+Nach dem Import einer ChatGPT-Analyse wird `new_score` zur maßgeblichen Gesamtbewertung. Die frühere Regelbewertung bleibt nur noch als einklappbare Daten-Vorprüfung sichtbar.
 
 Die KI-Auswertung kann zusätzlich enthalten:
 
@@ -48,46 +75,27 @@ einzelne Investitionsposten mit Priorität und Kostenspanne
 grobe Projektkosten aus Zielkaufpreis plus Investitionen
 ```
 
-Die Kaufpreiseinschätzung ist kein Verkehrswertgutachten. Ohne belastbare Vergleichsobjekte wird sie mit niedriger oder mittlerer Sicherheit ausgewiesen.
-
-Bereits vorhandene Analysen im alten Format bleiben lesbar. Über **Analyse erneut anstoßen** wird das erweiterte Format mit Kaufpreis- und Investitionsfeldern erzeugt.
-
-## Zeitzone
-
-```yaml
-display_timezone: "Europe/Vienna"
-```
-
-Alle sichtbaren Zeitpunkte werden auf diese Zeitzone umgerechnet und als `TT.MM.JJJJ HH:MM` angezeigt.
+Die Kaufpreiseinschätzung ist kein Verkehrswertgutachten. Fehlende oder nicht sichtbare Bauteile werden nicht als gesichert behandelt.
 
 ## Suchmodi
 
 ### Nur manuell
 
-Das Suchprofil läuft nur über **Jetzt ausführen**. Kandidaten werden nicht automatisch importiert.
+Das Suchprofil läuft nur über die Lupe beziehungsweise **Jetzt ausführen**.
 
 ### Automatisch suchen, manuell importieren
 
-HausCheck führt das Profil zeitgesteuert aus und aktualisiert die Kandidatenliste. Eine Hausakte wird erst über **Hausakte anlegen & analysieren** erstellt.
+HausCheck aktualisiert die Kandidatenliste zeitgesteuert. Eine Hausakte wird erst nach Bestätigung angelegt.
 
 ### Automatisch suchen und importieren
 
-HausCheck importiert ausschließlich Kandidaten, die:
+HausCheck importiert nur Kandidaten, die:
 
-- den Status `new` erhalten haben,
+- den Status `new` haben,
 - noch nicht als Hausakte vorhanden sind,
 - mindestens den konfigurierten Auto-Import-Score erreichen.
 
-Die Anzahl automatischer Importe pro Lauf ist begrenzt.
-
-## Globale Suchoptionen
-
-```yaml
-search_automation_enabled: true
-search_scheduler_poll_seconds: 60
-```
-
-`search_scheduler_poll_seconds` ist nur das interne Prüfintervall. Der tatsächliche Suchabstand wird pro Suchprofil eingestellt und beträgt mindestens 15 Minuten.
+Die Anzahl automatischer Importe je Suchlauf ist begrenzt.
 
 ## Empfohlenes Suchprofil
 
@@ -108,35 +116,15 @@ Auto-Import-Score:     68
 Max. Auto-Importe:     2 je Lauf
 ```
 
-Für die erste Testphase ist der Modus **automatisch suchen, manuell importieren** sinnvoll. Nach Kontrolle der Treffer kann auf Vollautomatik umgestellt werden.
+## Globale Optionen
 
-## Kandidaten-Datenbank
-
-Je Treffer werden unter anderem gespeichert:
-
-```text
-Provider
-externe Inserat-ID
-Quell-URL
-kanonische URL
-Titel
-Preis
-Wohnfläche
-Grundstück
-HWB
-Vorschaubild
-Filterentscheidung
-Filterbegründungen
-Erstfund
-letzte Sichtung
-Inhalts-Hash
-Änderungszeitpunkt
-Änderungszähler
-Importentscheidung
-zugehörige Hausakte
+```yaml
+display_timezone: "Europe/Vienna"
+search_automation_enabled: true
+search_scheduler_poll_seconds: 60
 ```
 
-Doppelimporte werden über Quell-URL und Willhaben-Inserat-ID verhindert.
+`search_scheduler_poll_seconds` ist nur das interne Prüfintervall. Der tatsächliche Suchabstand wird pro Suchprofil eingestellt und beträgt mindestens 15 Minuten.
 
 ## GitHub AI Exchange
 
@@ -154,8 +142,6 @@ github_done_path: "ai_exchange/results/done"
 github_cleanup_after_import: true
 ```
 
-Der GitHub-Token muss Schreibrechte auf das Exchange-Repository haben.
-
 ## Inhalt des Analysepakets
 
 ```text
@@ -168,13 +154,10 @@ hauscheck_export_<house_id>_<titel>.zip
 ├── image_manifest.json
 ├── images/
 │   ├── 01.jpg
-│   ├── 02.jpg
 │   └── ...
 └── original/
     └── source_urls.txt
 ```
-
-Standardmäßig werden höchstens zwölf Bilder mit maximal 1.600 Pixel Kantenlänge exportiert.
 
 ## Pipeline-Status
 
@@ -187,13 +170,7 @@ Zur Analyse bereitgestellt
 ChatGPT-Analyse importiert
 ```
 
-Fehler und technische Ereignisse befinden sich unter **Diagnose und technische Details**. Mit **Analyse erneut anstoßen** kann ein Export wiederholt werden.
-
-## Exposé PDF
-
-PDFs können direkt in der Hausakte hochgeladen werden. HausCheck versucht daraus Preis, Wohnfläche, Grundstück, Zimmer, Baujahr, HWB, fGEE und Heizung zu erkennen.
-
-Adressen aus PDFs werden nicht automatisch übernommen, weil PDFs häufig Makler- oder Büroanschriften enthalten. Mögliche Adressen werden nur als Hinweis in der Feldherkunft gespeichert.
+Fehler und technische Ereignisse befinden sich unter **Diagnose und technische Details**.
 
 ## Datenablage
 
@@ -213,8 +190,7 @@ Adressen aus PDFs werden nicht automatisch übernommen, weil PDFs häufig Makler
 ## Hinweise
 
 - Fehlende Werte bleiben leer und werden nicht erfunden.
-- Grundstücksflächen werden nur aus expliziten Inseratsfeldern übernommen.
 - Ohne genaue Adresse erfolgt keine belastbare Lageprüfung.
 - Captchas oder Login-Sperren werden nicht umgangen.
-- Werbe- und KI-generierte Inseratbilder werden bei der ChatGPT-Analyse nicht als Zustandsnachweis verwendet.
-- Kaufnebenkosten, Finanzierung und Steuern werden in der Projektkostenspanne nur berücksichtigt, wenn dies ausdrücklich dokumentiert ist.
+- Werbe- und KI-generierte Inseratbilder werden nicht als Zustandsnachweis verwendet.
+- Kaufnebenkosten, Finanzierung und Steuern werden nur eingerechnet, wenn dies ausdrücklich dokumentiert ist.
