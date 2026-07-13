@@ -18,6 +18,8 @@ from app.product_ui import register_product_ui
 from app.product_ui_fix import register_product_ui_fix
 from app.search_automation import register_search_automation
 from app.search_automation_ui import register_search_automation_ui
+from app.search_lifecycle import register_search_lifecycle
+from app.search_lifecycle_ui import register_search_lifecycle_ui
 from app.search_ui_patch import register_search_profile_patch
 from app.storage import init_storage
 from app.valuation_schema import register_valuation_schema
@@ -35,6 +37,8 @@ register_house_management(app)
 register_search_profile_patch(app)
 register_github_exchange(app)
 register_pipeline_integration(app)
+# Baut auf dem finalen Analyseimport und dem Willhaben-Suchlauf auf.
+register_search_lifecycle()
 register_gmail_exchange(app)
 register_github_b64_export(app)
 register_import_patch(app)
@@ -47,5 +51,7 @@ register_search_automation_ui(app)
 register_dashboard_automation_ui(app)
 # Formatiert Zeiten lokal und erweitert die Hausansicht um KI-Kaufpreis und Investitionsposten.
 register_valuation_ui(app)
-# Letzte UI-Schicht: Hausakten im Fokus, Suche per Lupe, Profile unter Einstellungen und Ablehnungsarchiv.
+# Hausakten im Fokus, Suche per Lupe, Profile unter Einstellungen und Ablehnungsarchiv.
 register_focused_ui(app)
+# Final: Preisverlauf, Offline-/Wieder-online-Status, Profil löschen und Plus-Dialog.
+register_search_lifecycle_ui(app)
