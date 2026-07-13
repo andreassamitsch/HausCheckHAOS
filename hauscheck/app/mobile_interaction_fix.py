@@ -4,10 +4,10 @@ import app.mobile_first_ui as mobile_first_ui
 import app.modern_ui as modern_ui
 
 
-_PATCH_MARKER = "hc-mobile-interaction-fix-v2"
+_PATCH_MARKER = "hc-mobile-interaction-fix-v1"
 
 COMPACT_FILTER_CSS = r"""
-<style id="hc-mobile-interaction-fix-v2">
+<style id="hc-mobile-interaction-fix-v1">
 /* Geschlossener Filter ist nur ein kompakter Chip statt einer breiten Karte. */
 .filter-panel:not([open]) {
   display:inline-block;
