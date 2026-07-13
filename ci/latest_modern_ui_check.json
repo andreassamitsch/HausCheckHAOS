@@ -1,8 +1,8 @@
 {
-  "created_at": "2026-07-13T17:44:44.944577+00:00",
-  "commit": "850f58e9a3b91027a8c55c99029046035eeb306b",
-  "run_id": 29271636435,
-  "status": "success",
-  "test_code": 0,
-  "log_tail": "refresh_house_from_sources=ok\nHausCheck Gmail Exchange gestartet\nHausCheck GitHub Auto-Import gestartet\nHausCheck Such-Scheduler gestartet\nmodern_dashboard=ok\nmodern_house_detail=ok\nmodern_merge_page=ok\nmodern_cover_page=ok\nsearch_profile_full_edit=ok\n"
+  "created_at": "2026-07-13T20:48:27.498222+00:00",
+  "commit": "09d87c9771d7ff999f0811c5ef769d326e2f39cc",
+  "run_id": 29283850167,
+  "status": "failed",
+  "test_code": 1,
+  "log_tail": "refresh_house_from_sources=ok\nHausCheck Gmail Exchange gestartet\nHausCheck GitHub Auto-Import gestartet\nHausCheck Such-Scheduler gestartet\nTraceback (most recent call last):\n  File \"<stdin>\", line 127, in <module>\nAssertionError\n"
 }
