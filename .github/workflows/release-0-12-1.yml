@@ -1,0 +1,52 @@
+name: Release HausCheck 0.12.1
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/release-0-12-1.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set version and changelog
+        shell: bash
+        run: |
+          sed -i 's/version: "0.12.0"/version: "0.12.1"/' hauscheck/config.yaml
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('hauscheck/CHANGELOG.md')
+          text = path.read_text(encoding='utf-8')
+          entry = '''## 0.12.1
+
+- leere optionale Zahlenfelder in „Sortieren & filtern“ werden als nicht gesetzte Filter behandelt
+- Fehler 422 bei leerer Mindestbewertung, leerem Maximalpreis oder leerem maximalen HWB behoben
+- ausgefüllte Zahlenfilter funktionieren unverändert
+- automatischer Test für leere und ausgefüllte Filterparameter ergänzt
+- Add-on-Version auf 0.12.1 erhöht
+
+'''
+          if '## 0.12.1' not in text:
+              text = text.replace('# Changelog\n\n', '# Changelog\n\n' + entry, 1)
+              path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Commit release
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add hauscheck/config.yaml hauscheck/CHANGELOG.md
+          git commit -m "Release HausCheck 0.12.1 blank filter fix" || true
+          git push
