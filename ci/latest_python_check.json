@@ -1,9 +1,9 @@
 {
-  "created_at": "2026-07-13T08:17:41.547138+00:00",
-  "commit": "d50d31bc601adb7a4d0a4cf39884d60674dc0d62",
-  "run_id": 29234921617,
+  "created_at": "2026-07-13T08:19:11.452796+00:00",
+  "commit": "59a381269fd0af6a261a16a2cbcfae31dd95ec05",
+  "run_id": 29235005716,
   "status": "success",
   "compile_code": 0,
   "import_code": 0,
-  "log_tail": "routes=42\nbootstrap_import=ok\n"
+  "log_tail": "routes=42\nbootstrap_import=ok\nHausCheck Gmail Exchange gestartet\nHausCheck GitHub Auto-Import gestartet\nGET /=ok\nGET /search=ok\nGET /import=ok\nGET /github/status=ok\nsearch_profile_create=ok\nhouse_detail_product_ui=ok\n"
 }
