@@ -1,62 +1,112 @@
 # HausCheck Pro Add-on
 
-## Aktueller Funktionsumfang v0.5.12
+## Aktueller Funktionsumfang v0.7.0
 
-- Direktlink-Import und Suchprofil-Import von Immobilieninseraten
+- Direktlink-Import von Immobilieninseraten
+- zeitgesteuerte Willhaben-Suchprofile
+- automatische Kandidatenprüfung anhand der hinterlegten Muss- und Wunschkriterien
+- optionaler automatischer Vollimport geeigneter Kandidaten
 - automatischer Medien-Download
-- Hausakten-Dashboard mit Galerie, Score und Bearbeitung
-- ChatGPT-Analysepaket mit Bildern und strukturierter Rückgabe
-- Gmail AI Exchange als bevorzugter Austauschweg
-- GitHub AI Exchange bleibt als Fallback erhalten
-- automatischer Import fertiger KI-Analysen
+- automatische Erstellung und Übertragung des Analysepakets nach GitHub
+- ChatGPT-Bildanalyse über GitHub-Actions-Artefakte
+- automatischer Rückimport fertiger Analysen
+- Hausakten-Dashboard mit Galerie, Score, Pipeline-Status und Diagnosebereich
 
-## Empfohlener Workflow: Gmail AI Exchange
+## Produktiver Ablauf
 
 ```text
-HausCheck
-→ Inserat importieren
-→ Bilder/PDFs laden
-→ ZIP automatisch per Gmail senden
-
-ChatGPT Task
-→ liest stündlich Gmail-Mails mit Betreff HAUSCHECK_EXPORT <house_id>
-→ analysiert ZIP anhand README_PROMPT.md
-→ sendet Mail mit Betreff HAUSCHECK_RESULT <house_id>
-→ JSON steht direkt im Mailbody
-
-HausCheck
-→ prüft alle 5 Minuten Gmail per IMAP
-→ importiert fertige JSON-Analyse automatisch
+Willhaben-Suchprofil
+→ Suchlauf nach konfiguriertem Intervall
+→ Kandidaten speichern und gegen Filter prüfen
+→ bei Vollautomatik: Kandidat ab Mindestscore importieren
+→ Hausakte anlegen
+→ Bilder und PDFs laden
+→ Analyse-ZIP nach GitHub pending exportieren
+→ GitHub Action erzeugt ein binäres Artifact
+→ ChatGPT lädt und analysiert ZIP und Bilder
+→ hauscheck_analysis.json nach results/pending schreiben
+→ HausCheck importiert das Ergebnis automatisch
 ```
 
-## Gmail Add-on-Optionen
+## Suchmodi
+
+### Nur manuell
+
+Das Suchprofil läuft nur über **Jetzt ausführen**. Kandidaten werden nicht automatisch importiert.
+
+### Automatisch suchen, manuell importieren
+
+HausCheck führt das Profil zeitgesteuert aus und aktualisiert die Kandidatenliste. Eine Hausakte wird erst über **Hausakte anlegen & analysieren** erstellt.
+
+### Automatisch suchen und importieren
+
+HausCheck importiert ausschließlich Kandidaten, die:
+
+- den Status `new` erhalten haben,
+- noch nicht als Hausakte vorhanden sind,
+- mindestens den konfigurierten Auto-Import-Score erreichen.
+
+Die Anzahl automatischer Importe pro Lauf ist begrenzt.
+
+## Globale Suchoptionen
 
 ```yaml
-gmail_exchange_enabled: true
-gmail_auto_send_on_import: true
-gmail_auto_import_results: true
-gmail_import_interval_minutes: 5
-gmail_smtp_host: "smtp.gmail.com"
-gmail_smtp_port: 587
-gmail_imap_host: "imap.gmail.com"
-gmail_imap_port: 993
-gmail_username: "deineadresse@gmail.com"
-gmail_app_password: "DEIN_GOOGLE_APP_PASSWORT"
-gmail_to: "deineadresse@gmail.com"
-gmail_from_name: "HausCheck Pro"
-gmail_mark_results_seen: true
+search_automation_enabled: true
+search_scheduler_poll_seconds: 60
 ```
 
-Hinweise:
+`search_scheduler_poll_seconds` ist nur das interne Prüfintervall. Der tatsächliche Suchabstand wird pro Suchprofil eingestellt und beträgt mindestens 15 Minuten.
 
-- `gmail_username` ist deine Gmail-Adresse.
-- `gmail_to` kann dieselbe Adresse sein.
-- `gmail_app_password` ist nicht dein normales Google-Passwort, sondern ein Google-App-Passwort.
-- Export-Mails haben den Betreff `HAUSCHECK_EXPORT <house_id>`.
-- Ergebnis-Mails müssen den Betreff `HAUSCHECK_RESULT <house_id>` haben.
-- HausCheck akzeptiert `hauscheck_analysis.json` als Anhang oder reinen JSON-Text im Mailbody.
+## Empfohlenes Suchprofil
 
-## GitHub AI Exchange Fallback
+```text
+Regionen:
+Wies, Eibiswald, Oberhaag, Gleinstätten,
+Bad Schwanberg, Pölfing-Brunn, Frauental, Deutschlandsberg
+
+Zielpreis:             380.000 €
+Harte Preisgrenze:     400.000 €
+Mindestwohnfläche:     120 m²
+Wunsch-Grundstück:     700 m²
+HWB Warnung:           200
+HWB kritisch:          300
+Prüfbegriffe:          B76, B69, Bundesstraße, Hauptstraße
+Intervall:             60 Minuten
+Auto-Import-Score:     68
+Max. Auto-Importe:     2 je Lauf
+```
+
+Für die erste Testphase ist der Modus **automatisch suchen, manuell importieren** sinnvoll. Nach Kontrolle der Treffer kann auf Vollautomatik umgestellt werden.
+
+## Kandidaten-Datenbank
+
+Je Treffer werden unter anderem gespeichert:
+
+```text
+Provider
+externe Inserat-ID
+Quell-URL
+kanonische URL
+Titel
+Preis
+Wohnfläche
+Grundstück
+HWB
+Vorschaubild
+Filterentscheidung
+Filterbegründungen
+Erstfund
+letzte Sichtung
+Inhalts-Hash
+Änderungszeitpunkt
+Änderungszähler
+Importentscheidung
+zugehörige Hausakte
+```
+
+Doppelimporte werden über Quell-URL und Willhaben-Inserat-ID verhindert.
+
+## GitHub AI Exchange
 
 ```yaml
 github_exchange_enabled: true
@@ -72,7 +122,7 @@ github_done_path: "ai_exchange/results/done"
 github_cleanup_after_import: true
 ```
 
-GitHub bleibt verfügbar, falls Gmail deaktiviert wird oder größere ZIPs anders transportiert werden sollen.
+Der GitHub-Token muss Schreibrechte auf das Exchange-Repository haben.
 
 ## Inhalt des Analysepakets
 
@@ -92,86 +142,46 @@ hauscheck_export_<house_id>_<titel>.zip
     └── source_urls.txt
 ```
 
-Standard:
+Standardmäßig werden höchstens zwölf Bilder mit maximal 1.600 Pixel Kantenlänge exportiert.
+
+## Pipeline-Status
+
+Jede Hausakte zeigt:
 
 ```text
-max. 12 Bilder
-max. 1600 px Kantenlänge
-JPEG Qualität 84
+Inserat erfasst
+Medien geladen
+Zur Analyse bereitgestellt
+ChatGPT-Analyse importiert
 ```
 
-## Erwartete Rückgabe von ChatGPT
-
-Betreff:
-
-```text
-HAUSCHECK_RESULT <house_id>
-```
-
-Mailbody als reines JSON, ohne Markdown:
-
-```json
-{
-  "house_id": "abc12345",
-  "analysis_date": "2026-07-10T12:00:00+00:00",
-  "new_score": 78,
-  "confidence": "mittel",
-  "summary": "Kurze Zusammenfassung.",
-  "positive_findings": [],
-  "risk_findings": [],
-  "estimated_investment_eur": {
-    "low": 15000,
-    "high": 45000,
-    "confidence": "niedrig",
-    "comment": "Nur grobe Bild-/Inseratsschätzung."
-  },
-  "address_hints": [],
-  "image_findings": [],
-  "recommendation": "Besichtigung sinnvoll, Unterlagen prüfen.",
-  "next_steps": [],
-  "score_reasoning": "Begründung des neuen Scores.",
-  "limitations": []
-}
-```
-
-HausCheck prüft, ob die `house_id` zur lokalen Hausakte passt. Bestehende Analysen werden vor dem Überschreiben gesichert.
+Fehler und technische Ereignisse befinden sich unter **Diagnose und technische Details**. Mit **Analyse erneut anstoßen** kann ein Export wiederholt werden.
 
 ## Exposé PDF
 
 PDFs können direkt in der Hausakte hochgeladen werden. HausCheck versucht daraus Preis, Wohnfläche, Grundstück, Zimmer, Baujahr, HWB, fGEE und Heizung zu erkennen.
 
-Adressen aus PDFs werden **nicht automatisch** übernommen, weil PDFs oft Makler- oder Büroanschriften enthalten. Mögliche Adressen werden nur als `pdf_address_hint` in der Feldherkunft gespeichert.
-
-## Zentrale Suchprofile
-
-1. In HausCheck auf **Suchprofile** klicken.
-2. Name, zentrale Kriterien und Willhaben-PLZ/areaIds speichern.
-3. Die Willhaben-URL kann leer bleiben.
-4. Profil öffnen und **Suchprofil jetzt starten** klicken.
-5. Kandidaten prüfen und einzeln importieren.
-6. Nach dem Import startet Gmail/GitHub Exchange automatisch, wenn konfiguriert.
+Adressen aus PDFs werden nicht automatisch übernommen, weil PDFs häufig Makler- oder Büroanschriften enthalten. Mögliche Adressen werden nur als Hinweis in der Feldherkunft gespeichert.
 
 ## Datenablage
 
 ```text
 /share/hauscheck/
 ├── hauscheck.db
-├── projects/
-│   └── <house_id>/
-│       ├── images/
-│       ├── pdfs/
-│       ├── exports/
-│       └── analysis/
-│           └── hauscheck_analysis.json
-└── logs/
+└── projects/
+    └── <house_id>/
+        ├── html/
+        ├── images/
+        ├── pdfs/
+        ├── exports/
+        └── analysis/
+            └── hauscheck_analysis.json
 ```
 
 ## Hinweise
 
-Dies ist eine frühe MVP-Version. Die Parser sind bewusst konservativ:
-
-- fehlende Werte bleiben leer
-- Grundstück wird nur aus expliziten Grundstücksfeldern übernommen
-- ohne genaue Adresse erfolgt keine belastbare Lageprüfung
-- aktuell keine Captcha-/Login-Umgehung
-- PDF-Bildextraktion hängt stark vom PDF-Aufbau ab
+- Fehlende Werte bleiben leer und werden nicht erfunden.
+- Grundstücksflächen werden nur aus expliziten Inseratsfeldern übernommen.
+- Ohne genaue Adresse erfolgt keine belastbare Lageprüfung.
+- Captchas oder Login-Sperren werden nicht umgangen.
+- Werbe- und KI-generierte Inseratbilder werden bei der ChatGPT-Analyse nicht als Zustandsnachweis verwendet.
