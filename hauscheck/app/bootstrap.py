@@ -12,6 +12,7 @@ from app.gmail_exchange import register_gmail_exchange
 from app.house_manage import register_house_management
 from app.house_merge import register_house_merge
 from app.import_patch import register_import_patch
+from app.ingress_link_fix import register_ingress_link_fix
 from app.modern_ui import register_modern_ui
 from app.modern_ui_fix import register_modern_ui_fix
 from app.parser_quality import register_parser_quality
@@ -62,7 +63,9 @@ register_focused_ui(app)
 register_search_lifecycle_ui(app)
 # Zwei Makler-Inserate zusammenführen und Galeriebild als Vorschau wählen.
 register_house_merge(app)
-# Finale UI-Schicht: moderne Navigation, sichtbare Aktionen, dedizierte Merge-/Titelbild-Seiten und Aktualisieren.
-# Diese Registrierung bleibt bewusst zuletzt, damit alle älteren Zwischenansichten ersetzt werden.
+# Finale UI-Schicht: moderne Navigation, sichtbare Aktionen, dedizierte Merge-/Titelbild-Seiten.
 register_modern_ui(app)
 register_modern_ui_fix(app)
+# Muss wirklich zuletzt laufen: repariert relative Links unter Home-Assistant-Ingress
+# und ergänzt das Aktualisieren der aktuell sichtbaren Seite.
+register_ingress_link_fix(app)
