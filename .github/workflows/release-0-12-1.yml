@@ -22,6 +22,7 @@ jobs:
       - name: Set version and changelog
         shell: bash
         run: |
+          # Trigger 2026-07-13
           sed -i 's/version: "0.12.0"/version: "0.12.1"/' hauscheck/config.yaml
           python - <<'PY'
           from pathlib import Path
