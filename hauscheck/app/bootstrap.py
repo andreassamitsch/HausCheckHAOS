@@ -14,6 +14,7 @@ from app.house_manage import register_house_management
 from app.house_merge import register_house_merge
 from app.import_patch import register_import_patch
 from app.ingress_link_fix import register_ingress_link_fix
+from app.live_filter_pan import register_live_filter_pan
 from app.mobile_first_ui import register_mobile_first_ui
 from app.mobile_interaction_fix import register_mobile_interaction_fix
 from app.mobile_layout_state_fix import register_mobile_layout_state_fix
@@ -78,5 +79,7 @@ register_mobile_first_ui(app)
 register_blank_query_fix(app)
 # Touch-Wischen in der Lightbox und kompakter Filter-Chip.
 register_mobile_interaction_fix()
-# Letzte Korrektur: kein horizontales Abschneiden und serverseitig persistente Übersichtfilter.
+# Kein horizontales Abschneiden und serverseitig persistente Übersichtfilter.
 register_mobile_layout_state_fix(app)
+# Filter reagieren ohne Anwenden-Schaltfläche; gezoomte Bilder lassen sich verschieben.
+register_live_filter_pan()
