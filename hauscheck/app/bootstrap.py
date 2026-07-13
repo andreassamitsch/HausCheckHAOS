@@ -10,6 +10,7 @@ from app.github_b64_export import register_github_b64_export
 from app.github_exchange import register_github_exchange
 from app.gmail_exchange import register_gmail_exchange
 from app.house_manage import register_house_management
+from app.house_merge import register_house_merge
 from app.import_patch import register_import_patch
 from app.parser_quality import register_parser_quality
 from app.pipeline_integration import register_pipeline_integration
@@ -55,5 +56,7 @@ register_dashboard_automation_ui(app)
 register_valuation_ui(app)
 # Hausakten im Fokus, Suche per Lupe, Profile unter Einstellungen und Ablehnungsarchiv.
 register_focused_ui(app)
-# Final: Preisverlauf, Offline-/Wieder-online-Status, Profil löschen und Plus-Dialog.
+# Preisverlauf, Offline-/Wieder-online-Status, Profil löschen und Plus-Dialog.
 register_search_lifecycle_ui(app)
+# Final: zwei Makler-Inserate zusammenführen und Galeriebild als Vorschau wählen.
+register_house_merge(app)
