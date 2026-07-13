@@ -1,8 +1,8 @@
 {
-  "created_at": "2026-07-13T20:30:10.505726+00:00",
-  "commit": "c756581b86d487784fcf489cb0fc55467d2b9dcf",
-  "run_id": 29282616132,
+  "created_at": "2026-07-13T20:57:43.860481+00:00",
+  "commit": "eaec55f9418918f5aa0a11fe429c0d6d486bd809",
+  "run_id": 29284470180,
   "status": "success",
   "test_code": 0,
-  "log_tail": "willhaben_title_image_priority=ok\nHausCheck Gmail Exchange gestartet\nHausCheck GitHub Auto-Import gestartet\nHausCheck Such-Scheduler gestartet\ndashboard_compact_filter_sort_mobile_actions=ok\nhouse_header_lightbox_touch_swipe_two_column_gallery=ok\nmanual_title_image_override=ok\n"
+  "log_tail": "willhaben_title_image_priority=ok\nHausCheck Gmail Exchange gestartet\nHausCheck GitHub Auto-Import gestartet\nHausCheck Such-Scheduler gestartet\ndashboard_live_filter_persistent_mobile_actions=ok\nhouse_header_lightbox_swipe_pan_zoom_two_column_gallery=ok\nmanual_title_image_override=ok\n"
 }
