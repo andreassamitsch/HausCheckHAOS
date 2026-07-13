@@ -8,6 +8,7 @@ import app.search_automation as search_automation
 import app.search_lifecycle as lifecycle
 from app.github_auto_export import auto_export_house_to_github
 from app.house_manage import update_house_details
+from app.import_patch import find_existing_house_for_url
 from app.storage import (
     add_evidence,
     add_media,
@@ -33,17 +34,18 @@ def _baseline_existing_candidates(before: dict[str, dict[str, Any]]) -> None:
             candidate["lifecycle_hash"] = lifecycle._lifecycle_hash(snapshot)
             price = candidate.get("price_eur")
             if price not in (None, ""):
-                lifecycle._insert_price_history(con, candidate_id, price, "initial", main.now_iso() if hasattr(main, "now_iso") else lifecycle.now_iso())
+                lifecycle._insert_price_history(con, candidate_id, price, "initial", lifecycle.now_iso())
         con.commit()
 
 
 def _material_changes(old: dict[str, Any], parsed: Any) -> list[str]:
+    # Fehlende Parserwerte dürfen einen vorhandenen Wert nicht als Änderung markieren.
     new_data = {
-        "title": parsed.title,
-        "price_eur": parsed.price_eur,
-        "living_area_m2": parsed.living_area_m2,
-        "plot_area_m2": parsed.plot_area_m2,
-        "energy_hwb": parsed.energy_hwb,
+        "title": parsed.title or old.get("title"),
+        "price_eur": parsed.price_eur if parsed.price_eur is not None else old.get("price_eur"),
+        "living_area_m2": parsed.living_area_m2 if parsed.living_area_m2 is not None else old.get("living_area_m2"),
+        "plot_area_m2": parsed.plot_area_m2 if parsed.plot_area_m2 is not None else old.get("plot_area_m2"),
+        "energy_hwb": parsed.energy_hwb if parsed.energy_hwb is not None else old.get("energy_hwb"),
         "preview_image_url": parsed.image_urls[0] if parsed.image_urls else old.get("preview_image_url"),
     }
     return lifecycle._change_descriptions(lifecycle._snapshot(old), new_data)
@@ -61,6 +63,9 @@ async def _refresh_imported_candidate(
     parsed = main.parse_listing(source_url, raw_html)
     _, reasons = main.evaluate_candidate(profile, parsed)
     house_id = str(candidate.get("imported_house_id") or old.get("imported_house_id") or "")
+    if not house_id:
+        existing_house = find_existing_house_for_url(source_url)
+        house_id = str((existing_house or {}).get("id") or "")
 
     upsert_search_candidate(
         str(profile["id"]),
