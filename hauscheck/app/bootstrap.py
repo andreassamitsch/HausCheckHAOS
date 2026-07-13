@@ -16,6 +16,7 @@ from app.import_patch import register_import_patch
 from app.ingress_link_fix import register_ingress_link_fix
 from app.mobile_first_ui import register_mobile_first_ui
 from app.mobile_interaction_fix import register_mobile_interaction_fix
+from app.mobile_layout_state_fix import register_mobile_layout_state_fix
 from app.modern_ui import register_modern_ui
 from app.modern_ui_fix import register_modern_ui_fix
 from app.parser_quality import register_parser_quality
@@ -75,5 +76,7 @@ register_modern_ui_fix(app)
 register_mobile_first_ui(app)
 # Leere optionale Zahlenfilter gelten als nicht gesetzt statt als ungültige Eingabe.
 register_blank_query_fix(app)
-# Letzte Interaktionsschicht: kleiner Filter-Chip und horizontales Wischen in der Lightbox.
+# Touch-Wischen in der Lightbox und kompakter Filter-Chip.
 register_mobile_interaction_fix()
+# Letzte Korrektur: kein horizontales Abschneiden und serverseitig persistente Übersichtfilter.
+register_mobile_layout_state_fix(app)
