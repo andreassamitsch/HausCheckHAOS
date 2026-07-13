@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.11.0
+
+- Oberfläche vollständig neu strukturiert und visuell vereinheitlicht
+- neue Design-Tokens, konsistente Abstände, Karten, Schaltflächen, Formulare und Statusdarstellungen
+- responsive Desktop- und Mobilansicht mit eigener mobiler Hauptnavigation
+- Hausakten stehen auf der Startseite klar im Mittelpunkt
+- nicht importierte Suchkandidaten werden auf der Hauptübersicht als direkter Listenlink angezeigt
+- zentrale Aktionsleiste in jeder Hausakte mit `Aktualisieren`, `Zusammenlegen`, `Titelbild` und `Bearbeiten`
+- Zusammenführen ist jetzt als deutlich sichtbare eigene Seite umgesetzt
+- Auswahl der zweiten Hausakte erfolgt mit Bild, Titel, Lage und Quellenanzahl
+- Titelbildauswahl aus der Galerie auf eine eigene, aufgeräumte Seite verschoben
+- normale Bildergalerie enthält keine störenden Vorschaubild-Schaltflächen mehr
+- neue Aktualisieren-Funktion liest alle zugeordneten Makler-Inserate erneut ein
+- beim Aktualisieren werden Stammdaten, Quellen, Feldnachweise, Bilder, PDFs und Kandidatendaten erneuert
+- bei erkannten Änderungen oder neuen Medien wird automatisch eine neue KI-Analyse angestoßen
+- Zeitpunkt und Zusammenfassung der letzten Aktualisierung werden in der Hausakte angezeigt
+- Suchprofile können jetzt vollständig bearbeitet werden, einschließlich Regionen, areaIds, Such-URL, Preis-, Flächen-, HWB- und Automatikfiltern
+- Add-on-Version auf 0.11.0 erhöht
+
 ## 0.10.0
 
 - zwei Hausakten können zusammengeführt werden, wenn dasselbe Objekt von mehreren Maklern inseriert ist
