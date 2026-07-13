@@ -9,6 +9,7 @@ from app.github_exchange import register_github_exchange
 from app.gmail_exchange import register_gmail_exchange
 from app.house_manage import register_house_management
 from app.import_patch import register_import_patch
+from app.pipeline_integration import register_pipeline_integration
 from app.pipeline_status import ensure_pipeline_schema
 from app.product_ui import register_product_ui
 from app.product_ui_fix import register_product_ui_fix
@@ -24,6 +25,7 @@ register_analysis_package(app)
 register_house_management(app)
 register_search_profile_patch(app)
 register_github_exchange(app)
+register_pipeline_integration(app)
 register_gmail_exchange(app)
 register_github_b64_export(app)
 register_import_patch(app)
