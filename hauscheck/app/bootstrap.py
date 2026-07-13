@@ -5,6 +5,7 @@ from app.analysis_package import register_analysis_package
 from app.blank_query_fix import register_blank_query_fix
 from app.chatgpt_api import register_chatgpt_api
 from app.dashboard_automation_ui import register_dashboard_automation_ui
+from app.expose_review import register_expose_review
 from app.focused_ui import register_focused_ui
 from app.github_auto_import import register_github_auto_import
 from app.github_b64_export import register_github_b64_export
@@ -83,3 +84,5 @@ register_mobile_interaction_fix()
 register_mobile_layout_state_fix(app)
 # Filter reagieren ohne Anwenden-Schaltfläche; gezoomte Bilder lassen sich verschieben.
 register_live_filter_pan()
+# PDFs bleiben sichtbar; erkannte Objektadressen werden erst nach Freigabe übernommen.
+register_expose_review(app)
