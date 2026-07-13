@@ -164,7 +164,7 @@ jobs:
           with TestClient(application) as client:
               dashboard = client.get("/")
               assert dashboard.status_code == 200
-              assert "nicht importierte Suchkandidaten" in dashboard.text
+              assert "nicht importierte Kandidaten" in dashboard.text
               assert "Modernes Testhaus aktualisiert" in dashboard.text
               assert ">Anwenden</button>" not in dashboard.text
               assert "hc-dashboard-auto-filter-v1" in dashboard.text
@@ -266,7 +266,7 @@ jobs:
           )
           PY
           git config user.name "github-actions[bot]"
-          git config user.email "4189826+github-actions[bot]@users.noreply.github.com"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add ci/latest_modern_ui_check.json
           git commit -m "Update HausCheck modern UI check [skip ci]" || true
           git push || true
