@@ -13,7 +13,11 @@ from app.pipeline_status import ensure_pipeline_schema
 from app.product_ui import register_product_ui
 from app.product_ui_fix import register_product_ui_fix
 from app.search_ui_patch import register_search_profile_patch
+from app.storage import init_storage
 
+# Erweiterungsmodule führen bereits bei der Registrierung Schema-Migrationen aus.
+# Deshalb muss die Basisdatenbank auch bei einer frischen Installation vorher existieren.
+init_storage()
 ensure_pipeline_schema()
 register_chatgpt_api(app)
 register_analysis_package(app)
