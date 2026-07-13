@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-07-13T18:34:53.838325+00:00",
-  "commit": "084e9bf9bb508e44a33d4fad858ed46e7564abaa",
-  "run_id": 29275001510,
+  "created_at": "2026-07-13T18:36:31.316437+00:00",
+  "commit": "9846f97c98b3fb8727cbd85c0e06be4d98b8a298",
+  "run_id": 29275113329,
   "status": "success",
   "audit_code": 0,
   "log_tail": "HausCheck Gmail Exchange gestartet\nHausCheck GitHub Auto-Import gestartet\nHausCheck Such-Scheduler gestartet\nlink_audit=ok checked=104\n"
