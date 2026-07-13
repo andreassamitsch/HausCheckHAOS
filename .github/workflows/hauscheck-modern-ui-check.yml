@@ -7,6 +7,8 @@ on:
     paths:
       - "hauscheck/app/modern_ui.py"
       - "hauscheck/app/modern_ui_fix.py"
+      - "hauscheck/app/mobile_layout_state_fix.py"
+      - "hauscheck/app/live_filter_pan.py"
       - "hauscheck/app/bootstrap.py"
       - ".github/workflows/hauscheck-modern-ui-check.yml"
   workflow_dispatch:
@@ -164,25 +166,28 @@ jobs:
               assert dashboard.status_code == 200
               assert "nicht importierte Suchkandidaten" in dashboard.text
               assert "Modernes Testhaus aktualisiert" in dashboard.text
-              print("modern_dashboard=ok")
+              assert ">Anwenden</button>" not in dashboard.text
+              assert "hc-dashboard-auto-filter-v1" in dashboard.text
+              print("modern_dashboard_live_filters=ok")
 
               detail = client.get(f"/houses/{main_id}")
               assert detail.status_code == 200
-              for label in ["Aktualisieren", "Zusammenlegen", "Titelbild", "Bearbeiten"]:
+              for label in ["Aktualisieren", "Zwei Hausakten zusammenlegen", "Vorschaubild", "Bearbeiten"]:
                   assert label in detail.text, label
               assert "Zuletzt aktualisiert" in detail.text
-              print("modern_house_detail=ok")
+              assert "hc-lightbox-pan-v1" in detail.text
+              print("modern_house_detail_pan_zoom=ok")
 
               merge_page = client.get(f"/houses/{main_id}/merge")
               assert merge_page.status_code == 200
-              assert "Hausakten zusammenlegen" in merge_page.text
+              assert "Zwei Hausakten zusammenlegen" in merge_page.text
               assert "Zweiter Makler" in merge_page.text
               assert "../../media/" not in merge_page.text or second_id in merge_page.text
               print("modern_merge_page=ok")
 
               cover_page = client.get(f"/houses/{main_id}/cover")
               assert cover_page.status_code == 200
-              assert "Titelbild wählen" in cover_page.text
+              assert "Als Vorschaubild wählen" in cover_page.text
               assert f"../../media/{media['id']}" in cover_page.text
               assert f"preview/{media['id']}" in cover_page.text
               print("modern_cover_page=ok")
@@ -261,7 +266,7 @@ jobs:
           )
           PY
           git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.email "4189826+github-actions[bot]@users.noreply.github.com"
           git add ci/latest_modern_ui_check.json
           git commit -m "Update HausCheck modern UI check [skip ci]" || true
           git push || true
