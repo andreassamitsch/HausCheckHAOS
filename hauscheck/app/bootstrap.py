@@ -11,6 +11,7 @@ from app.house_manage import register_house_management
 from app.import_patch import register_import_patch
 from app.pipeline_status import ensure_pipeline_schema
 from app.product_ui import register_product_ui
+from app.product_ui_fix import register_product_ui_fix
 from app.search_ui_patch import register_search_profile_patch
 
 ensure_pipeline_schema()
@@ -25,3 +26,4 @@ register_import_patch(app)
 register_github_auto_import(app)
 # Muss zuletzt registriert werden: ersetzt die technischen Zwischen-UIs durch die Produktansicht.
 register_product_ui(app)
+register_product_ui_fix(app)
