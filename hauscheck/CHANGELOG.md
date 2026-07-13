@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.11.1
+
+- interne Links, Formulare und Medienpfade für Home-Assistant-Ingress korrigiert
+- 404-Fehler bei „Hausakte anlegen“ für nicht importierte Kandidaten behoben
+- Navigation zu Suche, Einstellungen, Ablehnungsarchiv, Zusammenlegen, Titelbild und Bearbeiten abgesichert
+- alle Hauptseiten lösen relative Pfade jetzt automatisch auf den aktuellen Ingress-Basispfad auf
+- echte Seitenaktualisierung über ein Refresh-Symbol im Kopf jeder Seite ergänzt
+- die fachliche Aktualisierung einer Hausakte heißt zur klaren Unterscheidung jetzt „Inserat neu einlesen“
+- automatischer Link-Audit prüft interne Links, Formulare und Medienpfade unter simuliertem Home-Assistant-Ingress
+- Add-on-Version auf 0.11.1 erhöht
+
 ## 0.11.0
 
 - Oberfläche vollständig neu strukturiert und visuell vereinheitlicht
