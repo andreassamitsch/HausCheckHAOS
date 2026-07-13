@@ -13,6 +13,7 @@ from app.house_manage import register_house_management
 from app.house_merge import register_house_merge
 from app.import_patch import register_import_patch
 from app.modern_ui import register_modern_ui
+from app.modern_ui_fix import register_modern_ui_fix
 from app.parser_quality import register_parser_quality
 from app.pipeline_integration import register_pipeline_integration
 from app.pipeline_status import ensure_pipeline_schema
@@ -63,3 +64,4 @@ register_search_lifecycle_ui(app)
 register_house_merge(app)
 # Finale UI-Schicht: moderne Navigation, sichtbare Aktionen, dedizierte Merge-/Titelbild-Seiten und Aktualisieren.
 register_modern_ui(app)
+register_modern_ui_fix(app)
