@@ -1,0 +1,206 @@
+name: HausCheck Link Audit
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "hauscheck/app/**"
+      - ".github/workflows/hauscheck-link-audit.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        working-directory: hauscheck
+        run: python -m pip install -r requirements.txt
+
+      - name: Audit internal links and ingress paths
+        id: audit
+        shell: bash
+        run: |
+          set +e
+          rm -rf /tmp/hauscheck-link-audit
+          cd hauscheck
+          HAUSCHECK_DATA_DIR=/tmp/hauscheck-link-audit python - <<'PY' > /tmp/hauscheck-link-audit.log 2>&1
+          from pathlib import Path
+          from urllib.parse import urlsplit
+
+          from bs4 import BeautifulSoup
+          from PIL import Image
+          from fastapi.testclient import TestClient
+          from starlette.routing import Match
+
+          import app.bootstrap
+          from app.ingress_link_fix import resolve_ingress_url
+          from app.storage import (
+              add_media,
+              create_house,
+              create_search_profile,
+              create_source,
+              project_dir,
+              upsert_search_candidate,
+          )
+
+          application = app.bootstrap.app
+          ingress_root = "/api/hassio_ingress/TESTTOKEN"
+
+          house = create_house({
+              "title": "Link Audit Haus",
+              "location_text": "8551 Wies",
+              "price_eur": 349000,
+              "living_area_m2": 140,
+              "plot_area_m2": 900,
+          })
+          second_house = create_house({"title": "Zweites Link Audit Haus", "location_text": "8552 Eibiswald"})
+          house_id = str(house["id"])
+          source = create_source(house_id, {
+              "source_name": "willhaben.at",
+              "source_url": "https://www.willhaben.at/iad/immobilien/d/testhaus-12345678",
+              "external_id": "12345678",
+          })
+          image_path = project_dir(house_id) / "images" / "audit.jpg"
+          Image.new("RGB", (900, 600), (170, 170, 170)).save(image_path, "JPEG")
+          add_media(house_id, {
+              "source_id": source["id"],
+              "kind": "image",
+              "original_url": "https://img.test/audit.jpg",
+              "local_path": str(image_path),
+              "mime_type": "image/jpeg",
+              "download_status": "downloaded",
+              "content_hash": "audit-image",
+              "width": 900,
+              "height": 600,
+              "file_size_bytes": image_path.stat().st_size,
+          })
+
+          profile = create_search_profile({
+              "name": "Link Audit Profil",
+              "source_name": "willhaben.at",
+              "search_url": "https://www.willhaben.at/iad/immobilien/haus-kaufen/haus-angebote?areaId=8551",
+              "regions": "Wies",
+          })
+          upsert_search_candidate(
+              str(profile["id"]),
+              "https://www.willhaben.at/iad/immobilien/d/kandidat-87654321",
+              "Nicht importierter Kandidat",
+              status="new",
+              facts={"price_eur": 329000, "living_area_m2": 130, "plot_area_m2": 820},
+          )
+
+          def route_exists(path: str, method: str) -> bool:
+              scope = {
+                  "type": "http",
+                  "path": path,
+                  "root_path": "",
+                  "method": method.upper(),
+                  "headers": [],
+                  "query_string": b"",
+                  "scheme": "http",
+                  "server": ("testserver", 80),
+                  "client": ("testclient", 50000),
+                  "app": application,
+              }
+              return any(route.matches(scope)[0] == Match.FULL for route in application.router.routes)
+
+          pages = [
+              "/",
+              "/search",
+              "/settings",
+              "/settings/search",
+              "/settings/search/new",
+              "/rejected",
+              "/import",
+              f"/houses/{house_id}",
+              f"/houses/{house_id}/merge",
+              f"/houses/{house_id}/cover",
+              f"/houses/{house_id}/edit",
+          ]
+
+          checked = 0
+          with TestClient(application) as client:
+              for page_path in pages:
+                  response = client.get(page_path)
+                  assert response.status_code == 200, (page_path, response.status_code, response.text[:400])
+                  assert "hauscheck-ingress-link-fix" in response.text, page_path
+                  assert "Aktuelle Seite neu laden" in response.text, page_path
+                  soup = BeautifulSoup(response.text, "html.parser")
+                  ingress_path = ingress_root + (page_path if page_path != "/" else "")
+
+                  for node, attribute, method in [
+                      *[(item, "href", "GET") for item in soup.select("a[href]")],
+                      *[(item, "action", (item.get("method") or "GET").upper()) for item in soup.select("form[action]")],
+                      *[(item, "src", "GET") for item in soup.select("img[src],source[src]")],
+                  ]:
+                      raw = node.get(attribute)
+                      if raw is None or str(raw).startswith(("http://", "https://", "mailto:", "tel:", "javascript:", "data:", "blob:", "#", "//")):
+                          continue
+                      resolved = resolve_ingress_url(ingress_path, str(raw))
+                      assert resolved.startswith(ingress_root), (page_path, attribute, raw, resolved)
+                      app_target = resolved[len(ingress_root):] or "/"
+                      app_target = urlsplit(app_target).path or "/"
+                      assert route_exists(app_target, method), (page_path, method, raw, resolved, app_target)
+                      checked += 1
+
+              detail = client.get(f"/houses/{house_id}")
+              assert "Zusammenlegen" in detail.text
+              assert "Titelbild" in detail.text
+              assert "Inserat neu einlesen" in detail.text
+              search = client.get("/search")
+              assert "Nicht importierter Kandidat" in search.text
+              assert "Hausakte anlegen" in search.text
+
+          assert resolve_ingress_url(ingress_root + "/search", "../import") == ingress_root + "/import"
+          assert resolve_ingress_url(ingress_root + f"/houses/{house_id}", f"{house_id}/merge") == ingress_root + f"/houses/{house_id}/merge"
+          assert resolve_ingress_url(ingress_root + f"/houses/{house_id}/cover", "preview/abc") == ingress_root + f"/houses/{house_id}/preview/abc"
+          assert checked >= 30, checked
+          print(f"link_audit=ok checked={checked}")
+          PY
+          CODE=$?
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          echo "status=$([ "$CODE" -eq 0 ] && echo success || echo failed)" >> "$GITHUB_OUTPUT"
+          cat /tmp/hauscheck-link-audit.log
+          exit "$CODE"
+
+      - name: Publish link audit result
+        if: always()
+        shell: bash
+        env:
+          AUDIT_STATUS: ${{ steps.audit.outputs.status }}
+          AUDIT_CODE: ${{ steps.audit.outputs.code }}
+        run: |
+          mkdir -p ci
+          python - <<'PY'
+          import json
+          import os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          log_path = Path('/tmp/hauscheck-link-audit.log')
+          log = log_path.read_text(encoding='utf-8', errors='replace') if log_path.exists() else ''
+          result = {
+              'created_at': datetime.now(timezone.utc).isoformat(),
+              'commit': os.environ['GITHUB_SHA'],
+              'run_id': int(os.environ['GITHUB_RUN_ID']),
+              'status': os.environ.get('AUDIT_STATUS') or 'failed',
+              'audit_code': int(os.environ.get('AUDIT_CODE') or -1),
+              'log_tail': log[-6000:],
+          }
+          Path('ci/latest_link_audit.json').write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ci/latest_link_audit.json
+          git commit -m "Update HausCheck link audit [skip ci]" || true
+          git push || true
