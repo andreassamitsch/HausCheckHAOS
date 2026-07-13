@@ -1,9 +1,9 @@
 {
-  "created_at": "2026-07-13T15:30:07.515842+00:00",
-  "commit": "b3c449de147187ea484a089ffa18cf11b0b36d82",
-  "run_id": 29262466983,
+  "created_at": "2026-07-13T15:30:53.560885+00:00",
+  "commit": "7489c9424bc71aca0aa3dc1b63d6653f5062ca5d",
+  "run_id": 29262526097,
   "status": "success",
   "compile_code": 0,
   "import_code": 0,
-  "log_tail": "routes=56\nbootstrap_import=ok\nhwb_decimal_and_table_priority=ok\ncandidate_lifecycle_price_offline_reactivated=ok\nsearch_profile_delete=ok\nHausCheck Gmail Exchange gestartet\nHausCheck GitHub Auto-Import gestartet\nHausCheck Such-Scheduler gestartet\nGET /=ok\nGET /search=ok\nGET /settings=ok\nGET /settings/search=ok\nGET /settings/search/new=ok\nGET /rejected=ok\nGET /import=ok\nGET /github/status=ok\nsearch_profile_create=ok\nhouse_detail_product_ui=ok\nhouse_reject_restore=ok\n"
+  "log_tail": "routes=59\nbootstrap_import=ok\nhwb_decimal_and_table_priority=ok\ncandidate_lifecycle_price_offline_reactivated=ok\nsearch_profile_delete=ok\nHausCheck Gmail Exchange gestartet\nHausCheck GitHub Auto-Import gestartet\nHausCheck Such-Scheduler gestartet\nGET /=ok\nGET /search=ok\nGET /settings=ok\nGET /settings/search=ok\nGET /settings/search/new=ok\nGET /rejected=ok\nGET /import=ok\nGET /github/status=ok\nsearch_profile_create=ok\nhouse_detail_product_ui=ok\nhouse_reject_restore=ok\n"
 }
