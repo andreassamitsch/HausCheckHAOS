@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.7.1
+
+- alle sichtbaren Zeitangaben auf `Europe/Vienna` umgestellt
+- Zeitformat auf `TT.MM.JJJJ HH:MM` verkürzt
+- neue Option `display_timezone`
+- KI-Score ersetzt nach erfolgreicher Analyse die regelbasierte Hauptbewertung
+- regelbasierte Bewertung bleibt als einklappbare Daten-Vorprüfung sichtbar
+- Analyseformat um Kaufpreiseinschätzung erweitert
+- neuer fairer Preisbereich, erstes Angebot, Zielpreis und empfohlene Obergrenze
+- Investitionsbedarf wird zusätzlich in einzelne Maßnahmen mit Priorität, Kostenspanne, Sicherheit und Grundlage aufgeteilt
+- grobe Projektkostenspanne aus Zielkaufpreis und Investitionen ergänzt
+- Kaufnebenkosten und Finanzierung werden nur einbezogen, wenn dies ausdrücklich dokumentiert ist
+- Add-on-Version auf 0.7.1 erhöht
+
 ## 0.7.0
 
 - zeitgesteuerten Willhaben-Such-Scheduler ergänzt
