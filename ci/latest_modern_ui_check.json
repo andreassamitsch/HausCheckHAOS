@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-07-13T20:48:27.498222+00:00",
-  "commit": "09d87c9771d7ff999f0811c5ef769d326e2f39cc",
-  "run_id": 29283850167,
+  "created_at": "2026-07-13T20:51:51.405451+00:00",
+  "commit": "34b7e20e3a0a4696cb600b2553b912759d554bb4",
+  "run_id": 29284069448,
   "status": "failed",
   "test_code": 1,
   "log_tail": "refresh_house_from_sources=ok\nHausCheck Gmail Exchange gestartet\nHausCheck GitHub Auto-Import gestartet\nHausCheck Such-Scheduler gestartet\nTraceback (most recent call last):\n  File \"<stdin>\", line 127, in <module>\nAssertionError\n"
