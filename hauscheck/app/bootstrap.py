@@ -85,4 +85,5 @@ register_mobile_layout_state_fix(app)
 # Filter reagieren ohne Anwenden-Schaltfläche; gezoomte Bilder lassen sich verschieben.
 register_live_filter_pan()
 # PDFs bleiben sichtbar; erkannte Objektadressen werden erst nach Freigabe übernommen.
+# Diese Registrierung liegt absichtlich zuletzt und wird durch einen eigenen Regressionstest geprüft.
 register_expose_review(app)
