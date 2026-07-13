@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.main import app
 from app.analysis_package import register_analysis_package
+from app.blank_query_fix import register_blank_query_fix
 from app.chatgpt_api import register_chatgpt_api
 from app.dashboard_automation_ui import register_dashboard_automation_ui
 from app.focused_ui import register_focused_ui
@@ -71,3 +72,5 @@ register_ingress_link_fix(app)
 register_modern_ui_fix(app)
 # Finale Darstellung: mobile-first, kompakte Filter und Ingress-sichere Bild-Lightbox.
 register_mobile_first_ui(app)
+# Leere optionale Zahlenfilter gelten als nicht gesetzt statt als ungültige Eingabe.
+register_blank_query_fix(app)
