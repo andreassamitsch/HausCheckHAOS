@@ -9,8 +9,11 @@ from app.github_exchange import register_github_exchange
 from app.gmail_exchange import register_gmail_exchange
 from app.house_manage import register_house_management
 from app.import_patch import register_import_patch
+from app.pipeline_status import ensure_pipeline_schema
+from app.product_ui import register_product_ui
 from app.search_ui_patch import register_search_profile_patch
 
+ensure_pipeline_schema()
 register_chatgpt_api(app)
 register_analysis_package(app)
 register_house_management(app)
@@ -20,3 +23,5 @@ register_gmail_exchange(app)
 register_github_b64_export(app)
 register_import_patch(app)
 register_github_auto_import(app)
+# Muss zuletzt registriert werden: ersetzt die technischen Zwischen-UIs durch die Produktansicht.
+register_product_ui(app)
