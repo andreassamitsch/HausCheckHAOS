@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.10.0
+
+- zwei Hausakten können zusammengeführt werden, wenn dasselbe Objekt von mehreren Maklern inseriert ist
+- die aktuell geöffnete Hausakte bleibt bestehen; die ausgewählte zweite Hausakte wird eingegliedert
+- Inseratsquellen, Maklerbeschreibungen, Feldnachweise, Bilder, PDFs und Kandidatenzuordnungen werden übernommen
+- fehlende Stammdaten der Hauptakte werden aus der zweiten Hausakte ergänzt, vorhandene Hauptwerte bleiben bestehen
+- doppelte Medien werden über Datei-Hash oder Original-URL erkannt und entfernt
+- frühere KI-Analysen der zweiten Hausakte werden als Archivdateien erhalten
+- Zusammenführungen werden mit Quelle, Medienanzahl, Duplikaten und Zeitpunkt protokolliert
+- nach dem Zusammenführen wird automatisch ein neues kombiniertes Analysepaket nach GitHub exportiert
+- Bildauswahl für Analysepakete wird auf mehrere Maklerquellen verteilt, damit nicht nur Bilder eines Inserats berücksichtigt werden
+- jedes geladene Galeriebild kann als Vorschaubild der Hausakte ausgewählt werden
+- das gewählte Vorschaubild wird in der Übersicht und in der Galerie zuerst angezeigt
+- automatische Vorschaubildauswahl kann wieder aktiviert werden
+- Add-on-Version auf 0.10.0 erhöht
+
 ## 0.9.0
 
 - Preisverlauf je Kandidat ergänzt
