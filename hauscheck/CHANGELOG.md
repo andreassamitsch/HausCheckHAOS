@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.7.0
+
+- zeitgesteuerten Willhaben-Such-Scheduler ergänzt
+- Suchprofile können pausiert, manuell, halbautomatisch oder vollautomatisch betrieben werden
+- halbautomatisch: Suche läuft im Hintergrund, Kandidaten werden manuell importiert
+- vollautomatisch: passende Kandidaten werden als Hausakte angelegt, Medien geladen und zur ChatGPT-Analyse exportiert
+- Auto-Import verwendet nur Kandidaten mit Status `new` und konfigurierbarem Mindestscore
+- Anzahl automatischer Importe je Suchlauf ist begrenzt
+- bestehende Inserate werden über Portal-ID und Quell-URL gegen Doppelimporte geschützt
+- Suchprofile zeigen Laufstatus, Fehler, Intervall, Mindestscore und Auto-Import-Limit
+- neue globale Optionen `search_automation_enabled` und `search_scheduler_poll_seconds`
+- Add-on-Version auf 0.7.0 erhöht
+
 ## 0.6.0
 
 - normale Hausaktenansicht auf den produktiven Workflow reduziert
