@@ -13,6 +13,7 @@ from app.house_manage import register_house_management
 from app.house_merge import register_house_merge
 from app.import_patch import register_import_patch
 from app.ingress_link_fix import register_ingress_link_fix
+from app.mobile_first_ui import register_mobile_first_ui
 from app.modern_ui import register_modern_ui
 from app.modern_ui_fix import register_modern_ui_fix
 from app.parser_quality import register_parser_quality
@@ -63,9 +64,10 @@ register_focused_ui(app)
 register_search_lifecycle_ui(app)
 # Zwei Makler-Inserate zusammenführen und Galeriebild als Vorschau wählen.
 register_house_merge(app)
-# Finale UI-Schicht: moderne Navigation, sichtbare Aktionen, dedizierte Merge-/Titelbild-Seiten.
+# Moderne Navigation, sichtbare Aktionen und dedizierte Merge-/Titelbild-Seiten.
 register_modern_ui(app)
-# Die Ingress-Auflösung wird vor den letzten Kompatibilitätsrouten registriert,
-# damit auch deren Seiten Layout, Links und den echten Seiten-Reload erhalten.
+# Die Ingress-Auflösung wird vor den letzten Kompatibilitätsrouten registriert.
 register_ingress_link_fix(app)
 register_modern_ui_fix(app)
+# Finale Darstellung: mobile-first, kompakte Filter und Ingress-sichere Bild-Lightbox.
+register_mobile_first_ui(app)
