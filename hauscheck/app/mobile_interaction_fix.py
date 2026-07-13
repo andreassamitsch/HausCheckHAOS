@@ -4,11 +4,11 @@ import app.mobile_first_ui as mobile_first_ui
 import app.modern_ui as modern_ui
 
 
-_PATCH_MARKER = "hc-mobile-interaction-fix-v1"
+_PATCH_MARKER = "hc-mobile-interaction-fix-v2"
 
 COMPACT_FILTER_CSS = r"""
-<style id="hc-mobile-interaction-fix-v1">
-/* Geschlossener Filter ist nur noch ein kompakter Chip statt einer breiten Karte. */
+<style id="hc-mobile-interaction-fix-v2">
+/* Geschlossener Filter ist nur ein kompakter Chip statt einer breiten Karte. */
 .filter-panel:not([open]) {
   display:inline-block;
   width:auto;
@@ -37,6 +37,8 @@ COMPACT_FILTER_CSS = r"""
 }
 .filter-summary {
   gap:6px;
+  min-width:0;
+  max-width:100%;
   font-size:12px;
 }
 .filter-summary svg {
@@ -65,20 +67,145 @@ COMPACT_FILTER_CSS = r"""
 .filter-panel[open]>summary {
   width:100%;
   min-height:42px;
-  padding:0 11px;
+  padding:8px 11px;
+  align-items:flex-start;
+}
+.filter-panel[open] .filter-summary {
+  width:100%;
+  flex-wrap:wrap;
+  align-items:flex-start;
 }
 .filter-panel[open] .filter-summary .muted {
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
+  flex:1 1 100%;
+  width:100%;
+  overflow:visible;
+  text-overflow:clip;
+  white-space:normal;
+  overflow-wrap:anywhere;
 }
+
+/* Mobile-first: Texte dürfen sich verbreitern und umbrechen, aber nie abgeschnitten werden. */
+html,body { max-width:100%; overflow-x:hidden; }
+.app-header-inner,.app-main,.page-heading,.card,.house-card,.house-card-content,
+.filter-panel,.filter-body,.filter-grid,.filter-grid>*,.facts-grid,.fact,
+.section-title,.source-card,.notice,.object-heading { min-width:0; }
+.app-title {
+  overflow:visible;
+  text-overflow:clip;
+  white-space:normal;
+  overflow-wrap:anywhere;
+  line-height:1.2;
+  text-align:right;
+}
+.page-heading h1,.house-card h3,.house-card-title,.object-heading h1,
+.house-card-content>.muted,.fact-value,.source-card,.notice {
+  max-width:100%;
+  overflow:visible;
+  text-overflow:clip;
+  white-space:normal;
+  overflow-wrap:anywhere;
+  word-break:normal;
+}
+.pill {
+  max-width:100%;
+  white-space:normal;
+  overflow-wrap:anywhere;
+  text-align:left;
+}
+.button,button {
+  max-width:100%;
+  white-space:normal;
+  text-align:center;
+}
+.detail-toolbar .button,.detail-toolbar button { white-space:nowrap; }
 
 /* Touch-Gesten bleiben innerhalb der Lightbox. */
 .hc-lightbox-stage {
   touch-action:none;
   overscroll-behavior:contain;
 }
+
+@media (max-width:599px) {
+  .app-header-inner {
+    min-height:58px;
+    padding-top:7px;
+    padding-bottom:7px;
+    align-items:flex-start;
+  }
+  .app-brand { padding-top:3px; }
+  .app-title {
+    max-width:58%;
+    font-size:12px;
+  }
+  .house-card h3 {
+    font-size:17px;
+    line-height:1.3;
+  }
+  .filter-actions {
+    grid-template-columns:1fr;
+  }
+  .filter-actions .button,
+  .filter-actions button {
+    width:100%;
+  }
+}
 </style>
+<script id="hc-dashboard-filter-state-v1">
+(() => {
+  const storageKey = 'hc-dashboard-filter-state-v1';
+  const stateKeys = ['sort', 'q', 'min_score', 'max_price', 'max_hwb'];
+
+  const normalizedSearch = params => {
+    const clean = new URLSearchParams();
+    stateKeys.forEach(key => {
+      const value = params.get(key);
+      if (value !== null && String(value).trim() !== '') clean.set(key, value);
+    });
+    return clean.toString() ? `?${clean.toString()}` : '';
+  };
+
+  const initialize = () => {
+    const panel = document.querySelector('.filter-panel');
+    const grid = document.querySelector('.house-grid');
+    if (!panel || !grid) return;
+
+    const current = normalizedSearch(new URLSearchParams(window.location.search));
+    if (current) {
+      try { window.localStorage.setItem(storageKey, current); } catch (_) {}
+    } else {
+      let saved = '';
+      try { saved = window.localStorage.getItem(storageKey) || ''; } catch (_) {}
+      if (saved) {
+        window.location.replace(`${window.location.pathname}${saved}${window.location.hash}`);
+        return;
+      }
+    }
+
+    const form = panel.querySelector('form[method="get"]');
+    if (form) {
+      form.addEventListener('submit', () => {
+        const next = normalizedSearch(new URLSearchParams(new FormData(form)));
+        try {
+          if (next) window.localStorage.setItem(storageKey, next);
+          else window.localStorage.removeItem(storageKey);
+        } catch (_) {}
+      });
+    }
+
+    panel.querySelectorAll('.filter-actions a').forEach(link => {
+      link.addEventListener('click', () => {
+        try { window.localStorage.removeItem(storageKey); } catch (_) {}
+      });
+    });
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initialize, {once:true});
+  } else {
+    initialize();
+  }
+})();
+</script>
 """
 
 SWIPE_SCRIPT = r"""
