@@ -1,0 +1,165 @@
+name: HausCheck Mobile UI Check
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "hauscheck/app/mobile_first_ui.py"
+      - "hauscheck/app/bootstrap.py"
+      - ".github/workflows/hauscheck-mobile-ui-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        working-directory: hauscheck
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install pillow
+
+      - name: Test mobile-first UI
+        id: mobile_check
+        shell: bash
+        run: |
+          set +e
+          rm -rf /tmp/hauscheck-mobile-test
+          mkdir -p /tmp/hauscheck-mobile-test
+          cd hauscheck
+          HAUSCHECK_DATA_DIR=/tmp/hauscheck-mobile-test python - <<'PY' > /tmp/hauscheck-mobile-check.log 2>&1
+          from pathlib import Path
+
+          from PIL import Image
+          from fastapi.testclient import TestClient
+
+          import app.bootstrap
+          from app.house_merge import set_preview_media
+          from app.mobile_first_ui import _ordered_images
+          from app.storage import add_media, create_house, project_dir
+
+          house = create_house({
+              "title": "Mobiles Testhaus mit langem Inseratstitel",
+              "location_text": "8551 Wies",
+              "price_eur": 349000,
+              "living_area_m2": 142,
+              "plot_area_m2": 910,
+              "energy_hwb": 106.4,
+          })
+          house_id = str(house["id"])
+          portal_url = "https://images.example.test/willhaben-title.jpg"
+          other_url = "https://images.example.test/other.jpg"
+
+          from app.house_manage import update_house_details
+          update_house_details(house_id, {"preview_image_url": portal_url})
+
+          other_path = project_dir(house_id) / "images" / "01_other.jpg"
+          portal_path = project_dir(house_id) / "images" / "02_portal_title.jpg"
+          Image.new("RGB", (900, 650), (170, 170, 170)).save(other_path, "JPEG")
+          Image.new("RGB", (1200, 800), (190, 190, 190)).save(portal_path, "JPEG")
+          other = add_media(house_id, {
+              "kind": "image", "original_url": other_url, "local_path": str(other_path),
+              "mime_type": "image/jpeg", "download_status": "downloaded",
+              "content_hash": "mobile-other", "width": 900, "height": 650,
+              "file_size_bytes": other_path.stat().st_size,
+          })
+          portal = add_media(house_id, {
+              "kind": "image", "original_url": portal_url, "local_path": str(portal_path),
+              "mime_type": "image/jpeg", "download_status": "downloaded",
+              "content_hash": "mobile-portal", "width": 1200, "height": 800,
+              "file_size_bytes": portal_path.stat().st_size,
+          })
+
+          ordered = _ordered_images(house_id)
+          assert ordered[0]["id"] == portal["id"], ordered
+          print("willhaben_title_image_priority=ok")
+
+          with TestClient(app.bootstrap.app) as client:
+              dashboard = client.get("/")
+              assert dashboard.status_code == 200
+              assert "Sortieren &amp; filtern" in dashboard.text or "Sortieren & filtern" in dashboard.text
+              assert "reject-button" in dashboard.text
+              assert "house-card-actions" in dashboard.text
+              assert "Importiert:" in dashboard.text
+
+              filtered = client.get("/?sort=price_asc&max_price=400000&max_hwb=150")
+              assert filtered.status_code == 200
+              assert "1 von 1 Hausakten angezeigt" in filtered.text
+              print("dashboard_filter_sort_mobile_actions=ok")
+
+              detail = client.get(f"/houses/{house_id}")
+              assert detail.status_code == 200
+              assert "object-hero-meta" in detail.text
+              assert "hero-meta-chip" in detail.text
+              assert "Mobiles Testhaus mit langem Inseratstitel" in detail.text
+              assert detail.text.index("object-hero-meta") < detail.text.index("object-heading")
+              assert "hc-lightbox" in detail.text
+              assert "gallery-mobile" in detail.text
+              assert detail.text.count("gallery-item js-lightbox") == 2
+              assert '<a class="gallery-item' not in detail.text
+              assert "Aktualisieren" in detail.text
+              assert "Zusammenlegen" in detail.text
+              assert "Titelbild" in detail.text
+              print("house_header_lightbox_two_column_gallery=ok")
+
+              set_preview_media(house_id, str(other["id"]))
+              detail_manual = client.get(f"/houses/{house_id}")
+              assert detail_manual.status_code == 200
+              first_other = detail_manual.text.find(f"media/{other['id']}")
+              first_portal = detail_manual.text.find(f"media/{portal['id']}")
+              assert first_other >= 0 and first_portal >= 0 and first_other < first_portal
+              print("manual_title_image_override=ok")
+          PY
+          CODE=$?
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          if [ "$CODE" -eq 0 ]; then
+            echo "status=success" >> "$GITHUB_OUTPUT"
+          else
+            echo "status=failed" >> "$GITHUB_OUTPUT"
+          fi
+          cat /tmp/hauscheck-mobile-check.log
+          exit "$CODE"
+
+      - name: Publish mobile UI result
+        if: always()
+        shell: bash
+        env:
+          TEST_STATUS: ${{ steps.mobile_check.outputs.status }}
+          TEST_CODE: ${{ steps.mobile_check.outputs.code }}
+        run: |
+          mkdir -p ci
+          python - <<'PY'
+          import json
+          import os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          log_path = Path('/tmp/hauscheck-mobile-check.log')
+          log = log_path.read_text(encoding='utf-8', errors='replace') if log_path.exists() else ''
+          result = {
+              'created_at': datetime.now(timezone.utc).isoformat(),
+              'commit': os.environ['GITHUB_SHA'],
+              'run_id': int(os.environ['GITHUB_RUN_ID']),
+              'status': os.environ.get('TEST_STATUS') or 'failed',
+              'test_code': int(os.environ.get('TEST_CODE') or -1),
+              'log_tail': log[-6000:],
+          }
+          Path('ci/latest_mobile_ui_check.json').write_text(
+              json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8'
+          )
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ci/latest_mobile_ui_check.json
+          git commit -m "Update HausCheck mobile UI check [skip ci]" || true
+          git push || true
