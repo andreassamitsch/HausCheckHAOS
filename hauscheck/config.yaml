@@ -1,5 +1,5 @@
 name: "HausCheck Pro"
-version: "0.7.0"
+version: "0.7.1"
 slug: "hauscheck"
 description: "Persönlicher Immobilien-Assistent für Home Assistant"
 url: "https://github.com/andreassamitsch/HausCheckHAOS"
@@ -23,6 +23,7 @@ map:
 options:
   log_level: info
   data_dir: /share/hauscheck
+  display_timezone: "Europe/Vienna"
   api_token: ""
   github_exchange_enabled: true
   github_auto_export_on_import: true
@@ -63,6 +64,7 @@ options:
 schema:
   log_level: list(trace|debug|info|notice|warning|error|fatal)
   data_dir: str
+  display_timezone: str
   api_token: str
   github_exchange_enabled: bool
   github_auto_export_on_import: bool
