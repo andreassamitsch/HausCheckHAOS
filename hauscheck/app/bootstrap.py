@@ -3,6 +3,7 @@ from __future__ import annotations
 from app.main import app
 from app.analysis_package import register_analysis_package
 from app.chatgpt_api import register_chatgpt_api
+from app.dashboard_automation_ui import register_dashboard_automation_ui
 from app.github_auto_import import register_github_auto_import
 from app.github_b64_export import register_github_b64_export
 from app.github_exchange import register_github_exchange
@@ -38,3 +39,4 @@ register_product_ui(app)
 register_product_ui_fix(app)
 # Automatik-Einstellungen ersetzen abschließend die vorbereitende Suchprofil-UI aus v0.6.0.
 register_search_automation_ui(app)
+register_dashboard_automation_ui(app)
