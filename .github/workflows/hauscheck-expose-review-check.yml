@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "hauscheck/app/expose_review.py"
+      - "hauscheck/app/expose_address_quality.py"
       - "hauscheck/app/house_manage.py"
       - "hauscheck/app/product_ui.py"
       - "hauscheck/app/mobile_first_ui.py"
@@ -66,6 +67,25 @@ jobs:
           assert proposals[0]["address_text"] == "Kowaldstraße 2, 8551 Wies", proposals
           assert proposals[0]["confidence"] == "high", proposals
           print("object_address_without_broker_address=ok")
+
+          rural = """
+          Liegenschaftsadresse: Hörmsdorf 12, 8552 Eibiswald
+          Kontakt: Muster Immobilien GmbH, Hauptstraße 9, 8010 Graz
+          """
+          rural_proposals = extract_address_proposals(rural)
+          assert len(rural_proposals) == 1, rural_proposals
+          assert rural_proposals[0]["address_text"] == "Hörmsdorf 12, 8552 Eibiswald", rural_proposals
+          assert rural_proposals[0]["confidence"] == "high", rural_proposals
+          print("rural_austrian_address_without_broker_address=ok")
+
+          postcode_first = """
+          Adresse des Objekts: 8552 Eibiswald, Hörmsdorf 12
+          Anbieter Immobilien GmbH, 8010 Graz
+          """
+          postcode_proposals = extract_address_proposals(postcode_first)
+          assert len(postcode_proposals) == 1, postcode_proposals
+          assert postcode_proposals[0]["address_text"] == "Hörmsdorf 12, 8552 Eibiswald", postcode_proposals
+          print("postcode_first_object_address=ok")
 
           pdf_path = project_dir(house_id) / "pdfs" / "test_expose.pdf"
           pdf_path.write_bytes(b"%PDF-1.4\n% HausCheck regression fixture\n")
