@@ -13,7 +13,7 @@ from app.storage import list_evidence, list_media, list_sources
 from app.ui_helpers import esc, format_datetime, format_eur
 
 
-LOCAL_TIME_SCRIPT = """
+LOCAL_TIME_SCRIPT = r"""
 <script>
 (() => {
   if (window.__hauscheckLocalTimeInstalled) return;
