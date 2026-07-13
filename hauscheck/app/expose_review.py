@@ -54,10 +54,17 @@ _STREET = (
     r"(?:Am|An\s+der|Auf\s+der|Im|In\s+der|Unter|Obere|Untere)\s+"
     r"[A-ZÄÖÜ][A-Za-zÄÖÜäöüß.'\-]+(?:\s+[A-Za-zÄÖÜäöüß.'\-]+){0,4})"
 )
-_CITY = (
-    r"[A-ZÄÖÜ][A-Za-zÄÖÜäöüß.'\-]+"
-    r"(?:\s+(?:[A-ZÄÖÜ][A-Za-zÄÖÜäöüß.'\-]+|am|im|an|der|bei|ob|unter)){0,5}"
+_CITY_STOP_WORD = (
+    r"(?i:Kontakt|Makler|Anbieter|Impressum|Telefon|E-?Mail|Email|Homepage|"
+    r"Objekt(?:nummer|daten)?|Preis|Kaufpreis|Wohnfläche|Grundstück|Energie|HWB|"
+    r"fGEE|Baujahr|Zimmer|Beschreibung)"
 )
+_CITY_FIRST = rf"(?!(?:{_CITY_STOP_WORD})\b)[A-ZÄÖÜ][A-Za-zÄÖÜäöüß.'\-]+"
+_CITY_NEXT = (
+    rf"(?!(?:{_CITY_STOP_WORD})\b)"
+    r"(?:[A-ZÄÖÜ][A-Za-zÄÖÜäöüß.'\-]+|am|im|an|der|bei|ob|unter)"
+)
+_CITY = rf"{_CITY_FIRST}(?:\s+{_CITY_NEXT}){{0,5}}"
 _ADDRESS_PATTERNS = [
     re.compile(
         rf"\b(?P<street>{_STREET})\s+(?P<number>\d+[A-Za-z]?(?:/\d+[A-Za-z]?)?)"
@@ -147,9 +154,15 @@ def extract_address_proposals(text: str) -> list[dict[str, str]]:
             if not key or key in seen:
                 continue
 
-            before = flat[max(0, match.start() - 110):match.start()]
+            before = flat[max(0, match.start() - 150):match.start()]
             context = flat[max(0, match.start() - 170):min(len(flat), match.end() + 170)]
-            positive = bool(_POSITIVE_CONTEXT.search(before))
+            positive_markers = list(_POSITIVE_CONTEXT.finditer(before))
+            blocked_markers = list(_BLOCKED_CONTEXT.finditer(before))
+            positive = bool(
+                positive_markers
+                and (not blocked_markers or positive_markers[-1].start() > blocked_markers[-1].start())
+                and len(before) - positive_markers[-1].end() <= 95
+            )
             blocked = bool(_BLOCKED_CONTEXT.search(context))
             if blocked and not positive:
                 continue
