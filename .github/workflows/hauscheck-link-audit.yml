@@ -155,7 +155,7 @@ jobs:
 
               detail = client.get(f"/houses/{house_id}")
               assert "Zusammenlegen" in detail.text
-              assert "Titelbild" in detail.text
+              assert "Vorschaubild" in detail.text
               assert "Inserat neu einlesen" in detail.text
               search = client.get("/search")
               assert "Nicht importierter Kandidat" in search.text
