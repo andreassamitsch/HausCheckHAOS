@@ -1,8 +1,8 @@
 {
-  "created_at": "2026-07-13T18:33:27.806529+00:00",
-  "commit": "511db9a56d4b8483aacb3cb2b79c3f3931d5e681",
-  "run_id": 29274908285,
-  "status": "failed",
-  "audit_code": 1,
-  "log_tail": "HausCheck Gmail Exchange gestartet\nHausCheck GitHub Auto-Import gestartet\nHausCheck Such-Scheduler gestartet\nTraceback (most recent call last):\n  File \"<stdin>\", line 100, in <module>\nAssertionError: /houses/56129319/merge\n"
+  "created_at": "2026-07-13T18:34:53.838325+00:00",
+  "commit": "084e9bf9bb508e44a33d4fad858ed46e7564abaa",
+  "run_id": 29275001510,
+  "status": "success",
+  "audit_code": 0,
+  "log_tail": "HausCheck Gmail Exchange gestartet\nHausCheck GitHub Auto-Import gestartet\nHausCheck Such-Scheduler gestartet\nlink_audit=ok checked=104\n"
 }
