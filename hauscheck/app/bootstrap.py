@@ -18,11 +18,14 @@ from app.search_automation import register_search_automation
 from app.search_automation_ui import register_search_automation_ui
 from app.search_ui_patch import register_search_profile_patch
 from app.storage import init_storage
+from app.valuation_schema import register_valuation_schema
+from app.valuation_ui import register_valuation_ui
 
 # Erweiterungsmodule führen bereits bei der Registrierung Schema-Migrationen aus.
 # Deshalb muss die Basisdatenbank auch bei einer frischen Installation vorher existieren.
 init_storage()
 ensure_pipeline_schema()
+register_valuation_schema()
 register_chatgpt_api(app)
 register_analysis_package(app)
 register_house_management(app)
@@ -40,3 +43,5 @@ register_product_ui_fix(app)
 # Automatik-Einstellungen ersetzen abschließend die vorbereitende Suchprofil-UI aus v0.6.0.
 register_search_automation_ui(app)
 register_dashboard_automation_ui(app)
+# Formatiert Zeiten lokal und erweitert die Hausansicht um KI-Kaufpreis und Investitionsposten.
+register_valuation_ui(app)
