@@ -1,88 +1,133 @@
 # HausCheck Pro Add-on
 
-## Aktueller Funktionsumfang v0.10.0
+## Aktueller Funktionsumfang v0.11.0
 
-- fokussierte Startseite mit aktiven Hausakten
-- zwei Makler-Inserate desselben Objekts zu einer Hausakte zusammenführen
-- frei wählbares Galeriebild als Vorschaubild
-- Willhaben-Suche direkt über die Lupe
-- Suchprofile unter **Einstellungen → Suchprofile**
-- neues Suchprofil oben über den Plus-Button
-- Suchprofile inklusive Kandidaten- und Preisverlauf löschbar
-- zeitgesteuerte oder vollautomatische Willhaben-Suche
-- Preisverlauf, Änderungsstatus sowie Offline-/Wieder-online-Erkennung
-- automatischer Medien-Download und GitHub-Analyseworkflow
-- KI-Gesamtbewertung mit Kaufpreis- und Investitionsempfehlung
-- Ablehnungsarchiv für Hausakten und Kandidaten
-- lokale Zeitanzeige im Format `TT.MM.JJJJ HH:MM`
+HausCheck verwaltet Immobilien als Hausakten, sucht passende Willhaben-Inserate, lädt Medien, übergibt Analysepakete über GitHub an ChatGPT und importiert die fertige KI-Bewertung automatisch zurück.
+
+Neu in 0.11.0:
+
+- vollständig überarbeitete responsive Oberfläche
+- Hausakten als klare Hauptansicht
+- sichtbare Aktionen zum Aktualisieren, Zusammenlegen, Titelbild wählen und Bearbeiten
+- direkter Link zu allen noch nicht importierten Suchkandidaten
+- vollständige Bearbeitung bestehender Suchprofile
+
+## Navigation
+
+Auf Mobilgeräten steht unten eine feste Navigation bereit:
+
+```text
+Hausakten · Suche · Abgelehnt · Einstellungen
+```
+
+Auf größeren Bildschirmen befinden sich die wichtigsten Aktionen im Seitenkopf beziehungsweise direkt in der jeweiligen Hausakte.
+
+## Hausaktenübersicht
+
+Die Startseite zeigt aktive Hausakten mit:
+
+- ausgewähltem Titelbild
+- Titel und Lage
+- KI-Score beziehungsweise vorläufiger Datenbewertung
+- Pipeline-Status
+- Preis, Wohnfläche und Grundstück
+
+Oberhalb der Hausakten erscheint ein direkter Listenlink:
+
+```text
+X nicht importierte Suchkandidaten
+```
+
+Dieser öffnet die Kandidatenliste zum Prüfen, Importieren oder Ablehnen.
+
+## Hausakte aktualisieren
+
+In jeder geöffneten Hausakte steht oben die Aktion **Aktualisieren**.
+
+Der Ablauf:
+
+```text
+alle zugeordneten Makler-Inserate erneut laden
+→ Inseratsdaten neu auslesen
+→ Quellen und Feldnachweise aktualisieren
+→ neue Bilder und PDFs ergänzen
+→ Kandidatendaten aktualisieren
+→ Änderungen zusammenfassen
+→ bei relevanten Änderungen neue KI-Analyse starten
+```
+
+Die Hausakte zeigt danach Datum, Uhrzeit und Zusammenfassung der letzten Aktualisierung. Ist keine aktualisierbare HTTP-Quelle vorhanden, wird eine verständliche Fehlermeldung ausgegeben.
 
 ## Zwei Hausakten zusammenführen
 
-Die Funktion befindet sich in der geöffneten Hausakte unter:
+Die Funktion ist direkt in der oberen Aktionsleiste jeder Hausakte sichtbar:
 
 ```text
-Hausakte bearbeiten
-→ Zwei Hausakten zusammenlegen
+Zusammenlegen
 ```
 
-Die aktuell geöffnete Hausakte bleibt die Hauptakte. Die ausgewählte zweite Hausakte wird eingegliedert und danach aus der Übersicht entfernt.
+Auf der eigenen Auswahlseite werden alle anderen aktiven Hausakten mit Bild, Titel, Lage und Quellenanzahl angezeigt. Die aktuell geöffnete Hausakte bleibt die Hauptakte.
 
 Übernommen werden:
 
-- alle Inseratsquellen und Maklerbeschreibungen,
-- Feldnachweise und Parserhinweise,
-- Bilder, PDFs und andere Medien,
-- Kandidatenzuordnungen und Preisverläufe,
-- fehlende Stammdaten der Hauptakte,
-- frühere KI-Analysen als archivierte Dateien.
+- Inseratsquellen und Maklerbeschreibungen
+- Feldnachweise und Parserhinweise
+- Bilder, PDFs und weitere Medien
+- Kandidatenzuordnungen und Preisverläufe
+- fehlende Stammdaten der Hauptakte
+- frühere KI-Analysen als archivierte Dateien
 
-Bereits vorhandene Werte der Hauptakte werden nicht durch abweichende Werte der zweiten Hausakte überschrieben. Dadurch bleibt beispielsweise der bewusst gewählte Hauptpreis erhalten. Abweichende Maklerangaben bleiben über Quellen und Feldnachweise nachvollziehbar.
+Vorhandene Werte der Hauptakte bleiben bestehen. Doppelte Medien werden über Datei-Hash oder Original-URL entfernt. Anschließend wird automatisch eine neue kombinierte KI-Analyse bereitgestellt.
 
-Doppelte Medien werden anhand Datei-Hash oder Original-URL entfernt. Nach dem Zusammenführen erzeugt HausCheck automatisch ein neues Analysepaket. Die Bildauswahl wird dabei auf die verschiedenen Maklerquellen verteilt, damit die KI nicht nur Bilder eines Inserats erhält.
+## Titelbild wählen
 
-Zusammenführungen werden in der Hausakte mit Zeitpunkt, ehemaligem Titel, übernommenen Quellen, Medien und entfernten Duplikaten protokolliert.
+Die Bildergalerie bleibt eine reine, aufgeräumte Galerie. Das Vorschaubild wird über die eigene Aktion **Titelbild** gewählt.
 
-## Galeriebild als Vorschaubild
+Auf der Auswahlseite:
 
-Unter **Bilder** besitzt jedes geladene Bild die Aktion:
+- Bild antippen beziehungsweise Auswahl-Symbol verwenden
+- gewähltes Bild wird markiert
+- erscheint danach in Übersicht und Kopfbereich der Hausakte
+- über **Automatische Auswahl** kann die feste Auswahl aufgehoben werden
 
-```text
-Als Vorschaubild
-```
+## Hausakte bearbeiten
 
-Das gewählte Bild:
+Die Aktion **Bearbeiten** öffnet ein eigenes Formular für:
 
-- erscheint in der Hausaktenübersicht,
-- wird in der großen Galerie zuerst angezeigt,
-- wird bei der nächsten KI-Analyse bevorzugt berücksichtigt.
-
-Über **Automatische Bildauswahl verwenden** kann die feste Auswahl wieder aufgehoben werden.
-
-## Bedienung der Startseite
-
-Die Startseite zeigt nur aktive Hausakten. Oben stehen vier kompakte Aktionen:
-
-```text
-＋   Inserat direkt hinzufügen
-🔍  alle aktiven Suchprofile sofort ausführen
-🗑️  abgelehnte Hausakten und Kandidaten öffnen
-⚙️  Einstellungen öffnen
-```
-
-Jede Hausakte kann direkt über das Mülleimer-Symbol abgelehnt werden. Sie verschwindet aus der Hauptübersicht und bleibt im Ablehnungsarchiv erhalten. Dort kann sie wiederhergestellt oder endgültig inklusive Projektdateien gelöscht werden.
+- Titel
+- Lage und Adressstatus
+- Preis
+- Wohn- und Grundstücksfläche
+- Zimmer und Baujahr
+- HWB und fGEE
+- Heizung
+- Notizen
 
 ## Suchprofile verwalten
 
 Pfad:
 
 ```text
-Einstellungen
-→ Suchprofile
+Einstellungen → Suchprofile
 ```
 
-Oben rechts legt **＋** ein neues Suchprofil an. Jedes bestehende Profil hat eine eigene Löschaktion.
+Ein bestehendes Profil kann jetzt vollständig bearbeitet werden:
 
-Beim Löschen eines Suchprofils werden das Profil, seine Kandidaten, deren Preisverlauf und Änderungsereignisse entfernt. Bereits angelegte Hausakten bleiben erhalten.
+- Name
+- Regionen und Orte
+- Willhaben-areaIds beziehungsweise Postleitzahlen
+- eigene Such-URL
+- Zielpreis und harte Preisgrenze
+- Mindestwohnfläche und Wunsch-Grundstück
+- HWB-Warn- und Ausschlusswert
+- Ausschlussbegriffe
+- Ölheizungsregel
+- aktiv oder pausiert
+- manueller, halbautomatischer oder vollautomatischer Modus
+- Intervall und Trefferlimit
+- Auto-Import-Score und maximales Importlimit
+
+Neue Profile werden über **Neues Profil** angelegt. Profile können inklusive Kandidaten-, Preis- und Änderungsverlauf gelöscht werden; bestehende Hausakten bleiben erhalten.
 
 ## Kandidaten-Lifecycle
 
@@ -98,51 +143,11 @@ imported     als Hausakte angelegt
 rejected     abgelehnt
 ```
 
-Ein Suchlauf mit null Treffern setzt keine Inserate auf offline. Erst zwei erfolgreiche Suchläufe ohne erneuten Fund markieren einen Kandidaten als offline. Wird das Inserat später wieder gefunden, erscheint es als **wieder online**.
-
-## Preisverlauf und Änderungen
-
-Je Kandidat werden Preisbeobachtungen und relevante Änderungen gespeichert. Überwacht werden Preis, Titel, Wohnfläche, Grundstücksfläche, HWB und Vorschaubild.
-
-Beispiel:
-
-```text
-389.000 € → 359.000 € (-7,7 %)
-```
-
-Hat ein bereits importiertes Objekt relevante Änderungen, zeigt die Hauskarte **Neue Analyse empfohlen**. Nach einem erfolgreichen neuen Analyseimport wird dieser Hinweis automatisch zurückgesetzt.
-
-## HWB- und Dezimalwerte
-
-Für HWB und fGEE gelten Punkt und Komma als Dezimaltrennzeichen:
-
-```text
-306.1  → 306,1
-306,1  → 306,1
-```
-
-HausCheck priorisiert Energiekennzahlen aus Tabellen, Definitionslisten und Wertelisten. Erst wenn dort kein Wert gefunden wird, wird der allgemeine Seitentext verwendet.
-
-## Produktiver Ablauf
-
-```text
-Willhaben-Suche
-→ Kandidat speichern und filtern
-→ Preis- und Änderungsverlauf aktualisieren
-→ optional Hausakte automatisch anlegen
-→ Bilder und PDFs laden
-→ Analyse-ZIP nach GitHub exportieren
-→ GitHub Action erzeugt ein binäres Artifact
-→ ChatGPT analysiert Inseratsdaten und Bilder
-→ Ergebnis nach GitHub zurückschreiben
-→ HausCheck importiert die Analyse automatisch
-```
+Preisänderungen, erneute Veröffentlichungen und relevante Datenänderungen werden hervorgehoben und im Verlauf gespeichert.
 
 ## Bewertungssystem
 
-Vor der KI-Analyse verwendet HausCheck eine regelbasierte Daten-Vorprüfung aus Preis, Wohnfläche, Grundstück, HWB und Kandidatenstatus.
-
-Nach dem Import einer ChatGPT-Analyse wird `new_score` zur maßgeblichen Gesamtbewertung. Die frühere Regelbewertung bleibt nur noch als einklappbare Daten-Vorprüfung sichtbar.
+Vor der KI-Analyse verwendet HausCheck eine regelbasierte Daten-Vorprüfung. Nach dem Import einer ChatGPT-Analyse wird `new_score` zur maßgeblichen Hauptbewertung.
 
 Die KI-Auswertung kann zusätzlich enthalten:
 
@@ -151,53 +156,22 @@ fairer Kaufpreisbereich
 erstes Verhandlungsangebot
 realistischer Zielpreis
 empfohlene Preisobergrenze
-Gesamtsumme möglicher Investitionen
-einzelne Investitionsposten mit Priorität und Kostenspanne
+Investitionsposten mit Priorität und Kostenspanne
 grobe Projektkosten aus Zielkaufpreis plus Investitionen
 ```
 
 Die Kaufpreiseinschätzung ist kein Verkehrswertgutachten. Fehlende oder nicht sichtbare Bauteile werden nicht als gesichert behandelt.
 
-## Suchmodi
+## HWB- und Dezimalwerte
 
-### Nur manuell
-
-Das Suchprofil läuft nur über die Lupe.
-
-### Automatisch suchen, manuell importieren
-
-HausCheck aktualisiert die Kandidatenliste zeitgesteuert. Eine Hausakte wird erst nach Bestätigung angelegt.
-
-### Automatisch suchen und importieren
-
-HausCheck importiert Kandidaten mit Status `new`, `changed` oder `reactivated`, sofern noch keine Hausakte vorhanden ist, der Mindestscore erreicht wird und der Kandidat nicht abgelehnt oder offline ist.
-
-## Empfohlenes Suchprofil
+Für HWB und fGEE gelten Punkt und Komma als Dezimaltrennzeichen:
 
 ```text
-Regionen:
-Wies, Eibiswald, Oberhaag, Gleinstätten,
-Bad Schwanberg, Pölfing-Brunn, Frauental, Deutschlandsberg
-
-Zielpreis:             380.000 €
-Harte Preisgrenze:     400.000 €
-Mindestwohnfläche:     120 m²
-Wunsch-Grundstück:     700 m²
-HWB Warnung:           200
-HWB kritisch:          300
-Prüfbegriffe:          B76, B69, Bundesstraße, Hauptstraße
-Intervall:             60 Minuten
-Auto-Import-Score:     68
-Max. Auto-Importe:     2 je Lauf
+306.1 → 306,1
+306,1 → 306,1
 ```
 
-## Globale Optionen
-
-```yaml
-display_timezone: "Europe/Vienna"
-search_automation_enabled: true
-search_scheduler_poll_seconds: 60
-```
+Strukturierte Werte aus Tabellen, Definitionslisten und Wertelisten haben Vorrang vor allgemeinem Seitentext.
 
 ## GitHub AI Exchange
 
@@ -215,19 +189,6 @@ github_done_path: "ai_exchange/results/done"
 github_cleanup_after_import: true
 ```
 
-## Pipeline-Status
-
-Jede Hausakte zeigt:
-
-```text
-Inserat erfasst
-Medien geladen
-Zur Analyse bereitgestellt
-ChatGPT-Analyse importiert
-```
-
-Fehler und technische Ereignisse befinden sich unter **Diagnose und technische Details**.
-
 ## Datenablage
 
 ```text
@@ -240,8 +201,6 @@ Fehler und technische Ereignisse befinden sich unter **Diagnose und technische D
         ├── pdfs/
         ├── exports/
         └── analysis/
-            ├── hauscheck_analysis.json
-            └── merged_from_<alte_house_id>_hauscheck_analysis.json
 ```
 
 ## Hinweise
@@ -250,4 +209,4 @@ Fehler und technische Ereignisse befinden sich unter **Diagnose und technische D
 - Ohne genaue Adresse erfolgt keine belastbare Lageprüfung.
 - Captchas oder Login-Sperren werden nicht umgangen.
 - Werbe- und KI-generierte Inseratbilder werden nicht als Zustandsnachweis verwendet.
-- Kaufnebenkosten, Finanzierung und Steuern werden nur eingerechnet, wenn dies ausdrücklich dokumentiert ist.
+- Kaufnebenkosten, Finanzierung und Steuern werden nur berücksichtigt, wenn dies ausdrücklich dokumentiert ist.
