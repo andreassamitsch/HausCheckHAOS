@@ -1,0 +1,8 @@
+{
+  "created_at": "2026-07-14T18:01:46.478372+00:00",
+  "commit": "367d928551dd63a9beb2397aaa12b798881179d7",
+  "run_id": 29356175618,
+  "status": "success",
+  "test_code": 0,
+  "log_tail": "/home/runner/work/HausCheckHAOS/HausCheckHAOS/hauscheck/app/immoscout_dynamic_search.py:233: SyntaxWarning: invalid escape sequence '\\s'\n  \nHausCheck Gmail Exchange gestartet\nHausCheck GitHub Auto-Import gestartet\nHausCheck Such-Scheduler gestartet\nprofile_creation=ok\nnew_house_import=ok images_queued=76\nsold_direct_import_rejected=ok id=220\n"
+}
