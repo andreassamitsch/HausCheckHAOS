@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-07-14T06:10:21.314507+00:00",
-  "commit": "5dc121155d587a409ea36eb93d0cf262cf132bf5",
-  "run_id": 29310551948,
+  "created_at": "2026-07-14T19:51:50.541103+00:00",
+  "commit": "e97b3bc086f3ef9e14c139af2875e5145c8b3595",
+  "run_id": 29363434058,
   "status": "failed",
   "test_code": 1,
   "log_tail": "/home/runner/work/HausCheckHAOS/HausCheckHAOS/hauscheck/app/immoscout_dynamic_search.py:233: SyntaxWarning: invalid escape sequence '\\s'\n  \nobject_address_without_broker_address=ok\nrural_austrian_address_without_broker_address=ok\npostcode_first_object_address=ok\nHausCheck Gmail Exchange gestartet\nHausCheck GitHub Auto-Import gestartet\nHausCheck Such-Scheduler gestartet\nTraceback (most recent call last):\n  File \"<stdin>\", line 64, in <module>\nAssertionError\n"
