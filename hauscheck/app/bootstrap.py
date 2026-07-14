@@ -34,6 +34,7 @@ from app.modern_ui import register_modern_ui
 from app.modern_ui_fix import register_modern_ui_fix
 from app.parser_quality import register_parser_quality
 from app.pdf_ingress_fix import register_pdf_ingress_fix
+from app.peisser_dedupe_fix import register_peisser_dedupe_fix
 from app.peisser_support import register_peisser_support
 from app.peisser_support_fix import register_peisser_support_fix
 from app.pipeline_integration import register_pipeline_integration
@@ -125,5 +126,7 @@ register_immoscout_search_resilience_compat(app)
 # Peisser: Seiten 1 bis 10, lokale Filter, Detail-/Text-/Galerieparser und verkaufte Objekte ausschließen.
 register_peisser_support(app)
 register_peisser_support_fix(app)
+# Peisser führt die sichere Cross-Portal-Prüfung vor Rückgabe der Kandidatenliste aus.
+register_peisser_dedupe_fix(app)
 # Sichere Duplikate werden vor der Kandidatenanzeige bestehenden Hausakten zugeordnet und aktualisiert.
 register_candidate_preimport_dedupe(app)
