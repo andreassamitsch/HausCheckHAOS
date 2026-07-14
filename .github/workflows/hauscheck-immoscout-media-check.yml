@@ -1,0 +1,106 @@
+name: HausCheck ImmobilienScout Media Check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "hauscheck/app/immoscout_support.py"
+      - "hauscheck/app/immoscout_quality.py"
+      - "hauscheck/app/bootstrap.py"
+      - "hauscheck/config.yaml"
+      - ".github/workflows/hauscheck-immoscout-media-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        working-directory: hauscheck
+        run: python -m pip install -r requirements.txt
+      - name: Download live gallery through application code
+        id: check
+        shell: bash
+        run: |
+          set +e
+          rm -rf /tmp/hauscheck-immoscout-media
+          mkdir -p /tmp/hauscheck-immoscout-media
+          cd hauscheck
+          HAUSCHECK_DATA_DIR=/tmp/hauscheck-immoscout-media python - <<'PY' > /tmp/hauscheck-immoscout-media.log 2>&1
+          import asyncio
+          import httpx
+          from PIL import Image
+
+          import app.bootstrap
+          import app.immoscout_quality as quality
+          import app.immoscout_support as support
+          from app.storage import add_media, create_house, list_media
+
+          url = "https://www.immobilienscout24.at/expose/69dcb82ff88781c17db2b90a"
+          response = httpx.get(url, headers={
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0 Safari/537.36",
+              "Accept-Language": "de-AT,de;q=0.9",
+          }, timeout=45, follow_redirects=True)
+          response.raise_for_status()
+          parsed = support.parse_immoscout(url, response.text)
+          assert len(parsed.image_urls) == 3, parsed.image_urls
+
+          house = create_house({"title": parsed.title, "location_text": parsed.location_text})
+          house_id = str(house["id"])
+          for image_url in parsed.image_urls:
+              add_media(house_id, {"kind": "image", "original_url": image_url, "download_status": "pending"})
+
+          asyncio.run(quality.download_pending_media_portal(house_id))
+          media = list_media(house_id)
+          downloaded = [item for item in media if item.get("download_status") == "downloaded"]
+          failed = [item for item in media if item.get("download_status") == "failed"]
+          assert len(downloaded) == 3, media
+          assert not failed, failed
+          sizes = []
+          for item in downloaded:
+              assert item.get("local_path"), item
+              with Image.open(str(item["local_path"])) as image:
+                  sizes.append((image.width, image.height))
+                  assert image.width >= 600 and image.height >= 400, image.size
+              assert item.get("perceptual_hash"), item
+          print(f"application_gallery_download=ok sizes={sizes}")
+          print("perceptual_hashes_persisted=ok")
+          PY
+          CODE=$?
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          if [ "$CODE" -eq 0 ]; then echo "status=success" >> "$GITHUB_OUTPUT"; else echo "status=failed" >> "$GITHUB_OUTPUT"; fi
+          cat /tmp/hauscheck-immoscout-media.log
+          exit "$CODE"
+      - name: Publish result
+        if: always()
+        env:
+          TEST_STATUS: ${{ steps.check.outputs.status }}
+          TEST_CODE: ${{ steps.check.outputs.code }}
+        run: |
+          mkdir -p ci
+          python - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+          path = Path('/tmp/hauscheck-immoscout-media.log')
+          Path('ci/latest_immoscout_media_check.json').write_text(json.dumps({
+              'created_at': datetime.now(timezone.utc).isoformat(),
+              'commit': os.environ['GITHUB_SHA'],
+              'run_id': int(os.environ['GITHUB_RUN_ID']),
+              'status': os.environ.get('TEST_STATUS') or 'failed',
+              'test_code': int(os.environ.get('TEST_CODE') or -1),
+              'log_tail': path.read_text(encoding='utf-8', errors='replace')[-5000:] if path.exists() else '',
+          }, ensure_ascii=False, indent=2), encoding='utf-8')
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ci/latest_immoscout_media_check.json
+          git commit -m "Update ImmobilienScout media check [skip ci]" || true
+          git push || true
