@@ -1,0 +1,185 @@
+name: HausCheck Expose AI Export Check
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "hauscheck/app/expose_ai_export.py"
+      - "hauscheck/app/expose_review.py"
+      - "hauscheck/app/analysis_package.py"
+      - "hauscheck/app/bootstrap.py"
+      - "hauscheck/config.yaml"
+      - ".github/workflows/hauscheck-expose-ai-export-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        working-directory: hauscheck
+        run: python -m pip install -r requirements.txt
+
+      - name: Test PDF upload, AI package and removal
+        id: expose_ai_check
+        shell: bash
+        run: |
+          set +e
+          rm -rf /tmp/hauscheck-expose-ai-test
+          mkdir -p /tmp/hauscheck-expose-ai-test
+          cd hauscheck
+          HAUSCHECK_DATA_DIR=/tmp/hauscheck-expose-ai-test python - <<'PY' > /tmp/hauscheck-expose-ai-check.log 2>&1
+          import io
+          import json
+          import zipfile
+
+          from fastapi.testclient import TestClient
+          from pypdf import PdfWriter
+
+          import app.bootstrap
+          import app.analysis_package as analysis_package
+          import app.expose_ai_export as expose_ai_export
+          import app.expose_review as expose_review
+          from app.storage import create_house, get_media, list_media
+
+          house = create_house({
+              "title": "Exposé KI Export Testhaus",
+              "location_text": "8551 Wies",
+              "address_status": "municipality_only",
+          })
+          house_id = str(house["id"])
+
+          writer = PdfWriter()
+          writer.add_blank_page(width=595, height=842)
+          pdf_buffer = io.BytesIO()
+          writer.write(pdf_buffer)
+          pdf_bytes = pdf_buffer.getvalue()
+
+          export_calls = []
+
+          async def fake_auto_export(target_house_id: str) -> bool:
+              export_calls.append(target_house_id)
+              return True
+
+          expose_ai_export._auto_export = fake_auto_export
+
+          with TestClient(app.bootstrap.app) as client:
+              uploaded = client.post(
+                  f"/houses/{house_id}/expose",
+                  files={"file": ("test_expose.pdf", pdf_bytes, "application/pdf")},
+                  follow_redirects=False,
+              )
+              assert uploaded.status_code == 303, uploaded.text
+              assert export_calls == [house_id], export_calls
+              print("upload_triggers_ai_reanalysis=ok")
+
+              pdfs = [item for item in list_media(house_id) if item.get("kind") == "pdf"]
+              assert len(pdfs) == 1, pdfs
+              pdf = pdfs[0]
+              media_id = str(pdf["id"])
+
+              detail = client.get(f"/houses/{house_id}")
+              assert detail.status_code == 200
+              assert "hc-expose-ai-export-v1" in detail.text
+              assert "PDF entfernen" in detail.text
+              assert f"{house_id}/expose/{media_id}/delete" in detail.text
+              assert "KI-Export:" in detail.text
+              print("pdf_delete_action_visible=ok")
+
+              expose_ai_export._extract_pdf_text = lambda path: (
+                  "Objektadresse: Hörmsdorf 12, 8552 Eibiswald\nWohnfläche: 140 m²\nHWB: 72,5",
+                  3,
+                  None,
+              )
+              package = analysis_package.create_analysis_zip(house_id)
+              with zipfile.ZipFile(package, "r") as zf:
+                  names = set(zf.namelist())
+                  assert "document_manifest.json" in names, names
+                  assert "documents/README.md" in names, names
+                  assert any(name.endswith("test_expose.pdf") for name in names), names
+                  assert any(name.endswith("test_expose.txt") for name in names), names
+                  manifest = json.loads(zf.read("document_manifest.json"))
+                  document = manifest["documents"][0]
+                  assert document["original_pdf_included"] is True, document
+                  assert document["text_characters_exported"] > 0, document
+                  prompt = zf.read("README_PROMPT.md").decode("utf-8")
+                  assert "Exposé-Dokumente" in prompt
+              print("pdf_and_text_in_ai_package=ok")
+
+              old_direct_limit = expose_ai_export.MAX_DIRECT_PDF_BYTES
+              expose_ai_export.MAX_DIRECT_PDF_BYTES = 100
+              try:
+                  package = analysis_package.create_analysis_zip(house_id)
+                  with zipfile.ZipFile(package, "r") as zf:
+                      manifest = json.loads(zf.read("document_manifest.json"))
+                      document = manifest["documents"][0]
+                      assert document["original_pdf_included"] is False, document
+                      assert document["text_file"], document
+                      assert "35 MB" in str(document["omitted_reason"]), document
+              finally:
+                  expose_ai_export.MAX_DIRECT_PDF_BYTES = old_direct_limit
+              print("oversize_pdf_falls_back_to_text=ok")
+
+              deleted = client.post(
+                  f"/houses/{house_id}/expose/{media_id}/delete",
+                  follow_redirects=False,
+              )
+              assert deleted.status_code == 303, deleted.text
+              assert get_media(media_id) is None
+              assert export_calls == [house_id, house_id], export_calls
+              assert not any(item.get("kind") == "pdf" for item in list_media(house_id))
+              print("pdf_removed_and_ai_package_refreshed=ok")
+          PY
+          CODE=$?
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          if [ "$CODE" -eq 0 ]; then
+            echo "status=success" >> "$GITHUB_OUTPUT"
+          else
+            echo "status=failed" >> "$GITHUB_OUTPUT"
+          fi
+          cat /tmp/hauscheck-expose-ai-check.log
+          exit "$CODE"
+
+      - name: Publish expose AI export result
+        if: always()
+        shell: bash
+        env:
+          TEST_STATUS: ${{ steps.expose_ai_check.outputs.status }}
+          TEST_CODE: ${{ steps.expose_ai_check.outputs.code }}
+        run: |
+          mkdir -p ci
+          python - <<'PY'
+          import json
+          import os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          log_path = Path('/tmp/hauscheck-expose-ai-check.log')
+          log = log_path.read_text(encoding='utf-8', errors='replace') if log_path.exists() else ''
+          result = {
+              'created_at': datetime.now(timezone.utc).isoformat(),
+              'commit': os.environ['GITHUB_SHA'],
+              'run_id': int(os.environ['GITHUB_RUN_ID']),
+              'status': os.environ.get('TEST_STATUS') or 'failed',
+              'test_code': int(os.environ.get('TEST_CODE') or -1),
+              'log_tail': log[-6000:],
+          }
+          Path('ci/latest_expose_ai_export_check.json').write_text(
+              json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8'
+          )
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ci/latest_expose_ai_export_check.json
+          git commit -m "Update HausCheck expose AI export check [skip ci]" || true
+          git push || true
