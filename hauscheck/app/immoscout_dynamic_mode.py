@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from typing import Any
 
 from fastapi import FastAPI
@@ -14,6 +13,13 @@ from app.storage import connect, ensure_columns, get_search_profile
 _PATCHED = False
 _ORIGINAL_CREATE_SEARCH_PROFILE = support.create_search_profile
 _ORIGINAL_VALIDATE = dynamic.validate_search_profile_url_dynamic
+_ORIGINAL_PARSE_SEARCH_AREAS = dynamic.parse_search_areas
+
+
+def parse_search_areas_any(value: object) -> list[str]:
+    if isinstance(value, (list, tuple, set)):
+        value = ",".join(str(item) for item in value)
+    return _ORIGINAL_PARSE_SEARCH_AREAS(value)
 
 
 def ensure_dynamic_mode_schema() -> None:
@@ -91,6 +97,7 @@ def register_immoscout_dynamic_mode(app: FastAPI) -> None:
         return
 
     ensure_dynamic_mode_schema()
+    dynamic.parse_search_areas = parse_search_areas_any
     support.create_search_profile = create_search_profile_with_mode
     support._validate_search_profile_url = validate_with_mode
     dynamic.validate_search_profile_url_dynamic = validate_with_mode
