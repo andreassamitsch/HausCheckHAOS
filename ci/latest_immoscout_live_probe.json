@@ -1,0 +1,219 @@
+{
+  "search": {
+    "requested_url": "https://www.immobilienscout24.at/regional/8551/haus-kaufen?plotAreaFrom=700&primaryAreaFrom=120&primaryPriceTo=420000",
+    "status_code": 200,
+    "final_url": "https://www.immobilienscout24.at/regional/8551/haus-kaufen?plotAreaFrom=700&primaryAreaFrom=120&primaryPriceTo=420000",
+    "content_type": "text/html; charset=utf-8",
+    "content_length": 56733,
+    "title": "Haus kaufen in 8551 Eibiswald, Pölfing-Brunn, Sankt Martin im Sulmtal, Wies - ImmoScout24",
+    "challenge_markers": [],
+    "meta": {
+      "description": "Haus kaufen in 8551 Eibiswald, Pölfing-Brunn, Sankt Martin im Sulmtal, Wies: Finde auf ImmoScout24 die aktuellsten Angebote von Häusern zum Kauf in deiner Region.",
+      "og:title": "Haus kaufen in 8551 Eibiswald, Pölfing-Brunn, Sankt Martin im Sulmtal, Wies - ImmoScout24",
+      "og:description": "Haus kaufen in 8551 Eibiswald, Pölfing-Brunn, Sankt Martin im Sulmtal, Wies: Finde auf ImmoScout24 die aktuellsten Angebote von Häusern zum Kauf in deiner Region.",
+      "og:image": "https://pictures.immobilienscout24.de/dims3/S3/quality/80/legacy_thumbnail/343x193/format/webp/https://s3-eu-west-1.amazonaws.com/prod.www.immobilienscout24.at/012.0010J00001nFAiP-58d7fcfcdc92406592c523c184d7a230"
+    },
+    "expose_links": [
+      "https://www.immobilienscout24.at/expose/69dcb82ff88781c17db2b90a",
+      "https://www.immobilienscout24.at/expose/6924257a5506352e6d14d792"
+    ],
+    "image_count": 0,
+    "image_hosts": [],
+    "image_samples": [],
+    "json_payloads": [],
+    "script_summaries": [
+      {
+        "index": 0,
+        "type": "",
+        "id": "",
+        "sample": "window.__INITIAL_STATE__={\"adverts\":{\"obj_ityp\":[\"3\"],\"obj_regio1\":null,\"obj_regio2\":null,\"obj_regio3\":null,\"obj_zipCode\":\"8551\"},\"apiLoader\":{\"@is24\\u002Fsearch\\u002FgetDataByURL\":false},\"contact\":{},\"htmlMeta\":{\"title\":\"Haus kaufen in 8551 Eibiswald, Pölfing-Brunn, Sankt Martin im Sulmtal, Wies - ImmoScout24\",\"meta\":[{\"name\":\"robots\",\"content\":\"noindex, follow\"},{\"name\":\"description\",\"content\":\"Haus kaufen in 8551 Eibiswald, Pölfing-Brunn, Sankt Martin im Sulmtal, Wies: Finde auf ImmoScout24 die aktuellsten Angebote von Häusern zum Kauf in deiner Region.\"}],\"canonicalURL\":undefined,\"openGraph\":[{\"property\":\"og:title\",\"content\":\"Haus kaufen in 8551 Eibiswald, Pölfing-Brunn, Sankt Martin im Sulmtal, Wies - ImmoScout24\"},{\"property\":\"og:description\",\"content\":\"Haus kaufen in 8551 Eibiswald, Pölfing-Brunn, Sankt Martin im Sulmtal, Wies: Finde auf ImmoScout24 die aktuellsten Angebote von Hä"
+      }
+    ],
+    "text_snippets": {
+      "price": "um Bestellerprinzip Tipps zum Vermieten Erfolgreich vermieten Finanzieren Was kann ich mir leisten? Kaufpreisrechner Meine Kreditrate berechnen Kreditrechner Tipps zur Finanzierung Alles rund um die Finanzierung Inserat Anmelden Füge etwas deiner Su",
+      "living": null,
+      "plot": null,
+      "rooms": "im Sulmtal, Wies Neu 320.000 € 1.163,64 €/m² * GROSSZÜGIGES, SCHÖNES EIN-ZWEIFAMILIENHAUS* 275 m² 6 Zimmer 8551 Wies Garten Balkon Parkplatz Preis auf Anfrage * EXKLUSIVES EINFAMILIENHAUS MIT EIGENEM WEINGARTEN IN HÖHENLAGE MIT TRAUMHAFTEM PANORA",
+      "year": null,
+      "hwb": null,
+      "fgee": null,
+      "heating": null
+    }
+  },
+  "expose": {
+    "requested_url": "https://www.immobilienscout24.at/expose/69dcb82ff88781c17db2b90a",
+    "status_code": 200,
+    "final_url": "https://www.immobilienscout24.at/expose/69dcb82ff88781c17db2b90a",
+    "content_type": "text/html; charset=utf-8",
+    "content_length": 114292,
+    "title": "Neu (13.04.): Grosszügiges, Schönes Ein-Zweifamilienhaus",
+    "challenge_markers": [
+      "cloudflare"
+    ],
+    "meta": {
+      "description": "Haus (Kauf): 6 Zimmer - 275 m² - 8551 - Wies - bei ImmoScout24",
+      "og:title": "Neu (13.04.): Grosszügiges, Schönes Ein-Zweifamilienhaus",
+      "og:description": "Haus (Kauf): 6 Zimmer - 275 m² - 8551 - Wies - bei ImmoScout24",
+      "og:image": "https://pictures.immobilienscout24.de/prod.www.immobilienscout24.at/pictureserver/loadPicture?q=70&id=012.0010J00001nFAiP-58d7fcfcdc92406592c523c184d7a230"
+    },
+    "expose_links": [
+      "https://www.immobilienscout24.at/expose/69dcb82ff88781c17db2b90a",
+      "https://www.immobilienscout24.at/payment/plus-membership"
+    ],
+    "image_count": 0,
+    "image_hosts": [],
+    "image_samples": [],
+    "json_payloads": [
+      {
+        "index": 1,
+        "type": "application/ld+json",
+        "id": "",
+        "top_type": "dict",
+        "interesting": [
+          {
+            "path": "$.@graph[0].@id",
+            "value": "https://www.immobilienscout24.at/expose/69dcb82ff88781c17db2b90a"
+          },
+          {
+            "path": "$.@graph[0].url",
+            "value": "https://www.immobilienscout24.at/expose/69dcb82ff88781c17db2b90a"
+          },
+          {
+            "path": "$.@graph[0].description",
+            "value": "<br />Für eine Besichtigung stehen wir Ihnen gerne zur Verfügung.<br /><br />Wir freuen uns auf Ihre Anfrage / Ihren Anruf.<br /><br />Ihr Peisser Immobilien Team"
+          },
+          {
+            "path": "$.@graph[0].publisher.@id",
+            "value": "https://www.immobilienscout24.at/"
+          },
+          {
+            "path": "$.@graph[0].mainEntity.@id",
+            "value": "https://www.immobilienscout24.at/expose/69dcb82ff88781c17db2b90a"
+          },
+          {
+            "path": "$.@graph[1].@id",
+            "value": "https://www.immobilienscout24.at/expose/69dcb82ff88781c17db2b90a"
+          },
+          {
+            "path": "$.@graph[1].url",
+            "value": "https://www.immobilienscout24.at/expose/69dcb82ff88781c17db2b90a"
+          },
+          {
+            "path": "$.@graph[1].image",
+            "value": "list"
+          },
+          {
+            "path": "$.@graph[1].description",
+            "value": "<br />Für eine Besichtigung stehen wir Ihnen gerne zur Verfügung.<br /><br />Wir freuen uns auf Ihre Anfrage / Ihren Anruf.<br /><br />Ihr Peisser Immobilien Team"
+          },
+          {
+            "path": "$.@graph[1].offers.@id",
+            "value": "https://www.immobilienscout24.at/expose/69dcb82ff88781c17db2b90a"
+          },
+          {
+            "path": "$.@graph[1].offers.url",
+            "value": "https://www.immobilienscout24.at/expose/69dcb82ff88781c17db2b90a"
+          },
+          {
+            "path": "$.@graph[1].offers.priceCurrency",
+            "value": "EUR"
+          },
+          {
+            "path": "$.@graph[1].offers.price",
+            "value": "320000"
+          },
+          {
+            "path": "$.@graph[2].@id",
+            "value": "https://www.immobilienscout24.at/expose/69dcb82ff88781c17db2b90a"
+          },
+          {
+            "path": "$.@graph[2].url",
+            "value": "https://www.immobilienscout24.at/expose/69dcb82ff88781c17db2b90a"
+          },
+          {
+            "path": "$.@graph[2].image",
+            "value": "https://pictures.immobilienscout24.de/prod.www.immobilienscout24.at/pictureserver/loadPicture?q=70&id=012.0010J00001nFAiP-58d7fcfcdc92406592c523c184d7a230"
+          },
+          {
+            "path": "$.@graph[2].numberOfRooms",
+            "value": "6"
+          },
+          {
+            "path": "$.@graph[2].address",
+            "value": "dict"
+          },
+          {
+            "path": "$.@graph[2].address.addressLocality",
+            "value": "Wies"
+          },
+          {
+            "path": "$.@graph[2].address.addressCountry",
+            "value": "AT"
+          },
+          {
+            "path": "$.@graph[2].provider",
+            "value": "dict"
+          },
+          {
+            "path": "$.@graph[2].provider.@id",
+            "value": "https://www.immobilienscout24.at/anbieter/peisser-immobilien-012.0010J00001nFAiP/"
+          },
+          {
+            "path": "$.@graph[2].provider.url",
+            "value": "https://www.immobilienscout24.at/anbieter/peisser-immobilien-012.0010J00001nFAiP/"
+          },
+          {
+            "path": "$.@graph[2].provider.image",
+            "value": "https://pictures.immobilienscout24.de/prod.www.immobilienscout24.at/pictureserver/loadPicture?id=2f0fc47e7d894767bae9bfb3ca74fae8"
+          }
+        ]
+      },
+      {
+        "index": 3,
+        "type": "application/json",
+        "id": "__LOADABLE_REQUIRED_CHUNKS__",
+        "top_type": "list",
+        "interesting": []
+      },
+      {
+        "index": 4,
+        "type": "application/json",
+        "id": "__LOADABLE_REQUIRED_CHUNKS___ext",
+        "top_type": "dict",
+        "interesting": []
+      },
+      {
+        "index": 8,
+        "type": "application/json",
+        "id": "__LOADABLE_REQUIRED_CHUNKS__",
+        "top_type": "list",
+        "interesting": []
+      },
+      {
+        "index": 9,
+        "type": "application/json",
+        "id": "__LOADABLE_REQUIRED_CHUNKS___ext",
+        "top_type": "dict",
+        "interesting": []
+      }
+    ],
+    "script_summaries": [
+      {
+        "index": 2,
+        "type": "",
+        "id": "",
+        "sample": "window.__INITIAL_STATE__={\"config\":{\"appStores\":{\"iOS\":\"itms-apps:\\u002F\\u002Fitunes.apple.com\\u002Fat\\u002Fapp\\u002Fimmobilienscout24-immobilien-suche\\u002Fid1207863676?mt=8\",\"android\":\"https:\\u002F\\u002Fplay.google.com\\u002Fstore\\u002Fapps\\u002Fdetails?id=at.is24.android\"},\"appUrl\":\"https:\\u002F\\u002Fwww.immobilienscout24.at\",\"environment\":\"pro\",\"googleMapsKey\":\"AIzaSyDNXbkkG25VzM2GYaZBpxQonLhYIP1SSRw\",\"osa\":{\"S24_OSA\":{\"config\":{\"loggingCat\":[],\"requiredAsyncLoadedMiddlewares\":[\"apsMiddleware\",\"openWrapMiddleware\"],\"cookieConsentRequired\":true,\"stickyPosition\":0},\"openWrapConfig\":{\"publisherId\":\"167464\",\"profileId\":\"19253\"}}},\"release\":\"expose:main_1716\",\"shortlistUrl\":\"https:\\u002F\\u002Fwww.immobilienscout24.at\\u002Fapi\\u002Fuss\",\"tealiumUrl\":\"https:\\u002F\\u002Ftracking.immobilienscout24.at\\u002Fimmobilienscout\\u002Fis24-at\\u002Ftr.js?initialPageView=false&cP--countername=is24.at.sea"
+      }
+    ],
+    "text_snippets": {
+      "price": "um Bestellerprinzip Tipps zum Vermieten Erfolgreich vermieten Finanzieren Was kann ich mir leisten? Kaufpreisrechner Meine Kreditrate berechnen Kreditrechner Tipps zur Finanzierung Alles rund um die Finanzierung Inserat Anmelden Merken Teilen 1/7 Ei",
+      "living": null,
+      "plot": "nhaus * GROSSZÜGIGES, SCHÖNES EIN-ZWEIFAMILIENHAUS* 320.000 € 275 m² 6 Zimmer Preis / m² 1.163,64 € Grundstücksfläche 2.000 m² Baujahr - Peisser Immobilien Herr Frima Peisser Immobilien Kontaktieren 8551 Wies Adresse anfragen Sonnige Ortsrandlage von Wies m",
+      "rooms": "Merken Teilen 1/7 Einfamilienhaus * GROSSZÜGIGES, SCHÖNES EIN-ZWEIFAMILIENHAUS* 320.000 € 275 m² 6 Zimmer Preis / m² 1.163,64 € Grundstücksfläche 2.000 m² Baujahr - Peisser Immobilien Herr Frima Peisser Immobilien Kontaktieren 8551 Wies Adresse",
+      "year": "ES EIN-ZWEIFAMILIENHAUS* 320.000 € 275 m² 6 Zimmer Preis / m² 1.163,64 € Grundstücksfläche 2.000 m² Baujahr - Peisser Immobilien Herr Frima Peisser Immobilien Kontaktieren 8551 Wies Adresse anfragen Sonnige Ortsrandlage von Wies mit sehr guter Ver",
+      "hwb": "dstücksfläche 2.000 m² 6 Zimmer 2 Badezimmer Ausstattung Einbauküche , Badewanne , Fenster Heizung Gas Heizwärmebedarf (HWB) 352 kWh/(m²a) G Beschreibung Für eine Besichtigung stehen wir Ihnen gerne zur Verfügung. Wir freuen uns auf Ihre Anfrage / Ihren Anruf. Ihr Peisser Immobilien Team Beschreibung l",
+      "fgee": null,
+      "heating": "m² , Grundstücksfläche 2.000 m² 6 Zimmer 2 Badezimmer Ausstattung Einbauküche , Badewanne , Fenster Heizung Gas Heizwärmebedarf (HWB) 352 kWh/(m²a) G Beschreibung Für eine Besichtigung stehen wir Ihnen gerne zur Verfügung. Wir freuen uns auf Ihre Anfrage / Ihren Anru"
+    }
+  }
+}
