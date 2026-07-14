@@ -1,0 +1,91 @@
+{
+  "search": {
+    "status": 200,
+    "url": "https://www.immobilienscout24.at/regional/8551/haus-kaufen?plotAreaFrom=700&primaryAreaFrom=120&primaryPriceTo=420000",
+    "states": [
+      {
+        "error": "Extra data: line 2 column 1 (char 15916)",
+        "sample": "window.__INITIAL_STATE__={\"adverts\":{\"obj_ityp\":[\"3\"],\"obj_regio1\":null,\"obj_regio2\":null,\"obj_regio3\":null,\"obj_zipCode\":\"8551\"},\"apiLoader\":{\"@is24\\u002Fsearch\\u002FgetDataByURL\":false},\"contact\":{},\"htmlMeta\":{\"title\":\"Haus kaufen in 8551 Eibiswald, Pölfing-Brunn, Sankt Martin im Sulmtal, Wies - ImmoScout24\",\"meta\":[{\"name\":\"robots\",\"content\":\"noindex, follow\"},{\"name\":\"description\",\"content\":\"Haus kaufen in 8551 Eibiswald, Pölfing-Brunn, Sankt Martin im Sulmtal, Wies: Finde auf ImmoScout24 d"
+      }
+    ],
+    "json_ld": []
+  },
+  "expose": {
+    "status": 200,
+    "url": "https://www.immobilienscout24.at/expose/69dcb82ff88781c17db2b90a",
+    "states": [
+      {
+        "error": "Extra data: line 2 column 1 (char 1010)",
+        "sample": "window.__INITIAL_STATE__={\"config\":{\"appStores\":{\"iOS\":\"itms-apps:\\u002F\\u002Fitunes.apple.com\\u002Fat\\u002Fapp\\u002Fimmobilienscout24-immobilien-suche\\u002Fid1207863676?mt=8\",\"android\":\"https:\\u002F\\u002Fplay.google.com\\u002Fstore\\u002Fapps\\u002Fdetails?id=at.is24.android\"},\"appUrl\":\"https:\\u002F\\u002Fwww.immobilienscout24.at\",\"environment\":\"pro\",\"googleMapsKey\":\"AIzaSyDNXbkkG25VzM2GYaZBpxQonLhYIP1SSRw\",\"osa\":{\"S24_OSA\":{\"config\":{\"loggingCat\":[],\"requiredAsyncLoadedMiddlewares\":[\"apsMiddleware"
+      }
+    ],
+    "json_ld": [
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "WebPage",
+            "@id": "https://www.immobilienscout24.at/expose/69dcb82ff88781c17db2b90a",
+            "url": "https://www.immobilienscout24.at/expose/69dcb82ff88781c17db2b90a",
+            "name": "* GROSSZÜGIGES, SCHÖNES EIN-ZWEIFAMILIENHAUS*",
+            "description": "<br />Für eine Besichtigung stehen wir Ihnen gerne zur Verfügung.<br /><br />Wir freuen uns auf Ihre Anfrage / Ihren Anruf.<br /><br />Ihr Peisser Immobilien Team",
+            "publisher": {
+              "@id": "https://www.immobilienscout24.at/"
+            },
+            "mainEntity": {
+              "@id": "https://www.immobilienscout24.at/expose/69dcb82ff88781c17db2b90a"
+            }
+          },
+          {
+            "@type": "Product",
+            "@id": "https://www.immobilienscout24.at/expose/69dcb82ff88781c17db2b90a",
+            "name": "* GROSSZÜGIGES, SCHÖNES EIN-ZWEIFAMILIENHAUS*",
+            "url": "https://www.immobilienscout24.at/expose/69dcb82ff88781c17db2b90a",
+            "image": [
+              "https://pictures.immobilienscout24.de/prod.www.immobilienscout24.at/pictureserver/loadPicture?q=70&id=012.0010J00001nFAiP-58d7fcfcdc92406592c523c184d7a230",
+              "https://pictures.immobilienscout24.de/prod.www.immobilienscout24.at/pictureserver/loadPicture?q=70&id=012.0010J00001nFAiP-210fbfc914804697ac02c89873a223bd",
+              "https://pictures.immobilienscout24.de/prod.www.immobilienscout24.at/pictureserver/loadPicture?q=70&id=012.0010J00001nFAiP-482c64f76bde437d84f7e70c791985f4"
+            ],
+            "description": "<br />Für eine Besichtigung stehen wir Ihnen gerne zur Verfügung.<br /><br />Wir freuen uns auf Ihre Anfrage / Ihren Anruf.<br /><br />Ihr Peisser Immobilien Team",
+            "offers": {
+              "@type": "Offer",
+              "@id": "https://www.immobilienscout24.at/expose/69dcb82ff88781c17db2b90a",
+              "url": "https://www.immobilienscout24.at/expose/69dcb82ff88781c17db2b90a",
+              "priceCurrency": "EUR",
+              "price": 320000,
+              "availability": "https://schema.org/InStock"
+            }
+          },
+          {
+            "@type": "RealEstateListing",
+            "@id": "https://www.immobilienscout24.at/expose/69dcb82ff88781c17db2b90a",
+            "name": "* GROSSZÜGIGES, SCHÖNES EIN-ZWEIFAMILIENHAUS*",
+            "url": "https://www.immobilienscout24.at/expose/69dcb82ff88781c17db2b90a",
+            "image": "https://pictures.immobilienscout24.de/prod.www.immobilienscout24.at/pictureserver/loadPicture?q=70&id=012.0010J00001nFAiP-58d7fcfcdc92406592c523c184d7a230",
+            "datePosted": "2026-07-12T09:32:31.000Z",
+            "floorSize": {
+              "@type": "QuantitativeValue",
+              "value": 275,
+              "unitCode": "MTK"
+            },
+            "numberOfRooms": 6,
+            "address": {
+              "@type": "PostalAddress",
+              "addressLocality": "Wies",
+              "postalCode": "8551",
+              "addressCountry": "AT"
+            },
+            "provider": {
+              "@type": "RealEstateAgent",
+              "@id": "https://www.immobilienscout24.at/anbieter/peisser-immobilien-012.0010J00001nFAiP/",
+              "name": "Peisser Immobilien Frima",
+              "url": "https://www.immobilienscout24.at/anbieter/peisser-immobilien-012.0010J00001nFAiP/",
+              "image": "https://pictures.immobilienscout24.de/prod.www.immobilienscout24.at/pictureserver/loadPicture?id=2f0fc47e7d894767bae9bfb3ca74fae8",
+              "telephone": "+436602323359"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}
