@@ -3,6 +3,7 @@ from __future__ import annotations
 from app.main import app
 from app.analysis_package import register_analysis_package
 from app.blank_query_fix import register_blank_query_fix
+from app.candidate_preimport_dedupe import register_candidate_preimport_dedupe
 from app.chatgpt_api import register_chatgpt_api
 from app.dashboard_automation_ui import register_dashboard_automation_ui
 from app.expose_address_quality import register_expose_address_quality
@@ -119,3 +120,5 @@ register_immoscout_url_runtime_fix(app)
 register_immoscout_search_resilience(app)
 # Willhaben bleibt unverändert; nur sichtbare Leermeldungen gelten als echte 0 Treffer.
 register_immoscout_search_resilience_compat(app)
+# Sichere Duplikate werden vor der Kandidatenanzeige bestehenden Hausakten zugeordnet und aktualisiert.
+register_candidate_preimport_dedupe(app)
