@@ -1,0 +1,216 @@
+name: HausCheck ImmobilienScout Support Check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "hauscheck/app/immoscout_support.py"
+      - "hauscheck/app/bootstrap.py"
+      - "hauscheck/app/parser.py"
+      - "hauscheck/config.yaml"
+      - ".github/workflows/hauscheck-immoscout-support-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        working-directory: hauscheck
+        run: python -m pip install -r requirements.txt
+      - name: Test live parser, search and duplicate handling
+        id: check
+        shell: bash
+        run: |
+          set +e
+          rm -rf /tmp/hauscheck-immoscout-test
+          mkdir -p /tmp/hauscheck-immoscout-test
+          cd hauscheck
+          HAUSCHECK_DATA_DIR=/tmp/hauscheck-immoscout-test python - <<'PY' > /tmp/hauscheck-immoscout-check.log 2>&1
+          import asyncio
+          import io
+          import json
+          from pathlib import Path
+
+          import httpx
+          from fastapi.testclient import TestClient
+          from PIL import Image, ImageDraw
+
+          import app.bootstrap
+          import app.github_auto_export as github_auto_export
+          import app.gmail_exchange as gmail_exchange
+          import app.immoscout_support as support
+          import app.main as main
+          from app.storage import add_media, create_house, create_source, list_houses, list_media, list_search_profiles, list_sources, project_dir
+
+          SEARCH_URL = "https://www.immobilienscout24.at/regional/8551/haus-kaufen?plotAreaFrom=700&primaryAreaFrom=120&primaryPriceTo=420000"
+          EXPOSE_URL = "https://www.immobilienscout24.at/expose/69dcb82ff88781c17db2b90a"
+          headers = {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0 Safari/537.36",
+              "Accept-Language": "de-AT,de;q=0.9,en;q=0.7",
+          }
+          search_html = httpx.get(SEARCH_URL, headers=headers, timeout=45, follow_redirects=True).text
+          expose_html = httpx.get(EXPOSE_URL, headers=headers, timeout=45, follow_redirects=True).text
+
+          candidates = support.extract_immoscout_candidates(search_html, SEARCH_URL)
+          candidate_ids = {support.external_id_for_url(item.url) for item in candidates}
+          assert "69dcb82ff88781c17db2b90a" in candidate_ids, candidate_ids
+          assert len(candidates) >= 2, len(candidates)
+          print(f"live_search_candidates={len(candidates)}")
+          sample_candidate = next(item for item in candidates if support.external_id_for_url(item.url) == "69dcb82ff88781c17db2b90a")
+          assert sample_candidate.title, sample_candidate
+          print(f"live_search_preview={'yes' if sample_candidate.preview_image_url else 'no'}")
+
+          parsed = support.parse_immoscout(EXPOSE_URL, expose_html)
+          assert parsed.source_name == "immobilienscout24.at"
+          assert parsed.external_id == "69dcb82ff88781c17db2b90a"
+          assert parsed.price_eur == 320000, parsed.price_eur
+          assert parsed.living_area_m2 == 275, parsed.living_area_m2
+          assert parsed.plot_area_m2 == 2000, parsed.plot_area_m2
+          assert parsed.rooms == 6, parsed.rooms
+          assert parsed.location_text == "8551 Wies", parsed.location_text
+          assert parsed.address_status == "municipality_only"
+          assert parsed.heating and "gas" in parsed.heating.lower(), parsed.heating
+          assert parsed.energy_hwb == 352, parsed.energy_hwb
+          assert len(parsed.image_urls) == 3, parsed.image_urls
+          assert all("pictures.immobilienscout24.de" in url for url in parsed.image_urls)
+          print("live_expose_structured_values=ok")
+
+          with TestClient(app.bootstrap.app) as client:
+              response = client.post(
+                  "/settings/search/profiles",
+                  data={
+                      "name": "ImmoScout Wies",
+                      "source_name": "immobilienscout24.at",
+                      "search_url": SEARCH_URL,
+                      "regions": "Wies",
+                      "max_price_eur": "420000",
+                      "soft_max_price_eur": "400000",
+                      "min_living_area_m2": "120",
+                      "min_plot_area_m2": "700",
+                      "automation_mode": "review",
+                      "run_interval_minutes": "60",
+                      "max_results": "80",
+                      "auto_import_min_score": "68",
+                      "auto_import_limit_per_run": "2",
+                  },
+                  follow_redirects=False,
+              )
+              assert response.status_code == 303, response.text
+          profile = list_search_profiles()[0]
+          assert profile["source_name"] == "immobilienscout24.at", profile
+          assert profile["search_url"] == SEARCH_URL, profile
+          print("immoscout_search_profile=ok")
+
+          image = Image.new("RGB", (640, 480), "white")
+          draw = ImageDraw.Draw(image)
+          draw.rectangle((40, 60, 600, 430), outline="black", width=12)
+          draw.polygon([(80, 220), (320, 60), (560, 220)], outline="black", fill="gray")
+          draw.rectangle((220, 250, 420, 430), outline="black", fill="white")
+          first = io.BytesIO(); image.save(first, "JPEG", quality=95)
+          second = io.BytesIO(); image.save(second, "JPEG", quality=55)
+          hash_a = support._dhash(first.getvalue())
+          hash_b = support._dhash(second.getvalue())
+          assert support._hash_distance(hash_a, hash_b) <= 2, (hash_a, hash_b)
+          print("recompressed_photo_fingerprint=ok")
+
+          existing = create_house({
+              "title": parsed.title,
+              "location_text": parsed.location_text,
+              "address_status": parsed.address_status,
+              "price_eur": 325000,
+              "living_area_m2": parsed.living_area_m2,
+              "plot_area_m2": parsed.plot_area_m2,
+              "rooms": parsed.rooms,
+              "heating": parsed.heating,
+              "energy_hwb": parsed.energy_hwb,
+          })
+          house_id = str(existing["id"])
+          create_source(house_id, {
+              "source_name": "willhaben.at",
+              "source_url": "https://www.willhaben.at/iad/immobilien/d/haus-kaufen/steiermark/deutschlandsberg/testhaus-1234567890",
+              "external_id": "1234567890",
+              "description": "Dasselbe Haus von einem anderen Makler",
+              "parser_status": "success",
+          })
+          image_path = project_dir(house_id) / "images" / "existing.jpg"
+          image_path.write_bytes(first.getvalue())
+          add_media(house_id, {
+              "kind": "image",
+              "local_path": str(image_path),
+              "mime_type": "image/jpeg",
+              "download_status": "downloaded",
+              "file_size_bytes": image_path.stat().st_size,
+              "width": 640,
+              "height": 480,
+          })
+          support.dedupe_house_images_perceptually(house_id)
+          assert any(item.get("perceptual_hash") for item in list_media(house_id))
+
+          match, method, score, details = asyncio.run(support.find_probable_duplicate(parsed))
+          assert match and match["id"] == house_id, (match, method, score, details)
+          assert method in {"structured_facts", "image_plus_facts", "perceptual_images"}, method
+          print(f"duplicate_candidate_match={method}")
+
+          async def fake_fetch_html(url):
+              return expose_html
+          async def no_media(house_id, limit=120):
+              return None
+          async def no_export(house_id):
+              return True
+          async def no_gmail(house_id):
+              return True
+          main.fetch_html = fake_fetch_html
+          support.download_pending_media_enhanced = no_media
+          github_auto_export.auto_export_house_to_github = no_export
+          gmail_exchange.send_analysis_zip_via_gmail = no_gmail
+          support._remote_image_hashes = lambda urls, limit=5: asyncio.sleep(0, result=[])
+
+          result = asyncio.run(support.import_listing_to_pipeline_multi(EXPOSE_URL))
+          assert result["created"] is False, result
+          assert result["house"]["id"] == house_id, result
+          assert len(list_houses()) == 1, list_houses()
+          sources = list_sources(house_id)
+          assert {item["source_name"] for item in sources} == {"willhaben.at", "immobilienscout24.at"}, sources
+          assert min(int(result["house"]["price_eur"]), 320000) == 320000
+          print("cross_portal_import_uses_existing_house=ok")
+          PY
+          CODE=$?
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          if [ "$CODE" -eq 0 ]; then echo "status=success" >> "$GITHUB_OUTPUT"; else echo "status=failed" >> "$GITHUB_OUTPUT"; fi
+          cat /tmp/hauscheck-immoscout-check.log
+          exit "$CODE"
+      - name: Publish result
+        if: always()
+        env:
+          TEST_STATUS: ${{ steps.check.outputs.status }}
+          TEST_CODE: ${{ steps.check.outputs.code }}
+        run: |
+          mkdir -p ci
+          python - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+          log_path = Path('/tmp/hauscheck-immoscout-check.log')
+          result = {
+              'created_at': datetime.now(timezone.utc).isoformat(),
+              'commit': os.environ['GITHUB_SHA'],
+              'run_id': int(os.environ['GITHUB_RUN_ID']),
+              'status': os.environ.get('TEST_STATUS') or 'failed',
+              'test_code': int(os.environ.get('TEST_CODE') or -1),
+              'log_tail': log_path.read_text(encoding='utf-8', errors='replace')[-8000:] if log_path.exists() else '',
+          }
+          Path('ci/latest_immoscout_support_check.json').write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ci/latest_immoscout_support_check.json
+          git commit -m "Update ImmobilienScout support check [skip ci]" || true
+          git push || true
