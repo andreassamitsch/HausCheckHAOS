@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import re
 from typing import Any, Callable
 
+from bs4 import BeautifulSoup
 from fastapi import FastAPI
 
 import app.immoscout_quality as quality
@@ -13,7 +15,61 @@ from app.storage import connect, list_houses, list_search_candidates
 
 _PATCHED = False
 _ORIGINAL_SYNC: Callable[[str], None] | None = None
+_ORIGINAL_PARSE: Callable[[str, str], Any] | None = None
 _ORIGINAL_FIND = quality.find_probable_duplicate_conservative
+
+HEATING_PATTERNS = (
+    r"Gas[-\s]?Zentralheizung",
+    r"Gasheizung",
+    r"Erdgas(?:heizung)?",
+    r"Öl[-\s]?Zentralheizung",
+    r"Ölheizung",
+    r"Pellets?(?:heizung)?",
+    r"Hackgut(?:heizung)?",
+    r"Biomasse(?:heizung)?",
+    r"Luftwärmepumpe",
+    r"Erdwärmepumpe",
+    r"Wärmepumpe",
+    r"Fernwärme",
+    r"Nahwärme",
+    r"Holzheizung",
+    r"Stückholz(?:heizung)?",
+    r"Elektroheizung",
+    r"Nachtspeicher(?:heizung)?",
+)
+
+
+def parse_peisser_repaired(url: str, raw_html: str) -> Any:
+    if not _ORIGINAL_PARSE:
+        return peisser.parse_peisser(url, raw_html)
+    result = _ORIGINAL_PARSE(url, raw_html)
+
+    # Some Peisser text layouts place the energy value directly after the word
+    # "Heizung". The generic label parser then mistakes "HWB: 352" for the
+    # heating type. Prefer a concrete heating system found anywhere in the expose.
+    if not quality._normalize_heating(getattr(result, "heating", None)):
+        text = BeautifulSoup(raw_html, "html.parser").get_text(" ", strip=True)
+        for pattern in HEATING_PATTERNS:
+            match = re.search(rf"\b({pattern})\b", text, re.I)
+            if not match:
+                continue
+            result.heating = re.sub(r"\s+", " ", match.group(1)).strip()
+            result.evidence = [
+                item
+                for item in (result.evidence or [])
+                if str(item.get("field_name") or item.get("field") or "") != "heating"
+            ]
+            result.evidence.append(
+                {
+                    "field_name": "heating",
+                    "value": result.heating,
+                    "source_label": "Peisser Heizsystem im Beschreibungstext",
+                    "source_text_snippet": match.group(0),
+                    "confidence": "verified",
+                }
+            )
+            break
+    return result
 
 
 def structured_match_peisser(house: dict[str, Any], parsed: Any) -> tuple[float, list[str]]:
@@ -59,10 +115,10 @@ async def find_probable_duplicate_peisser(parsed: Any) -> tuple[dict[str, Any] |
         elif exact_address and structured_score >= 10.0:
             method = "exact_address"
             confidence = structured_score
-        elif strong_core and len(corroborating_markers) >= 2 and structured_score >= 9.0:
-            # Peisser often uses completely different marketing titles and older portal images
-            # may no longer be downloadable. Four matching core facts plus at least two
-            # independent technical/price facts are sufficiently specific for one house.
+        elif strong_core and len(corroborating_markers) >= 2 and structured_score >= 8.5:
+            # Four matching core facts plus two independent technical/price facts
+            # identify one house reliably even if the old portal images are gone and
+            # the brokers use completely different marketing titles.
             method = "structured_facts"
             confidence = structured_score
         elif strong_core and corroborating_markers and strong_title and structured_score >= 9.0:
@@ -120,12 +176,14 @@ def repair_existing_peisser_profiles() -> None:
 
 
 def register_peisser_runtime_repair(app: FastAPI) -> None:
-    global _PATCHED, _ORIGINAL_SYNC
+    global _PATCHED, _ORIGINAL_SYNC, _ORIGINAL_PARSE
     if _PATCHED:
         return
 
     repair_existing_peisser_profiles()
     _ORIGINAL_SYNC = search_automation.sync_candidate_metadata
+    _ORIGINAL_PARSE = peisser.parse_peisser
+    peisser.parse_peisser = parse_peisser_repaired
     support.find_probable_duplicate = find_probable_duplicate_peisser
     quality.find_probable_duplicate_conservative = find_probable_duplicate_peisser
     search_automation.sync_candidate_metadata = sync_candidate_metadata_portal
