@@ -1,9 +1,9 @@
 {
-  "created_at": "2026-07-14T04:53:18.346241+00:00",
-  "commit": "cfda215dcd55217858c794401a68e207f2227e84",
-  "run_id": 29307071904,
+  "created_at": "2026-07-14T09:25:52.334195+00:00",
+  "commit": "2bb418c5a211a0e6fd86f44de46c86497452b0de",
+  "run_id": 29321674084,
   "status": "success",
   "compile_code": 0,
   "import_code": 0,
-  "log_tail": "routes=69\nbootstrap_import=ok\nhwb_decimal_and_table_priority=ok\ncandidate_lifecycle_price_offline_reactivated=ok\nsearch_profile_delete=ok\nhouse_merge_and_preview_selection=ok\nHausCheck Gmail Exchange gestartet\nHausCheck GitHub Auto-Import gestartet\nHausCheck Such-Scheduler gestartet\nGET /=ok\nGET /search=ok\nGET /settings=ok\nGET /settings/search=ok\nGET /settings/search/new=ok\nGET /rejected=ok\nGET /import=ok\nGET /github/status=ok\nmerge_preview_ui=ok\nsearch_profile_create=ok\nhouse_detail_product_ui=ok\nhouse_reject_restore=ok\n"
+  "log_tail": "app/immoscout_dynamic_search.py:233: SyntaxWarning: invalid escape sequence '\\s'\n  \nroutes=71\nbootstrap_import=ok\nhwb_decimal_and_table_priority=ok\ncandidate_lifecycle_price_offline_reactivated=ok\nsearch_profile_delete=ok\nhouse_merge_and_preview_selection=ok\nHausCheck Gmail Exchange gestartet\nHausCheck GitHub Auto-Import gestartet\nHausCheck Such-Scheduler gestartet\nGET /=ok\nGET /search=ok\nGET /settings=ok\nGET /settings/search=ok\nGET /settings/search/new=ok\nGET /rejected=ok\nGET /import=ok\nGET /github/status=ok\nmerge_preview_ui=ok\nsearch_profile_create=ok\nhouse_detail_product_ui=ok\nhouse_reject_restore=ok\n"
 }
