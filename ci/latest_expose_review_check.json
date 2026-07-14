@@ -1,8 +1,8 @@
 {
-  "created_at": "2026-07-13T21:16:06.814336+00:00",
-  "commit": "840ff1f31fc7d679e87df57382c6f83d4c1b482d",
-  "run_id": 29285671900,
-  "status": "success",
-  "test_code": 0,
-  "log_tail": "object_address_without_broker_address=ok\nrural_austrian_address_without_broker_address=ok\npostcode_first_object_address=ok\nHausCheck Gmail Exchange gestartet\nHausCheck GitHub Auto-Import gestartet\nHausCheck Such-Scheduler gestartet\nexpose_pdf_visible_and_address_review=ok\nexpose_pdf_download=ok\napproved_address_written_to_house=ok\naddress_decision_history=ok\n"
+  "created_at": "2026-07-14T06:10:21.314507+00:00",
+  "commit": "5dc121155d587a409ea36eb93d0cf262cf132bf5",
+  "run_id": 29310551948,
+  "status": "failed",
+  "test_code": 1,
+  "log_tail": "/home/runner/work/HausCheckHAOS/HausCheckHAOS/hauscheck/app/immoscout_dynamic_search.py:233: SyntaxWarning: invalid escape sequence '\\s'\n  \nobject_address_without_broker_address=ok\nrural_austrian_address_without_broker_address=ok\npostcode_first_object_address=ok\nHausCheck Gmail Exchange gestartet\nHausCheck GitHub Auto-Import gestartet\nHausCheck Such-Scheduler gestartet\nTraceback (most recent call last):\n  File \"<stdin>\", line 64, in <module>\nAssertionError\n"
 }
