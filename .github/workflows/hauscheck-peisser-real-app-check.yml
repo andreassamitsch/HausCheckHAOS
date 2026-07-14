@@ -1,0 +1,190 @@
+name: HausCheck Peisser Real App Check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "hauscheck/app/**"
+      - ".github/workflows/hauscheck-peisser-real-app-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        working-directory: hauscheck
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install pillow
+      - name: Run real app flow
+        id: check
+        shell: bash
+        env:
+          HAUSCHECK_DATA_DIR: /tmp/hauscheck-peisser-real
+          HAUSCHECK_GITHUB_EXCHANGE_ENABLED: "false"
+          HAUSCHECK_GMAIL_EXCHANGE_ENABLED: "false"
+        run: |
+          set +e
+          rm -rf /tmp/hauscheck-peisser-real
+          mkdir -p /tmp/hauscheck-peisser-real
+          cd hauscheck
+          python - <<'PY' > /tmp/peisser-real-app.log 2>&1
+          import asyncio
+          import json
+          from pathlib import Path
+
+          from fastapi.testclient import TestClient
+
+          import app.bootstrap
+          import app.main as main
+          import app.peisser_support as peisser
+          import app.search_automation as automation
+          import app.candidate_preimport_dedupe as pre
+          from app.storage import (
+              add_media, add_evidence, create_house, create_source, get_search_profile,
+              list_houses, list_media, list_search_candidates, list_search_profiles,
+              list_sources, project_dir,
+          )
+
+          client = TestClient(main.app)
+          form = client.get('/settings/search/new')
+          assert form.status_code == 200, form.text[:500]
+          assert 'peisser-immobilien.at' in form.text
+          print('peisser_option_visible=ok')
+
+          response = client.post('/settings/search/profiles', data={
+              'name': 'Peisser Realtest',
+              'source_name': 'peisser-immobilien.at',
+              'regions': 'Wies',
+              'area_ids': '8551',
+              'search_url': '',
+              'max_price_eur': '420000',
+              'soft_max_price_eur': '380000',
+              'min_living_area_m2': '120',
+              'min_plot_area_m2': '700',
+              'hwb_warn': '200',
+              'hwb_reject': '300',
+              'oil_policy': 'review',
+              'automation_mode': 'review',
+              'run_interval_minutes': '60',
+              'max_results': '80',
+              'auto_import_min_score': '68',
+              'auto_import_limit_per_run': '2',
+          }, follow_redirects=False)
+          assert response.status_code in (302, 303), (response.status_code, response.text[:1000])
+          profiles = list_search_profiles()
+          assert len(profiles) == 1, profiles
+          profile = profiles[0]
+          print('stored_profile=' + json.dumps({k: profile.get(k) for k in ('id','source_name','search_url','search_url_mode','area_ids')}, ensure_ascii=False))
+          assert profile.get('source_name') == peisser.PEISSER_SOURCE, profile
+          assert 'peisser-immobilien.at/index.php' in str(profile.get('search_url')), profile
+          print('profile_route_stores_peisser=ok')
+
+          async def prepare_existing_i24():
+              url = 'https://www.immobilienscout24.at/expose/69dcb82ff88781c17db2b90a'
+              html = await main.fetch_html(url)
+              parsed = main.parse_listing(url, html)
+              print('i24=' + json.dumps({
+                  'title': parsed.title, 'price': parsed.price_eur, 'living': parsed.living_area_m2,
+                  'plot': parsed.plot_area_m2, 'rooms': parsed.rooms, 'location': parsed.location_text,
+                  'hwb': parsed.energy_hwb, 'images': len(parsed.image_urls)
+              }, ensure_ascii=False))
+              house = create_house({
+                  'title': parsed.title,
+                  'location_text': parsed.location_text,
+                  'address_status': parsed.address_status,
+                  'price_eur': parsed.price_eur,
+                  'living_area_m2': parsed.living_area_m2,
+                  'plot_area_m2': parsed.plot_area_m2,
+                  'rooms': parsed.rooms,
+                  'year_built': parsed.year_built,
+                  'heating': parsed.heating,
+                  'energy_hwb': parsed.energy_hwb,
+                  'energy_fgee': parsed.energy_fgee,
+              })
+              hid = str(house['id'])
+              hdir = project_dir(hid)
+              html_path = hdir / 'html' / 'i24.html'
+              html_path.write_text(html, encoding='utf-8')
+              src = create_source(hid, {
+                  'source_name': parsed.source_name, 'source_url': parsed.source_url,
+                  'external_id': parsed.external_id, 'description': parsed.description,
+                  'raw_html_path': str(html_path), 'parser_status': 'success', 'parser_warnings': [],
+              })
+              add_evidence(hid, str(src['id']), parsed.evidence)
+              for image in parsed.image_urls[:5]:
+                  add_media(hid, {'source_id': src['id'], 'kind': 'image', 'original_url': image, 'download_status': 'pending'})
+              await main.download_pending_media_files(hid)
+              print(f'i24_house={hid} media={len(list_media(hid))}')
+              return hid
+
+          existing_id = asyncio.run(prepare_existing_i24())
+
+          # Avoid external AI exchange in the merge, but count whether it would be triggered.
+          exports = []
+          async def fake_export(house_id):
+              exports.append(str(house_id))
+          pre.github_auto_export.auto_export_house_to_github = fake_export
+          pre.gmail_exchange.send_analysis_zip_via_gmail = lambda house_id: asyncio.sleep(0)
+
+          run = client.post(f"/search/profiles/{profile['id']}/run", follow_redirects=False)
+          assert run.status_code in (302, 303), (run.status_code, run.text[:1000])
+          refreshed = get_search_profile(str(profile['id']))
+          candidates = list_search_candidates(str(profile['id']))
+          sources = list_sources(existing_id)
+          print('last_run=' + json.dumps({k: refreshed.get(k) for k in ('last_run_status','last_error','last_found_count')}, ensure_ascii=False))
+          print('candidates=' + json.dumps([{
+              'url': c.get('source_url'), 'status': c.get('status'), 'house': c.get('imported_house_id'),
+              'provider': c.get('provider'), 'decision': c.get('decision'), 'reasons': c.get('filter_reasons')
+          } for c in candidates], ensure_ascii=False))
+          print('sources=' + json.dumps([{
+              'source_name': s.get('source_name'), 'source_url': s.get('source_url'), 'external_id': s.get('external_id')
+          } for s in sources], ensure_ascii=False))
+          print('exports=' + json.dumps(exports))
+
+          assert refreshed.get('last_error') in (None, ''), refreshed
+          assert any(c.get('source_url') == 'https://www.peisser-immobilien.at/expose.php?id=149' for c in candidates), candidates
+          peisser_candidate = next(c for c in candidates if c.get('source_url') == 'https://www.peisser-immobilien.at/expose.php?id=149')
+          assert peisser_candidate.get('status') == 'imported', peisser_candidate
+          assert str(peisser_candidate.get('imported_house_id')) == existing_id, peisser_candidate
+          assert any(s.get('source_name') == peisser.PEISSER_SOURCE for s in sources), sources
+          assert len(list_houses()) == 1, list_houses()
+          print('real_wies_cross_portal_merge=ok')
+          PY
+          CODE=$?
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          if [ "$CODE" -eq 0 ]; then echo "status=success" >> "$GITHUB_OUTPUT"; else echo "status=failed" >> "$GITHUB_OUTPUT"; fi
+          cat /tmp/peisser-real-app.log
+          exit "$CODE"
+      - name: Publish result
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+          log = Path('/tmp/peisser-real-app.log').read_text(encoding='utf-8', errors='replace') if Path('/tmp/peisser-real-app.log').exists() else ''
+          result = {
+              'created_at': datetime.now(timezone.utc).isoformat(),
+              'commit': os.environ.get('GITHUB_SHA'),
+              'run_id': os.environ.get('GITHUB_RUN_ID'),
+              'status': '${{ steps.check.outputs.status }}',
+              'test_code': int('${{ steps.check.outputs.code }}' or 1),
+              'log_tail': log[-12000:],
+          }
+          Path('ci').mkdir(exist_ok=True)
+          Path('ci/latest_peisser_real_app_check.json').write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ci/latest_peisser_real_app_check.json
+          git commit -m "Update Peisser real app check [skip ci]" || true
+          git push || true
