@@ -1,0 +1,8 @@
+{
+  "created_at": "2026-07-14T18:02:50.884031+00:00",
+  "commit": "7c0fddf1df7f4de364901074a23c8eeccb0f159a",
+  "run_id": 29356251389,
+  "status": "success",
+  "test_code": 0,
+  "log_tail": "/home/runner/work/HausCheckHAOS/HausCheckHAOS/hauscheck/app/immoscout_dynamic_search.py:233: SyntaxWarning: invalid escape sequence '\\s'\n  \npage=1 cards=10 sold=2 duplicate=False\npage=2 cards=10 sold=9 duplicate=False\npage=3 cards=10 sold=9 duplicate=False\npage=4 cards=6 sold=4 duplicate=False\npage=5 cards=6 sold=4 duplicate=True\nscan_stop=ok pages=4 sold=24 active=12\n"
+}
