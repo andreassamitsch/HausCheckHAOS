@@ -1,0 +1,153 @@
+name: HausCheck ImmobilienScout Resilience Check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "hauscheck/app/immoscout_search_resilience.py"
+      - "hauscheck/app/immoscout_search_resilience_compat.py"
+      - "hauscheck/app/immoscout_support.py"
+      - "hauscheck/app/immoscout_url_runtime_fix.py"
+      - "hauscheck/app/bootstrap.py"
+      - ".github/workflows/hauscheck-immoscout-resilience-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        working-directory: hauscheck
+        run: python -m pip install -r requirements.txt
+      - name: Validate encoded links, fallback attempts and full profile run
+        id: resilience_test
+        shell: bash
+        run: |
+          set +e
+          rm -rf /tmp/hauscheck-immoscout-resilience-test
+          cd hauscheck
+          HAUSCHECK_DATA_DIR=/tmp/hauscheck-immoscout-resilience-test python - <<'PY' > /tmp/hauscheck-immoscout-resilience-check.log 2>&1
+          import asyncio
+
+          from fastapi.testclient import TestClient
+
+          import app.bootstrap
+          import app.immoscout_search_resilience as resilience
+          import app.main as main
+          from app.storage import get_search_profile, list_search_candidates, list_search_profiles
+
+          base = "https://www.immobilienscout24.at/regional/8523/haus-kaufen?plotAreaFrom=700&primaryAreaFrom=120&primaryPriceTo=420000"
+          ids = [
+              "69dcb82ff88781c17db2b90a",
+              "69dcb82ff88781c17db2b90b",
+              "69dcb82ff88781c17db2b90c",
+          ]
+          encoded_html = f'''<html><body>
+          <script type="application/json">{{"url":"https:\\u002F\\u002Fwww.immobilienscout24.at\\u002Fexpose\\u002F{ids[0]}"}}</script>
+          <script>window.state={{"exposeId":"{ids[1]}"}}</script>
+          <a data-listing-id="{ids[2]}">Objekt</a>
+          </body></html>'''
+          encoded = resilience.extract_immoscout_candidates_resilient(encoded_html, base)
+          assert {item.url.rsplit('/', 1)[-1] for item in encoded} == set(ids), encoded
+          print("encoded_and_json_expose_links=ok")
+
+          original_attempt = resilience._fetch_search_attempt
+          calls = []
+
+          async def fake_attempt(url, headers, *, warmup):
+              calls.append((headers.get("User-Agent", ""), warmup))
+              if len(calls) < 3:
+                  shell = "<html><script>window.__DATA__={}</script></html>"
+                  return shell, url, 200, resilience._page_flags(shell)
+              return encoded_html, url, 200, resilience._page_flags(encoded_html)
+
+          resilience._fetch_search_attempt = fake_attempt
+          _, _, fallback_candidates, diagnostics = asyncio.run(resilience.fetch_immoscout_search(base))
+          assert len(fallback_candidates) == 3, diagnostics
+          assert len(calls) == 3, calls
+          print("multi_attempt_fallback=ok")
+          resilience._fetch_search_attempt = original_attempt
+
+          with TestClient(app.bootstrap.app) as client:
+              response = client.post(
+                  "/settings/search/profiles",
+                  data={
+                      "name": "ImmoScout Resilience Live",
+                      "source_name": "immobilienscout24.at",
+                      "regions": "8523",
+                      "area_ids": "8523",
+                      "search_url": "",
+                      "max_price_eur": "420000",
+                      "soft_max_price_eur": "390000",
+                      "min_living_area_m2": "120",
+                      "min_plot_area_m2": "700",
+                      "exclude_roads": "B76,B69",
+                      "hwb_warn": "200",
+                      "hwb_reject": "300",
+                      "oil_policy": "review",
+                      "automation_mode": "review",
+                      "run_interval_minutes": "60",
+                      "max_results": "20",
+                      "auto_import_min_score": "68",
+                      "auto_import_limit_per_run": "2",
+                  },
+                  follow_redirects=False,
+              )
+              assert response.status_code == 303, response.text
+              profile = next(item for item in list_search_profiles() if item["name"] == "ImmoScout Resilience Live")
+              profile_id = str(profile["id"])
+              assert main.resolve_search_urls(profile) == [base], main.resolve_search_urls(profile)
+
+              run = client.post(f"/search/profiles/{profile_id}/run", follow_redirects=False)
+              assert run.status_code == 303, run.text
+              refreshed = get_search_profile(profile_id)
+              candidates = list_search_candidates(profile_id)
+              print(f"last_run_status={refreshed.get('last_run_status')}")
+              print(f"last_error={refreshed.get('last_error')}")
+              print(f"last_found_count={refreshed.get('last_found_count')}")
+              print(f"stored_candidates={len(candidates)}")
+              assert int(refreshed.get("last_found_count") or 0) > 0, refreshed
+              assert candidates, refreshed
+              assert all("immobilienscout24.at/expose/" in str(item.get("source_url") or "") for item in candidates), candidates
+              print("full_app_resilient_profile_run=ok")
+          PY
+          CODE=$?
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          if [ "$CODE" -eq 0 ]; then echo "status=success" >> "$GITHUB_OUTPUT"; else echo "status=failed" >> "$GITHUB_OUTPUT"; fi
+          cat /tmp/hauscheck-immoscout-resilience-check.log
+          exit "$CODE"
+      - name: Publish result
+        if: always()
+        shell: bash
+        env:
+          TEST_STATUS: ${{ steps.resilience_test.outputs.status }}
+          TEST_CODE: ${{ steps.resilience_test.outputs.code }}
+        run: |
+          mkdir -p ci
+          python - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+          path = Path('/tmp/hauscheck-immoscout-resilience-check.log')
+          log = path.read_text(encoding='utf-8', errors='replace') if path.exists() else ''
+          Path('ci/latest_immoscout_resilience_check.json').write_text(json.dumps({
+              'created_at': datetime.now(timezone.utc).isoformat(),
+              'commit': os.environ['GITHUB_SHA'],
+              'run_id': int(os.environ['GITHUB_RUN_ID']),
+              'status': os.environ.get('TEST_STATUS') or 'failed',
+              'test_code': int(os.environ.get('TEST_CODE') or -1),
+              'log_tail': log[-8000:],
+          }, ensure_ascii=False, indent=2), encoding='utf-8')
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ci/latest_immoscout_resilience_check.json
+          git commit -m "Update ImmobilienScout resilience check [skip ci]" || true
+          git push || true
