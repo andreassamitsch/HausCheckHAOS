@@ -1,0 +1,8 @@
+{
+  "created_at": "2026-07-14T18:00:22.684057+00:00",
+  "commit": "e3cd19c67207a5f6c4e3269a6e3a3e24b824e383",
+  "run_id": 29356064507,
+  "status": "success",
+  "test_code": 0,
+  "log_tail": "/home/runner/work/HausCheckHAOS/HausCheckHAOS/hauscheck/app/immoscout_dynamic_search.py:233: SyntaxWarning: invalid escape sequence '\\s'\n  \nautomation_runner=app.candidate_preimport_dedupe.run_search_with_preimport_dedupe\npeisser_runner=app.peisser_dedupe_fix.run_peisser_search_with_dedupe\nduplicate_method=image_plus_facts score=24.0 details={'structured_score': 9.0, 'reasons': ['gleicher Ort/PLZ', 'gleiche Wohnfläche', 'gleiche Grundstücksfläche', 'gleiche Zimmerzahl', 'gleicher HWB', 'sehr ähnlicher Titel 1.00'], 'image_matches': 1, 'automatic_merge': True}\nfound=1 status=imported house=2672f630 exports=['2672f630']\npre_display_merge=ok\nunchanged_no_reanalysis=ok\n"
+}
