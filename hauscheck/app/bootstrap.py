@@ -20,6 +20,7 @@ from app.immoscout_dynamic_search import register_immoscout_dynamic_search
 from app.immoscout_numeric_fix import register_immoscout_numeric_fix
 from app.immoscout_quality import register_immoscout_quality
 from app.immoscout_support import register_immoscout_support
+from app.immoscout_url_runtime_fix import register_immoscout_url_runtime_fix
 from app.import_patch import register_import_patch
 from app.ingress_link_fix import register_ingress_link_fix
 from app.live_filter_pan import register_live_filter_pan
@@ -110,3 +111,5 @@ register_immoscout_dynamic_search(app)
 register_immoscout_dynamic_mode(app)
 # Dezimalwerte bleiben bei wiederholtem Speichern stabil; beschädigte Profile werden repariert.
 register_immoscout_numeric_fix(app)
+# ImmobilienScout-Parameter werden ohne .0 gespeichert und mit Browser-Headern geladen.
+register_immoscout_url_runtime_fix(app)
