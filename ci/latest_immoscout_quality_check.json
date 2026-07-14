@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-07-14T05:46:20.416400+00:00",
-  "commit": "3324baa745dcafeff8744cc88309b0e048686a54",
-  "run_id": 29309400069,
+  "created_at": "2026-07-14T05:47:35.911079+00:00",
+  "commit": "b81c8a8f6f52bef125b02289d0a788d1d8919d30",
+  "run_id": 29309458440,
   "status": "success",
   "test_code": 0,
   "log_tail": "live_detail_parser=ok\nlive_gallery_download=1920x1440\nfull_search_persisted=2\nhigh_confidence_structured_duplicate=ok\nsimilar_size_but_different_energy_not_merged=ok\nlive_photo_recompression_match=ok\n"
