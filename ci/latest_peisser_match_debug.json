@@ -1,0 +1,8 @@
+{
+  "created_at": "2026-07-14T19:54:08.796940+00:00",
+  "commit": "ca941436918a9b5818ae3ffe8f9447f4e131070c",
+  "run_id": "29363582993",
+  "status": "failed",
+  "test_code": 1,
+  "log_tail": "/home/runner/work/HausCheckHAOS/HausCheckHAOS/hauscheck/app/immoscout_dynamic_search.py:233: SyntaxWarning: invalid escape sequence '\\s'\n  \nparsed={\"source\": \"peisser-immobilien.at\", \"title\": \"Wies: Grosszügiges Ein-Zweifamilienhaus in sonniger Ortsrandlage\", \"location\": \"8551 Wies\", \"price\": 320000, \"living\": 275.0, \"plot\": 2011.0, \"rooms\": 6.0, \"heating\": \"HWB: 352\", \"hwb\": 352.0, \"fgee\": 4.04, \"images\": 25}\nstructured={\"score\": 8.5, \"reasons\": [\"gleicher Ort/PLZ\", \"gleiche Wohnfläche\", \"gleiche Grundstücksfläche\", \"gleiche Zimmerzahl\", \"gleicher HWB\", \"gleicher Angebotspreis\"]}\nmatch={\"house\": null, \"method\": null, \"score\": 0.0, \"details\": {}}\nTraceback (most recent call last):\n  File \"<stdin>\", line 43, in <module>\n  File \"/opt/hostedtoolcache/Python/3.12.13/x64/lib/python3.12/asyncio/runners.py\", line 195, in run\n    return runner.run(main)\n           ^^^^^^^^^^^^^^^^\n  File \"/opt/hostedtoolcache/Python/3.12.13/x64/lib/python3.12/asyncio/runners.py\", line 118, in run\n    return self._loop.run_until_complete(task)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hostedtoolcache/Python/3.12.13/x64/lib/python3.12/asyncio/base_events.py\", line 691, in run_until_complete\n    return future.result()\n           ^^^^^^^^^^^^^^^\n  File \"<stdin>\", line 39, in run\nAssertionError: (None, None, 0.0, {})\n"
+}
