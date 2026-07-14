@@ -1,0 +1,40 @@
+{
+  "status_code": 303,
+  "profile": {
+    "id": "2016f25b",
+    "name": "debug profile",
+    "source_name": "immobilienscout24.at",
+    "search_url": "https://www.immobilienscout24.at/regional/8551/haus-kaufen?plotAreaFrom=700&primaryAreaFrom=120&primaryPriceTo=420000\nhttps://www.immobilienscout24.at/regional/8552/haus-kaufen?plotAreaFrom=700&primaryAreaFrom=120&primaryPriceTo=420000",
+    "enabled": 1,
+    "max_price_eur": 420000,
+    "soft_max_price_eur": 390000,
+    "min_living_area_m2": 120.0,
+    "min_plot_area_m2": 700.0,
+    "regions": "Wies",
+    "exclude_roads": "B76",
+    "hwb_warn": 200.0,
+    "hwb_reject": 300.0,
+    "oil_policy": "review",
+    "last_run_at": null,
+    "last_found_count": 0,
+    "created_at": "2026-07-14T06:13:30.494404+00:00",
+    "updated_at": "2026-07-14T06:13:30.497475+00:00",
+    "area_ids": "8551,8552",
+    "automation_mode": "review",
+    "run_interval_minutes": 60,
+    "auto_import_enabled": 0,
+    "max_results": 80,
+    "last_run_status": "bereit",
+    "last_error": null,
+    "auto_import_min_score": 68,
+    "auto_import_limit_per_run": 2,
+    "last_auto_import_count": 0,
+    "last_auto_import_at": null,
+    "search_url_mode": "automatic"
+  },
+  "runtime_urls": [
+    "https://www.immobilienscout24.at/regional/8551/haus-kaufen?plotAreaFrom=700&primaryAreaFrom=120&primaryPriceTo=420000"
+  ],
+  "resolver_module": "app.immoscout_dynamic_mode",
+  "resolver_name": "resolve_search_urls_mode"
+}
