@@ -24,6 +24,7 @@ from app.mobile_layout_state_fix import register_mobile_layout_state_fix
 from app.modern_ui import register_modern_ui
 from app.modern_ui_fix import register_modern_ui_fix
 from app.parser_quality import register_parser_quality
+from app.pdf_ingress_fix import register_pdf_ingress_fix
 from app.pipeline_integration import register_pipeline_integration
 from app.pipeline_status import ensure_pipeline_schema
 from app.product_ui import register_product_ui
@@ -92,3 +93,5 @@ register_expose_review(app)
 register_expose_address_quality()
 # PDFs können entfernt werden und fließen größenoptimiert in jede neue KI-Bewertung ein.
 register_expose_ai_export(app)
+# PDF-Links bleiben im authentifizierten Home-Assistant-Ingress; Download separat möglich.
+register_pdf_ingress_fix(app)
