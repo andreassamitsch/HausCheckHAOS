@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any, Callable
 
 import httpx
@@ -180,7 +179,9 @@ async def download_pending_media_portal(house_id: str, limit: int = 120) -> None
                         },
                     )
                     continue
-                filename = f"{item['id']}_{main_module.safe_filename_from_url(url, f'{item["id"]}.jpg')}"
+                fallback_name = f"{item['id']}.jpg"
+                safe_name = main_module.safe_filename_from_url(url, fallback_name)
+                filename = f"{item['id']}_{safe_name}"
                 target = hdir / "images" / filename
                 target.write_bytes(content)
                 update_media(
