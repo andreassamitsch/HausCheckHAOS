@@ -1,0 +1,8 @@
+{
+  "created_at": "2026-07-14T05:49:30.747238+00:00",
+  "commit": "7339fec30145f3dc85789b33d4f8e4bbbef29293",
+  "run_id": 29309541589,
+  "status": "success",
+  "test_code": 0,
+  "log_tail": "application_gallery_download=ok sizes=[(1920, 1440), (1920, 1440), (1920, 1440)]\nperceptual_hashes_persisted=ok\n"
+}
