@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-07-13T21:06:47.249188+00:00",
-  "commit": "9cbe8f0368cd59002f1508d817289eda41f54030",
-  "run_id": 29285063808,
+  "created_at": "2026-07-14T05:45:49.236484+00:00",
+  "commit": "aef6a35b51e81f70b77217b2b23676beffa79929",
+  "run_id": 29309380313,
   "status": "success",
   "test_code": 0,
   "log_tail": "willhaben_title_image_priority=ok\nHausCheck Gmail Exchange gestartet\nHausCheck GitHub Auto-Import gestartet\nHausCheck Such-Scheduler gestartet\ndashboard_live_filter_persistent_mobile_actions=ok\nhouse_header_lightbox_swipe_pan_zoom_two_column_gallery=ok\nmanual_title_image_override=ok\n"
