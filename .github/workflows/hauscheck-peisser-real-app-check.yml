@@ -39,19 +39,17 @@ jobs:
           python - <<'PY' > /tmp/peisser-real-app.log 2>&1
           import asyncio
           import json
-          from pathlib import Path
 
           from fastapi.testclient import TestClient
 
           import app.bootstrap
           import app.main as main
           import app.peisser_support as peisser
-          import app.search_automation as automation
+          import app.immoscout_support as support
           import app.candidate_preimport_dedupe as pre
           from app.storage import (
-              add_media, add_evidence, create_house, create_source, get_search_profile,
-              list_houses, list_media, list_search_candidates, list_search_profiles,
-              list_sources, project_dir,
+              create_house, create_source, get_search_profile, list_houses,
+              list_search_candidates, list_search_profiles, list_sources,
           )
 
           client = TestClient(main.app)
@@ -61,7 +59,7 @@ jobs:
           print('peisser_option_visible=ok')
 
           response = client.post('/settings/search/profiles', data={
-              'name': 'Peisser Realtest',
+              'name': 'Peisser Wies Realtest',
               'source_name': 'peisser-immobilien.at',
               'regions': 'Wies',
               'area_ids': '8551',
@@ -80,58 +78,46 @@ jobs:
               'auto_import_limit_per_run': '2',
           }, follow_redirects=False)
           assert response.status_code in (302, 303), (response.status_code, response.text[:1000])
-          profiles = list_search_profiles()
-          assert len(profiles) == 1, profiles
-          profile = profiles[0]
-          print('stored_profile=' + json.dumps({k: profile.get(k) for k in ('id','source_name','search_url','search_url_mode','area_ids')}, ensure_ascii=False))
+          profile = list_search_profiles()[0]
           assert profile.get('source_name') == peisser.PEISSER_SOURCE, profile
           assert 'peisser-immobilien.at/index.php' in str(profile.get('search_url')), profile
-          print('profile_route_stores_peisser=ok')
+          print('stored_profile=' + json.dumps({k: profile.get(k) for k in ('id','source_name','search_url','area_ids')}, ensure_ascii=False))
 
-          async def prepare_existing_i24():
-              url = 'https://www.immobilienscout24.at/expose/69dcb82ff88781c17db2b90a'
-              html = await main.fetch_html(url)
-              parsed = main.parse_listing(url, html)
-              print('i24=' + json.dumps({
-                  'title': parsed.title, 'price': parsed.price_eur, 'living': parsed.living_area_m2,
-                  'plot': parsed.plot_area_m2, 'rooms': parsed.rooms, 'location': parsed.location_text,
-                  'hwb': parsed.energy_hwb, 'images': len(parsed.image_urls)
-              }, ensure_ascii=False))
-              house = create_house({
-                  'title': parsed.title,
-                  'location_text': parsed.location_text,
-                  'address_status': parsed.address_status,
-                  'price_eur': parsed.price_eur,
-                  'living_area_m2': parsed.living_area_m2,
-                  'plot_area_m2': parsed.plot_area_m2,
-                  'rooms': parsed.rooms,
-                  'year_built': parsed.year_built,
-                  'heating': parsed.heating,
-                  'energy_hwb': parsed.energy_hwb,
-                  'energy_fgee': parsed.energy_fgee,
-              })
-              hid = str(house['id'])
-              hdir = project_dir(hid)
-              html_path = hdir / 'html' / 'i24.html'
-              html_path.write_text(html, encoding='utf-8')
-              src = create_source(hid, {
-                  'source_name': parsed.source_name, 'source_url': parsed.source_url,
-                  'external_id': parsed.external_id, 'description': parsed.description,
-                  'raw_html_path': str(html_path), 'parser_status': 'success', 'parser_warnings': [],
-              })
-              add_evidence(hid, str(src['id']), parsed.evidence)
-              for image in parsed.image_urls[:5]:
-                  add_media(hid, {'source_id': src['id'], 'kind': 'image', 'original_url': image, 'download_status': 'pending'})
-              await main.download_pending_media_files(hid)
-              print(f'i24_house={hid} media={len(list_media(hid))}')
-              return hid
+          # Existing house reflects the formerly available ImmobilienScout/Willhaben Wies listing.
+          # The old portal page is HTTP 410, so this test intentionally has no retrievable images
+          # and a completely different marketing title.
+          house = create_house({
+              'title': 'Gute Aussichten – Wohnen, Hobby, Arbeit und Freizeit',
+              'location_text': '8551 Wies',
+              'address_status': 'municipality_only',
+              'price_eur': 320000,
+              'living_area_m2': 275,
+              'plot_area_m2': 2000,
+              'rooms': 6,
+              'heating': 'Gasheizung',
+              'energy_hwb': 352,
+              'energy_fgee': 4.04,
+          })
+          existing_id = str(house['id'])
+          create_source(existing_id, {
+              'source_name': 'immobilienscout24.at',
+              'source_url': 'https://www.immobilienscout24.at/expose/69dcb82ff88781c17db2b90a',
+              'external_id': '69dcb82ff88781c17db2b90a',
+              'description': 'Ehemaliges ImmobilienScout-Inserat',
+              'parser_status': 'success',
+              'parser_warnings': [],
+          })
 
-          existing_id = asyncio.run(prepare_existing_i24())
-
-          # Avoid external AI exchange in the merge, but count whether it would be triggered.
+          # Prove that facts alone can perform the safe merge; avoid bulk media and external AI I/O.
+          async def no_hashes(urls, limit=5):
+              return []
+          async def no_media(house_id, limit=120):
+              return None
           exports = []
           async def fake_export(house_id):
               exports.append(str(house_id))
+          support._remote_image_hashes = no_hashes
+          main.download_pending_media_files = no_media
           pre.github_auto_export.auto_export_house_to_github = fake_export
           pre.gmail_exchange.send_analysis_zip_via_gmail = lambda house_id: asyncio.sleep(0)
 
@@ -151,13 +137,21 @@ jobs:
           print('exports=' + json.dumps(exports))
 
           assert refreshed.get('last_error') in (None, ''), refreshed
-          assert any(c.get('source_url') == 'https://www.peisser-immobilien.at/expose.php?id=149' for c in candidates), candidates
-          peisser_candidate = next(c for c in candidates if c.get('source_url') == 'https://www.peisser-immobilien.at/expose.php?id=149')
-          assert peisser_candidate.get('status') == 'imported', peisser_candidate
-          assert str(peisser_candidate.get('imported_house_id')) == existing_id, peisser_candidate
+          target = next((c for c in candidates if c.get('source_url') == 'https://www.peisser-immobilien.at/expose.php?id=149'), None)
+          assert target is not None, candidates
+          assert target.get('status') == 'imported', target
+          assert str(target.get('imported_house_id')) == existing_id, target
+          assert target.get('provider') == peisser.PEISSER_SOURCE, target
           assert any(s.get('source_name') == peisser.PEISSER_SOURCE for s in sources), sources
           assert len(list_houses()) == 1, list_houses()
-          print('real_wies_cross_portal_merge=ok')
+          assert exports == [existing_id], exports
+          print('real_wies_facts_only_merge=ok')
+
+          # A second unchanged run must not trigger another AI export.
+          run2 = client.post(f"/search/profiles/{profile['id']}/run", follow_redirects=False)
+          assert run2.status_code in (302, 303)
+          assert exports == [existing_id], exports
+          print('unchanged_second_run_no_reanalysis=ok')
           PY
           CODE=$?
           echo "code=$CODE" >> "$GITHUB_OUTPUT"
