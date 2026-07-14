@@ -15,6 +15,7 @@ from app.github_exchange import register_github_exchange
 from app.gmail_exchange import register_gmail_exchange
 from app.house_manage import register_house_management
 from app.house_merge import register_house_merge
+from app.immoscout_quality import register_immoscout_quality
 from app.immoscout_support import register_immoscout_support
 from app.import_patch import register_import_patch
 from app.ingress_link_fix import register_ingress_link_fix
@@ -98,3 +99,5 @@ register_expose_ai_export(app)
 register_pdf_ingress_fix(app)
 # ImmobilienScout24-Suche, strukturierter Exposé-Parser und automatische Duplikatzuordnung.
 register_immoscout_support(app)
+# Nur hochsichere Quellen-/Fakten-/Bildtreffer werden automatisch zusammengeführt.
+register_immoscout_quality(app)
