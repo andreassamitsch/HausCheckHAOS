@@ -1,0 +1,138 @@
+name: HausCheck PDF Ingress Check
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "hauscheck/app/pdf_ingress_fix.py"
+      - "hauscheck/app/expose_ai_export.py"
+      - "hauscheck/app/ingress_link_fix.py"
+      - "hauscheck/app/bootstrap.py"
+      - "hauscheck/config.yaml"
+      - ".github/workflows/hauscheck-pdf-ingress-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        working-directory: hauscheck
+        run: python -m pip install -r requirements.txt
+
+      - name: Test ingress-safe PDF open and download
+        id: pdf_ingress_check
+        shell: bash
+        run: |
+          set +e
+          rm -rf /tmp/hauscheck-pdf-ingress-test
+          mkdir -p /tmp/hauscheck-pdf-ingress-test
+          cd hauscheck
+          HAUSCHECK_DATA_DIR=/tmp/hauscheck-pdf-ingress-test python - <<'PY' > /tmp/hauscheck-pdf-ingress-check.log 2>&1
+          from fastapi.testclient import TestClient
+
+          import app.bootstrap
+          from app.ingress_link_fix import resolve_ingress_url
+          from app.storage import add_media, connect, create_house, project_dir
+
+          house = create_house({
+              "title": "PDF Ingress Testhaus",
+              "location_text": "8551 Wies",
+          })
+          house_id = str(house["id"])
+          pdf_path = project_dir(house_id) / "pdfs" / "test_expose.pdf"
+          pdf_path.write_bytes(b"%PDF-1.4\n% HausCheck ingress fixture\n")
+          media = add_media(house_id, {
+              "kind": "pdf",
+              "local_path": str(pdf_path),
+              "mime_type": "application/pdf",
+              "download_status": "downloaded",
+              "file_size_bytes": pdf_path.stat().st_size,
+          })
+          media_id = str(media["id"])
+          with connect() as con:
+              con.execute(
+                  "UPDATE media_assets SET display_name = ?, extraction_status = ? WHERE id = ?",
+                  ("Test Exposé.pdf", "success", media_id),
+              )
+              con.commit()
+
+          with TestClient(app.bootstrap.app) as client:
+              detail = client.get(f"/houses/{house_id}")
+              assert detail.status_code == 200, detail.text
+              assert 'data-pdf-ingress-fix="hc-pdf-ingress-fix-v1"' in detail.text
+              assert f'href="../media/{media_id}" data-ingress-document="true">PDF öffnen</a>' in detail.text
+              assert 'target="_blank">PDF öffnen</a>' not in detail.text
+              assert f'href="{house_id}/expose/{media_id}/download">PDF herunterladen</a>' in detail.text
+              print("pdf_open_stays_inside_ingress=ok")
+
+              inline = client.get(f"/media/{media_id}")
+              assert inline.status_code == 200
+              assert inline.content.startswith(b"%PDF")
+              print("inline_pdf_route=ok")
+
+              download = client.get(f"/houses/{house_id}/expose/{media_id}/download")
+              assert download.status_code == 200
+              disposition = download.headers.get("content-disposition", "")
+              assert "attachment" in disposition.lower(), disposition
+              assert "pdf" in disposition.lower(), disposition
+              print("pdf_attachment_download=ok")
+
+          ingress_path = f"/api/hassio_ingress/secure-token/houses/{house_id}"
+          resolved = resolve_ingress_url(ingress_path, f"../media/{media_id}")
+          assert resolved == f"/api/hassio_ingress/secure-token/media/{media_id}", resolved
+          print("ingress_media_url_preserves_token_path=ok")
+          PY
+          CODE=$?
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          if [ "$CODE" -eq 0 ]; then
+            echo "status=success" >> "$GITHUB_OUTPUT"
+          else
+            echo "status=failed" >> "$GITHUB_OUTPUT"
+          fi
+          cat /tmp/hauscheck-pdf-ingress-check.log
+          exit "$CODE"
+
+      - name: Publish PDF ingress result
+        if: always()
+        shell: bash
+        env:
+          TEST_STATUS: ${{ steps.pdf_ingress_check.outputs.status }}
+          TEST_CODE: ${{ steps.pdf_ingress_check.outputs.code }}
+        run: |
+          mkdir -p ci
+          python - <<'PY'
+          import json
+          import os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          log_path = Path('/tmp/hauscheck-pdf-ingress-check.log')
+          log = log_path.read_text(encoding='utf-8', errors='replace') if log_path.exists() else ''
+          result = {
+              'created_at': datetime.now(timezone.utc).isoformat(),
+              'commit': os.environ['GITHUB_SHA'],
+              'run_id': int(os.environ['GITHUB_RUN_ID']),
+              'status': os.environ.get('TEST_STATUS') or 'failed',
+              'test_code': int(os.environ.get('TEST_CODE') or -1),
+              'log_tail': log[-6000:],
+          }
+          Path('ci/latest_pdf_ingress_check.json').write_text(
+              json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8'
+          )
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ci/latest_pdf_ingress_check.json
+          git commit -m "Update HausCheck PDF ingress check [skip ci]" || true
+          git push || true
