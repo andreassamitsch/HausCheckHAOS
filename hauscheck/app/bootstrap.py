@@ -17,6 +17,7 @@ from app.house_manage import register_house_management
 from app.house_merge import register_house_merge
 from app.immoscout_dynamic_mode import register_immoscout_dynamic_mode
 from app.immoscout_dynamic_search import register_immoscout_dynamic_search
+from app.immoscout_numeric_fix import register_immoscout_numeric_fix
 from app.immoscout_quality import register_immoscout_quality
 from app.immoscout_support import register_immoscout_support
 from app.import_patch import register_import_patch
@@ -107,3 +108,5 @@ register_immoscout_quality(app)
 register_immoscout_dynamic_search(app)
 # Eigene Spezial-URLs bleiben erhalten; Standardprofile werden weiterhin dynamisch erzeugt.
 register_immoscout_dynamic_mode(app)
+# Dezimalwerte bleiben bei wiederholtem Speichern stabil; beschädigte Profile werden repariert.
+register_immoscout_numeric_fix(app)
