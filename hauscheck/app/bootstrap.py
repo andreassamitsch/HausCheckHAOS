@@ -15,6 +15,7 @@ from app.github_exchange import register_github_exchange
 from app.gmail_exchange import register_gmail_exchange
 from app.house_manage import register_house_management
 from app.house_merge import register_house_merge
+from app.immoscout_support import register_immoscout_support
 from app.import_patch import register_import_patch
 from app.ingress_link_fix import register_ingress_link_fix
 from app.live_filter_pan import register_live_filter_pan
@@ -51,7 +52,7 @@ register_house_management(app)
 register_search_profile_patch(app)
 register_github_exchange(app)
 register_pipeline_integration(app)
-# Baut auf dem finalen Analyseimport und dem Willhaben-Suchlauf auf.
+# Baut auf dem finalen Analyseimport und dem Portalsuchlauf auf.
 register_search_lifecycle()
 register_search_lifecycle_refresh()
 register_gmail_exchange(app)
@@ -95,3 +96,5 @@ register_expose_address_quality()
 register_expose_ai_export(app)
 # PDF-Links bleiben im authentifizierten Home-Assistant-Ingress; Download separat möglich.
 register_pdf_ingress_fix(app)
+# ImmobilienScout24-Suche, strukturierter Exposé-Parser und automatische Duplikatzuordnung.
+register_immoscout_support(app)
