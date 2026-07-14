@@ -1,0 +1,183 @@
+name: HausCheck ImmobilienScout Numeric Fix Check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "hauscheck/app/immoscout_numeric_fix.py"
+      - "hauscheck/app/immoscout_dynamic_search.py"
+      - "hauscheck/app/immoscout_dynamic_mode.py"
+      - "hauscheck/app/bootstrap.py"
+      - ".github/workflows/hauscheck-immoscout-numeric-fix-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        working-directory: hauscheck
+        run: python -m pip install -r requirements.txt
+      - name: Validate numeric stability, repair and live 8523 search
+        id: numeric_test
+        shell: bash
+        run: |
+          set +e
+          rm -rf /tmp/hauscheck-immoscout-numeric-test
+          cd hauscheck
+          HAUSCHECK_DATA_DIR=/tmp/hauscheck-immoscout-numeric-test python - <<'PY' > /tmp/hauscheck-immoscout-numeric-check.log 2>&1
+          import asyncio
+          import json
+
+          import httpx
+          from fastapi.testclient import TestClient
+
+          import app.bootstrap
+          import app.main as main
+          import app.parser as parser
+          from app.immoscout_numeric_fix import clean_form_float, repair_corrupted_search_profile_numbers
+          from app.storage import connect, get_search_profile, list_search_profiles
+
+          expected_8523 = "https://www.immobilienscout24.at/regional/8523/haus-kaufen?plotAreaFrom=700&primaryAreaFrom=120&primaryPriceTo=420000"
+          assert clean_form_float("700.0") == 700.0
+          assert clean_form_float("120.0") == 120.0
+          assert clean_form_float("306,1") == 306.1
+          assert clean_form_float("1.200,5") == 1200.5
+          print("decimal_form_parser=ok")
+
+          with TestClient(app.bootstrap.app) as client:
+              created = client.post(
+                  "/settings/search/profiles",
+                  data={
+                      "name": "ImmoScout 8523 Test",
+                      "source_name": "immobilienscout24.at",
+                      "regions": "Wies, Eibiswald, Oberhaag, Bad Schwanberg",
+                      "area_ids": "8551,8552,8544,8553,8455,8523",
+                      "search_url": "",
+                      "max_price_eur": "420000",
+                      "soft_max_price_eur": "390000",
+                      "min_living_area_m2": "120",
+                      "min_plot_area_m2": "700",
+                      "exclude_roads": "B76,B69",
+                      "hwb_warn": "200",
+                      "hwb_reject": "300",
+                      "oil_policy": "review",
+                      "automation_mode": "review",
+                      "run_interval_minutes": "60",
+                      "max_results": "80",
+                      "auto_import_min_score": "68",
+                      "auto_import_limit_per_run": "2",
+                  },
+                  follow_redirects=False,
+              )
+              assert created.status_code == 303, created.text
+              profile = next(item for item in list_search_profiles() if item["name"] == "ImmoScout 8523 Test")
+              profile_id = str(profile["id"])
+              urls = main.resolve_search_urls(profile)
+              assert len(urls) == 6, urls
+              assert expected_8523 in urls, urls
+              assert all("700000" not in url and "120000" not in url for url in urls), urls
+              print("six_correct_dynamic_urls=ok")
+
+              for iteration in range(4):
+                  current = get_search_profile(profile_id)
+                  edited = client.post(
+                      f"/settings/search/{profile_id}/edit",
+                      data={
+                          "name": current["name"],
+                          "source_name": "immobilienscout24.at",
+                          "regions": current["regions"],
+                          "area_ids": current["area_ids"],
+                          "search_url": "",
+                          "max_price_eur": str(current["max_price_eur"]),
+                          "soft_max_price_eur": str(current["soft_max_price_eur"]),
+                          "min_living_area_m2": str(current["min_living_area_m2"]),
+                          "min_plot_area_m2": str(current["min_plot_area_m2"]),
+                          "exclude_roads": current["exclude_roads"],
+                          "hwb_warn": str(current["hwb_warn"]),
+                          "hwb_reject": str(current["hwb_reject"]),
+                          "oil_policy": current["oil_policy"],
+                          "enabled": "1",
+                          "automation_mode": "review",
+                          "run_interval_minutes": "60",
+                          "max_results": "80",
+                          "auto_import_min_score": "68",
+                          "auto_import_limit_per_run": "2",
+                      },
+                      follow_redirects=False,
+                  )
+                  assert edited.status_code == 303, edited.text
+                  current = get_search_profile(profile_id)
+                  assert float(current["min_living_area_m2"]) == 120.0, current
+                  assert float(current["min_plot_area_m2"]) == 700.0, current
+              print("repeated_profile_save_stays_stable=ok")
+
+              with connect() as con:
+                  con.execute(
+                      "UPDATE search_profiles SET min_living_area_m2 = ?, min_plot_area_m2 = ?, search_url = ? WHERE id = ?",
+                      (
+                          1200000.0,
+                          7000000.0,
+                          "https://www.immobilienscout24.at/regional/8523/haus-kaufen?plotAreaFrom=7000000.0&primaryAreaFrom=1200000.0&primaryPriceTo=420000",
+                          profile_id,
+                      ),
+                  )
+                  con.commit()
+              assert repair_corrupted_search_profile_numbers() == 1
+              repaired = get_search_profile(profile_id)
+              assert float(repaired["min_living_area_m2"]) == 120.0, repaired
+              assert float(repaired["min_plot_area_m2"]) == 700.0, repaired
+              assert expected_8523 in main.resolve_search_urls(repaired), main.resolve_search_urls(repaired)
+              print("existing_corrupted_profile_repaired=ok")
+
+          headers = {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0 Safari/537.36",
+              "Accept-Language": "de-AT,de;q=0.9,en;q=0.7",
+          }
+          response = httpx.get(expected_8523, headers=headers, timeout=45, follow_redirects=True)
+          response.raise_for_status()
+          candidates = parser.extract_listing_candidates(response.text, str(response.url))
+          print(f"live_8523_status={response.status_code}")
+          print(f"live_8523_candidates={len(candidates)}")
+          assert candidates, "Die korrekt erzeugte 8523-Suche lieferte keine auslesbaren Inserate"
+          print("live_8523_search=ok")
+          PY
+          CODE=$?
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          if [ "$CODE" -eq 0 ]; then echo "status=success" >> "$GITHUB_OUTPUT"; else echo "status=failed" >> "$GITHUB_OUTPUT"; fi
+          cat /tmp/hauscheck-immoscout-numeric-check.log
+          exit "$CODE"
+      - name: Publish result
+        if: always()
+        shell: bash
+        env:
+          TEST_STATUS: ${{ steps.numeric_test.outputs.status }}
+          TEST_CODE: ${{ steps.numeric_test.outputs.code }}
+        run: |
+          mkdir -p ci
+          python - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+          log = Path('/tmp/hauscheck-immoscout-numeric-check.log').read_text(encoding='utf-8', errors='replace') if Path('/tmp/hauscheck-immoscout-numeric-check.log').exists() else ''
+          Path('ci/latest_immoscout_numeric_fix_check.json').write_text(json.dumps({
+              'created_at': datetime.now(timezone.utc).isoformat(),
+              'commit': os.environ['GITHUB_SHA'],
+              'run_id': int(os.environ['GITHUB_RUN_ID']),
+              'status': os.environ.get('TEST_STATUS') or 'failed',
+              'test_code': int(os.environ.get('TEST_CODE') or -1),
+              'log_tail': log[-5000:],
+          }, ensure_ascii=False, indent=2), encoding='utf-8')
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ci/latest_immoscout_numeric_fix_check.json
+          git commit -m "Update ImmobilienScout numeric fix check [skip ci]" || true
+          git push || true
