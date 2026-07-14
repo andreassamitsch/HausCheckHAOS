@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-07-14T04:54:46.441447+00:00",
-  "commit": "857a7dede7ab26701598a12c09ec6d6fb388cc2d",
-  "run_id": 29307132401,
+  "created_at": "2026-07-14T05:14:17.140974+00:00",
+  "commit": "6fe19d08f9ace183ea56bbd29252b9d23b4755e7",
+  "run_id": 29307995915,
   "status": "success",
   "test_code": 0,
   "log_tail": "HausCheck Gmail Exchange gestartet\nHausCheck GitHub Auto-Import gestartet\nHausCheck Such-Scheduler gestartet\nupload_triggers_ai_reanalysis=ok\npdf_delete_action_visible=ok\npdf_and_text_in_ai_package=ok\noversize_pdf_falls_back_to_text=ok\npdf_removed_and_ai_package_refreshed=ok\n"
