@@ -1,4 +1,5 @@
 name: HausCheck PDF Ingress Check
+# Isolated regression run for authenticated PDF links.
 
 on:
   push:
