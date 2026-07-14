@@ -1,0 +1,8 @@
+{
+  "created_at": "2026-07-14T12:28:37.198445+00:00",
+  "commit": "03e9e2c2bdda856bf749523f9ce1870a6ca14df0",
+  "run_id": 29332610914,
+  "status": "success",
+  "test_code": 0,
+  "log_tail": "/home/runner/work/HausCheckHAOS/HausCheckHAOS/hauscheck/app/immoscout_dynamic_search.py:233: SyntaxWarning: invalid escape sequence '\\s'\n  \ncross_portal_candidate_merged_before_display=ok\nunchanged_known_listing_does_not_reanalyse=ok\nchanged_known_listing_updates_and_reanalyses=ok\nunrelated_house_remains_new=ok\n"
+}
