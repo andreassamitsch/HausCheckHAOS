@@ -1,0 +1,152 @@
+name: HausCheck Peisser Dedupe Check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "hauscheck/app/peisser_support.py"
+      - "hauscheck/app/peisser_support_fix.py"
+      - "hauscheck/app/peisser_dedupe_fix.py"
+      - "hauscheck/app/bootstrap.py"
+      - ".github/workflows/hauscheck-peisser-dedupe-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        working-directory: hauscheck
+        run: python -m pip install -r requirements.txt
+      - name: Test dedupe before candidate display
+        id: test
+        shell: bash
+        run: |
+          set +e
+          rm -rf /tmp/hauscheck-peisser-dedupe
+          cd hauscheck
+          HAUSCHECK_DATA_DIR=/tmp/hauscheck-peisser-dedupe python - <<'PY' > /tmp/hauscheck-peisser-dedupe.log 2>&1
+          import asyncio
+          from io import BytesIO
+
+          import httpx
+          from PIL import Image
+
+          import app.bootstrap
+          import app.candidate_preimport_dedupe as pre
+          import app.github_auto_export as github_export
+          import app.gmail_exchange as gmail_exchange
+          import app.immoscout_support as support
+          import app.main as main
+          import app.peisser_support as peisser
+          import app.search_automation as automation
+          from app.storage import add_media, create_house, create_search_profile, list_houses, list_search_candidates, list_sources, project_dir
+
+          async def run():
+              print(f"automation_runner={automation.run_search_profile.__module__}.{automation.run_search_profile.__name__}")
+              print(f"peisser_runner={peisser.run_peisser_search.__module__}.{peisser.run_peisser_search.__name__}")
+              bundle = await main.fetch_html(f"{peisser.PEISSER_BASE}expose.php?id=229")
+              parsed = main.parse_listing(f"{peisser.PEISSER_BASE}expose.php?id=229", bundle)
+              assert parsed.image_urls
+              async with httpx.AsyncClient(timeout=45, follow_redirects=True, headers={**peisser.BROWSER_HEADERS, 'Referer': peisser.PEISSER_BASE}) as client:
+                  response = await client.get(parsed.image_urls[0])
+                  response.raise_for_status()
+              image = Image.open(BytesIO(response.content))
+
+              house = create_house({
+                  'title': parsed.title,
+                  'location_text': parsed.location_text,
+                  'address_status': parsed.address_status,
+                  'price_eur': parsed.price_eur,
+                  'living_area_m2': parsed.living_area_m2,
+                  'plot_area_m2': parsed.plot_area_m2,
+                  'rooms': parsed.rooms,
+                  'energy_hwb': parsed.energy_hwb,
+                  'energy_fgee': parsed.energy_fgee,
+              })
+              house_id = str(house['id'])
+              path = project_dir(house_id) / 'images' / 'known.jpg'
+              path.write_bytes(response.content)
+              add_media(house_id, {
+                  'kind':'image', 'original_url':'https://known.example/photo.jpg', 'local_path':str(path),
+                  'mime_type':response.headers.get('content-type') or 'image/jpeg', 'download_status':'downloaded',
+                  'content_hash':main.media_hash(response.content), 'width':image.width, 'height':image.height,
+                  'file_size_bytes':len(response.content),
+              })
+
+              match, method, score, details = await support.find_probable_duplicate(parsed)
+              print(f"duplicate_method={method} score={score} details={details}")
+              assert match and str(match['id']) == house_id and method, (match, method, score, details)
+
+              profile = create_search_profile({
+                  'name':'Peisser Dedupe', 'source_name':peisser.PEISSER_SOURCE, 'search_url':peisser.PEISSER_SEARCH_URL,
+                  'max_price_eur':420000, 'soft_max_price_eur':390000, 'min_living_area_m2':120,
+                  'min_plot_area_m2':700, 'regions':'Bad Schwanberg', 'exclude_roads':'B76,B69',
+                  'hwb_warn':200, 'hwb_reject':300, 'oil_policy':'review',
+              })
+              pid = str(profile['id'])
+              automation.update_profile_automation(pid, {'area_ids':'8541','automation_mode':'review','max_results':10,'enabled':1})
+
+              exports=[]
+              async def fake_export(hid): exports.append(str(hid)); return {'ok':True}
+              async def fake_gmail(hid): return {'ok':True}
+              async def no_media(hid, limit=120): return None
+              github_export.auto_export_house_to_github=fake_export
+              pre.github_auto_export.auto_export_house_to_github=fake_export
+              gmail_exchange.send_analysis_zip_via_gmail=fake_gmail
+              pre.gmail_exchange.send_analysis_zip_via_gmail=fake_gmail
+              main.download_pending_media_files=no_media
+
+              found = await automation.run_search_profile(pid, 10)
+              candidates=list_search_candidates(pid)
+              target=next(item for item in candidates if 'expose.php?id=229' in str(item.get('source_url') or ''))
+              print(f"found={found} status={target.get('status')} house={target.get('imported_house_id')} exports={exports}")
+              assert target['status']=='imported', target
+              assert target['imported_house_id']==house_id, target
+              assert len(list_houses())==1
+              assert any(source.get('source_name')==peisser.PEISSER_SOURCE for source in list_sources(house_id))
+              assert exports==[house_id], exports
+              print('pre_display_merge=ok')
+
+              await automation.run_search_profile(pid, 10)
+              assert exports==[house_id], exports
+              print('unchanged_no_reanalysis=ok')
+
+          asyncio.run(run())
+          PY
+          CODE=$?
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          if [ "$CODE" -eq 0 ]; then echo "status=success" >> "$GITHUB_OUTPUT"; else echo "status=failed" >> "$GITHUB_OUTPUT"; fi
+          cat /tmp/hauscheck-peisser-dedupe.log
+          exit "$CODE"
+      - name: Publish result
+        if: always()
+        env:
+          TEST_STATUS: ${{ steps.test.outputs.status }}
+          TEST_CODE: ${{ steps.test.outputs.code }}
+        run: |
+          mkdir -p ci
+          python - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+          p=Path('/tmp/hauscheck-peisser-dedupe.log')
+          log=p.read_text(encoding='utf-8',errors='replace') if p.exists() else ''
+          Path('ci/latest_peisser_dedupe_check.json').write_text(json.dumps({
+            'created_at':datetime.now(timezone.utc).isoformat(),'commit':os.environ['GITHUB_SHA'],
+            'run_id':int(os.environ['GITHUB_RUN_ID']),'status':os.environ.get('TEST_STATUS') or 'failed',
+            'test_code':int(os.environ.get('TEST_CODE') or -1),'log_tail':log[-8000:]
+          },ensure_ascii=False,indent=2),encoding='utf-8')
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ci/latest_peisser_dedupe_check.json
+          git commit -m "Update Peisser dedupe check [skip ci]" || true
+          git push || true
