@@ -1,8 +1,8 @@
 {
-  "created_at": "2026-07-14T06:11:13.204650+00:00",
-  "commit": "eae4f703423aa5f2dafd909d2004d69d55eb3c7a",
-  "run_id": 29310586798,
-  "status": "failed",
-  "test_code": 1,
-  "log_tail": "/home/runner/work/HausCheckHAOS/HausCheckHAOS/hauscheck/app/immoscout_dynamic_search.py:233: SyntaxWarning: invalid escape sequence '\\s'\n  \nexact_immoscout_url_generation=ok\nHausCheck Gmail Exchange gestartet\nHausCheck GitHub Auto-Import gestartet\nHausCheck Such-Scheduler gestartet\ndynamic_profile_form=ok\nTraceback (most recent call last):\n  File \"<stdin>\", line 63, in <module>\nAssertionError\n"
+  "created_at": "2026-07-14T06:14:21.133287+00:00",
+  "commit": "386e0287b3355cc9a2c624ff54d214f00c26b67d",
+  "run_id": 29310747780,
+  "status": "success",
+  "test_code": 0,
+  "log_tail": "/home/runner/work/HausCheckHAOS/HausCheckHAOS/hauscheck/app/immoscout_dynamic_search.py:233: SyntaxWarning: invalid escape sequence '\\s'\n  \nexact_immoscout_url_generation=ok\nHausCheck Gmail Exchange gestartet\nHausCheck GitHub Auto-Import gestartet\nHausCheck Such-Scheduler gestartet\ndynamic_profile_form=ok\nautomatic_profile_creation=ok\nautomatic_url_hidden_from_custom_field=ok\nfilter_edit_regenerates_url=ok\nruntime_url_uses_current_filters=ok\ncustom_url_remains_untouched=ok\nlive_generated_search=ok candidates=2\n"
 }
