@@ -35,6 +35,7 @@ from app.modern_ui_fix import register_modern_ui_fix
 from app.parser_quality import register_parser_quality
 from app.pdf_ingress_fix import register_pdf_ingress_fix
 from app.peisser_dedupe_fix import register_peisser_dedupe_fix
+from app.peisser_runtime_repair import register_peisser_runtime_repair
 from app.peisser_support import register_peisser_support
 from app.peisser_support_fix import register_peisser_support_fix
 from app.pipeline_integration import register_pipeline_integration
@@ -130,3 +131,5 @@ register_peisser_support_fix(app)
 register_peisser_dedupe_fix(app)
 # Sichere Duplikate werden vor der Kandidatenanzeige bestehenden Hausakten zugeordnet und aktualisiert.
 register_candidate_preimport_dedupe(app)
+# Finale Peisser-Reparatur: faktenbasierte Zuordnung ohne veraltete Bilder/Titel und korrekte Portalmetadaten.
+register_peisser_runtime_repair(app)
