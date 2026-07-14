@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-07-14T05:13:44.332334+00:00",
-  "commit": "af59bdc3fc1da7b7db0ab662573c3f07be1ac26c",
-  "run_id": 29307971957,
+  "created_at": "2026-07-14T05:42:14.379492+00:00",
+  "commit": "333bd64c87813c9a9f2ab17b6f973e17f008ba2b",
+  "run_id": 29309214730,
   "status": "success",
   "test_code": 0,
   "log_tail": "refresh_house_from_sources=ok\nHausCheck Gmail Exchange gestartet\nHausCheck GitHub Auto-Import gestartet\nHausCheck Such-Scheduler gestartet\nmodern_dashboard_live_filters=ok\nmodern_house_detail_pan_zoom=ok\nmodern_merge_page=ok\nmodern_cover_page=ok\nsearch_profile_full_edit=ok\n"
