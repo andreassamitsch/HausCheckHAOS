@@ -19,6 +19,8 @@ from app.immoscout_dynamic_mode import register_immoscout_dynamic_mode
 from app.immoscout_dynamic_search import register_immoscout_dynamic_search
 from app.immoscout_numeric_fix import register_immoscout_numeric_fix
 from app.immoscout_quality import register_immoscout_quality
+from app.immoscout_search_resilience import register_immoscout_search_resilience
+from app.immoscout_search_resilience_compat import register_immoscout_search_resilience_compat
 from app.immoscout_support import register_immoscout_support
 from app.immoscout_url_runtime_fix import register_immoscout_url_runtime_fix
 from app.import_patch import register_import_patch
@@ -113,3 +115,7 @@ register_immoscout_dynamic_mode(app)
 register_immoscout_numeric_fix(app)
 # ImmobilienScout-Parameter werden ohne .0 gespeichert und mit Browser-Headern geladen.
 register_immoscout_url_runtime_fix(app)
+# Suchseiten werden als Browser-Session, direkt und als Crawler abgerufen; codierte Exposé-Links werden erkannt.
+register_immoscout_search_resilience(app)
+# Willhaben bleibt unverändert; nur sichtbare Leermeldungen gelten als echte 0 Treffer.
+register_immoscout_search_resilience_compat(app)
