@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Callable
 
-from fastapi import FastAPI
+import httpx
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 
 import app.focused_ui as focused_ui
@@ -124,6 +126,81 @@ async def find_probable_duplicate_conservative(parsed: Any) -> tuple[dict[str, A
     return best
 
 
+async def download_pending_media_portal(house_id: str, limit: int = 120) -> None:
+    import app.main as main_module
+    from app.storage import find_media_by_hash, get_house, list_media, project_dir, update_media
+
+    if not get_house(house_id):
+        raise HTTPException(status_code=404, detail="Hausakte nicht gefunden")
+
+    portal_items = [
+        item
+        for item in list_media(house_id)
+        if item.get("download_status") == "pending"
+        and item.get("kind") == "image"
+        and item.get("original_url")
+        and support.IMMOSCOUT_IMAGE_HOST in support._host(str(item.get("original_url")))
+    ][:limit]
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+        "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+        "Accept-Language": "de-AT,de;q=0.9,en;q=0.7",
+        "Referer": "https://www.immobilienscout24.at/",
+    }
+    hdir = project_dir(house_id)
+    async with httpx.AsyncClient(timeout=35, follow_redirects=True, headers=headers) as client:
+        for item in portal_items:
+            try:
+                url = str(item["original_url"])
+                response = await client.get(url)
+                response.raise_for_status()
+                content = response.content
+                meta = main_module.image_meta(content)
+                if main_module.is_too_small_for_gallery(meta.get("width"), meta.get("height")):
+                    update_media(
+                        str(item["id"]),
+                        {
+                            **meta,
+                            "mime_type": response.headers.get("content-type"),
+                            "download_status": "skipped",
+                            "download_error": f"zu kleines Bild / vermutlich Logo oder UI-Grafik ({meta.get('width')}x{meta.get('height')})",
+                        },
+                    )
+                    continue
+                duplicate = find_media_by_hash(house_id, "image", str(meta["content_hash"]))
+                if duplicate and duplicate.get("id") != item.get("id"):
+                    update_media(
+                        str(item["id"]),
+                        {
+                            **meta,
+                            "mime_type": response.headers.get("content-type"),
+                            "download_status": "skipped",
+                            "download_error": f"Duplikat von Medium {duplicate.get('id')}",
+                        },
+                    )
+                    continue
+                filename = f"{item['id']}_{main_module.safe_filename_from_url(url, f'{item["id"]}.jpg')}"
+                target = hdir / "images" / filename
+                target.write_bytes(content)
+                update_media(
+                    str(item["id"]),
+                    {
+                        **meta,
+                        "local_path": str(target),
+                        "mime_type": response.headers.get("content-type") or "image/jpeg",
+                        "download_status": "downloaded",
+                        "download_error": None,
+                    },
+                )
+            except Exception as exc:
+                update_media(str(item["id"]), {"download_status": "failed", "download_error": str(exc)[:500]})
+
+    if support._ORIGINAL_DOWNLOAD_MEDIA:
+        await support._ORIGINAL_DOWNLOAD_MEDIA(house_id, limit)
+    support.dedupe_house_images_perceptually(house_id)
+
+
 def _wrap_layout(original: Callable[..., HTMLResponse]) -> Callable[..., HTMLResponse]:
     if getattr(original, "_portal_labels_patched", False):
         return original
@@ -132,8 +209,7 @@ def _wrap_layout(original: Callable[..., HTMLResponse]) -> Callable[..., HTMLRes
         body = body.replace("Willhaben wird durchsucht", "Immobilienportale werden durchsucht")
         body = body.replace("Willhaben-Suchquelle", "Portal-Suchquelle")
         body = body.replace("Bei Willhaben öffnen", "Inserat öffnen")
-        response = original(title, body, home_href)
-        return response
+        return original(title, body, home_href)
 
     setattr(portal_layout, "_portal_labels_patched", True)
     return portal_layout
@@ -143,8 +219,14 @@ def register_immoscout_quality(app: FastAPI) -> None:
     global _PATCHED
     if _PATCHED:
         return
+    import app.import_patch as import_patch
+    import app.main as main_module
+
     support._structured_match = structured_match_conservative
     support.find_probable_duplicate = find_probable_duplicate_conservative
+    support.download_pending_media_enhanced = download_pending_media_portal
+    main_module.download_pending_media_files = download_pending_media_portal
+    import_patch.download_pending_media_files = download_pending_media_portal
     focused_ui.layout = _wrap_layout(focused_ui.layout)
     lifecycle_ui.layout = _wrap_layout(lifecycle_ui.layout)
     _PATCHED = True
