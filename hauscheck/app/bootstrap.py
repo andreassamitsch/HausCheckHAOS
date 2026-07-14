@@ -6,6 +6,7 @@ from app.blank_query_fix import register_blank_query_fix
 from app.chatgpt_api import register_chatgpt_api
 from app.dashboard_automation_ui import register_dashboard_automation_ui
 from app.expose_address_quality import register_expose_address_quality
+from app.expose_ai_export import register_expose_ai_export
 from app.expose_review import register_expose_review
 from app.focused_ui import register_focused_ui
 from app.github_auto_import import register_github_auto_import
@@ -89,3 +90,5 @@ register_live_filter_pan()
 register_expose_review(app)
 # Ergänzt österreichische Dorf-/Ortsadressen und filtert Makler-Kontaktadressen.
 register_expose_address_quality()
+# PDFs können entfernt werden und fließen größenoptimiert in jede neue KI-Bewertung ein.
+register_expose_ai_export(app)
