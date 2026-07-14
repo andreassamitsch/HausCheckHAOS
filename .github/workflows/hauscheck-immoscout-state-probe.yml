@@ -1,0 +1,125 @@
+name: HausCheck ImmobilienScout State Probe
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/hauscheck-immoscout-state-probe.yml"
+      - "hauscheck/app/immoscout_support.py"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install requests beautifulsoup4
+      - name: Extract structured portal state
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+          from urllib.parse import urljoin
+
+          import requests
+          from bs4 import BeautifulSoup
+
+          URLS = {
+              "search": "https://www.immobilienscout24.at/regional/8551/haus-kaufen?plotAreaFrom=700&primaryAreaFrom=120&primaryPriceTo=420000",
+              "expose": "https://www.immobilienscout24.at/expose/69dcb82ff88781c17db2b90a",
+          }
+          HEADERS = {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+              "Accept-Language": "de-AT,de;q=0.9,en;q=0.7",
+          }
+
+          def parse_state(raw):
+              marker = "window.__INITIAL_STATE__="
+              pos = raw.find(marker)
+              if pos < 0:
+                  return None, "marker missing"
+              text = raw[pos + len(marker):].strip()
+              if text.endswith(";"):
+                  text = text[:-1]
+              text = re.sub(r"(?<=[:\[,])\s*undefined\s*(?=[,\]}])", "null", text)
+              try:
+                  return json.loads(text), None
+              except Exception as exc:
+                  return None, str(exc)
+
+          def walk(value, path="$", rows=None, strings=None):
+              rows = rows if rows is not None else []
+              strings = strings if strings is not None else []
+              if isinstance(value, dict):
+                  keys = {str(k).lower() for k in value}
+                  interesting_object = any(k in keys for k in ("price", "primaryprice", "primaryarea", "plotarea", "numberofrooms", "hwb", "fgee", "heating", "pictures", "images", "title", "address", "exposeid", "id"))
+                  if interesting_object:
+                      scalar = {}
+                      for k, v in value.items():
+                          if isinstance(v, (str, int, float, bool)) or v is None:
+                              if any(t in str(k).lower() for t in ("price", "area", "room", "hwb", "fgee", "heat", "year", "build", "title", "address", "zip", "city", "location", "id", "url")):
+                                  scalar[str(k)] = str(v)[:500]
+                      if scalar:
+                          rows.append({"path": path, "values": scalar})
+                  for k, v in value.items():
+                      walk(v, f"{path}.{k}", rows, strings)
+              elif isinstance(value, list):
+                  for i, v in enumerate(value[:200]):
+                      walk(v, f"{path}[{i}]", rows, strings)
+              elif isinstance(value, str):
+                  if "immobilienscout24" in value or "pictureserver" in value or "/expose/" in value:
+                      strings.append({"path": path, "value": value[:1000]})
+              return rows, strings
+
+          result = {}
+          for label, url in URLS.items():
+              response = requests.get(url, headers=HEADERS, timeout=45)
+              soup = BeautifulSoup(response.text, "html.parser")
+              states = []
+              for script in soup.find_all("script"):
+                  raw = script.string or script.get_text() or ""
+                  if "window.__INITIAL_STATE__=" not in raw:
+                      continue
+                  state, error = parse_state(raw)
+                  if state is None:
+                      states.append({"error": error, "sample": raw[:500]})
+                      continue
+                  rows, strings = walk(state)
+                  states.append({
+                      "top_keys": list(state.keys()) if isinstance(state, dict) else [],
+                      "interesting_objects": rows[:300],
+                      "portal_strings": strings[:200],
+                  })
+              ld = []
+              for script in soup.find_all("script", type="application/ld+json"):
+                  try:
+                      payload = json.loads(script.string or script.get_text() or "{}")
+                      ld.append(payload)
+                  except Exception:
+                      pass
+              result[label] = {
+                  "status": response.status_code,
+                  "url": response.url,
+                  "states": states,
+                  "json_ld": ld,
+              }
+
+          Path("ci").mkdir(exist_ok=True)
+          Path("ci/latest_immoscout_state_probe.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+          PY
+      - name: Publish state probe
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ci/latest_immoscout_state_probe.json
+          git commit -m "Update ImmobilienScout state probe [skip ci]" || true
+          git push || true
