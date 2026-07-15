@@ -1,0 +1,163 @@
+name: Temporary silent search performance check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ci/search_performance_trigger.txt"
+      - ".github/workflows/temporary-search-performance-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        continue-on-error: true
+        run: python -m pip install -r hauscheck/requirements.txt
+
+      - name: Run checks and always write report
+        id: checks
+        continue-on-error: true
+        env:
+          HAUSCHECK_DATA_DIR: /tmp/hauscheck-search-performance-test
+        run: |
+          set +e
+          rm -rf "$HAUSCHECK_DATA_DIR"
+          mkdir -p "$HAUSCHECK_DATA_DIR"
+          cd hauscheck
+          python - <<'PY' > /tmp/search-performance-check.log 2>&1
+          import asyncio
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          report = {"status": "running", "checks": {}, "errors": []}
+
+          def check(name, condition, details=None):
+              report["checks"][name] = {"ok": bool(condition), "details": details}
+              if not condition:
+                  raise AssertionError(f"{name}: {details}")
+
+          try:
+              import compileall
+              check("compileall", compileall.compile_dir("app", quiet=1))
+
+              import app.bootstrap  # noqa: F401
+              import app.main as main
+              import app.search_automation as automation
+              import app.search_performance as perf
+              import app.immoscout_support as support
+              import app.storage as storage
+              from app.parser import ParsedListing
+
+              check(
+                  "final_runner_registered",
+                  automation.run_search_profile is perf.run_search_profile_optimized,
+                  repr(automation.run_search_profile),
+              )
+              check("area_list", perf._area_values(["8551"]) == ["8551"], perf._area_values(["8551"]))
+              check("area_stringified_list", perf._area_values("['8551']") == ["8551"], perf._area_values("['8551']"))
+              malformed = "https://www.willhaben.at/iad/immobilien/haus-kaufen/haus-angebote?areaId=%5B%278551%27%5D&page=1"
+              normalized = perf._normalize_portal_url(malformed)
+              check("willhaben_area_normalized", "areaId=8551" in normalized and "%5B" not in normalized, normalized)
+
+              cleanup_calls = {"count": 0}
+              async def fake_download(house_id, limit=120):
+                  support.dedupe_house_images_perceptually(house_id)
+              def fake_cleanup(house_id):
+                  cleanup_calls["count"] += 1
+                  return {"house_id": house_id, "removed": 0}
+              perf._ORIGINAL_MEDIA_DOWNLOAD = fake_download
+              perf._ORIGINAL_CLEANUP = fake_cleanup
+              perf._RECENT_CLEANUP.clear()
+              perf._STATS.clear()
+              asyncio.run(perf.download_media_once("house-test", 10))
+              check("single_cleanup_after_download", cleanup_calls["count"] == 1, cleanup_calls)
+              check("nested_cleanup_suppressed", perf._STATS.get("duplicate_cleanups_avoided") == 1, dict(perf._STATS))
+
+              profile = storage.create_search_profile({
+                  "name": "Performance test",
+                  "source_name": "willhaben.at",
+                  "search_url": malformed,
+                  "area_ids": "['8551']",
+                  "max_price_eur": 420000,
+                  "soft_max_price_eur": 400000,
+                  "min_living_area_m2": 120,
+                  "min_plot_area_m2": 700,
+                  "hwb_warn": 200,
+                  "hwb_reject": 300,
+                  "oil_policy": "review",
+              })
+              profile_id = str(profile["id"])
+              network = {"count": 0}
+              parse = {"count": 0}
+              search_url = normalized
+              detail_url = "https://www.willhaben.at/iad/immobilien/d/haus-kaufen/testhaus-1234567890"
+
+              async def fake_fetch(url):
+                  network["count"] += 1
+                  return "SEARCH" if "haus-angebote" in url else "DETAIL"
+              def fake_parse(url, html):
+                  parse["count"] += 1
+                  item = ParsedListing(source_name="willhaben.at", source_url=url, external_id="1234567890")
+                  item.title = "Testhaus"
+                  item.price_eur = 300000
+                  item.living_area_m2 = 150
+                  item.plot_area_m2 = 900
+                  item.image_urls = []
+                  return item
+
+              perf._ORIGINAL_FETCH_HTML = fake_fetch
+              perf._ORIGINAL_PARSE_LISTING = fake_parse
+              perf._HTML_CACHE.clear()
+              perf._PARSE_CACHE.clear()
+              main.resolve_search_urls = lambda _profile: [search_url]
+              main.extract_listing_links = lambda raw, base: [detail_url] if raw == "SEARCH" else []
+              main.listing_key = lambda url: url
+              main.title_from_listing_url = lambda url: "fallback"
+              perf.source_url_exists = lambda url: False
+
+              first = asyncio.run(perf._base_portal_search(profile_id, 80))
+              first_network = network["count"]
+              first_parse = parse["count"]
+              second = asyncio.run(perf._base_portal_search(profile_id, 80))
+              check("same_results_with_cache", first == 1 and second == 1, {"first": first, "second": second})
+              check("detail_and_search_loaded_once", first_network == 2 and network["count"] == 2, network)
+              check("detail_parsed_once", first_parse == 1 and parse["count"] == 1, parse)
+
+              report["status"] = "success"
+          except Exception as exc:
+              report["status"] = "failed"
+              report["errors"].append(f"{type(exc).__name__}: {exc}")
+              import traceback
+              report["traceback"] = traceback.format_exc()
+          finally:
+              Path("../ci").mkdir(exist_ok=True)
+              Path("../ci/latest_search_performance_check.json").write_text(
+                  json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
+              )
+              print(json.dumps(report, ensure_ascii=False, indent=2))
+              sys.exit(0)
+          PY
+          cat /tmp/search-performance-check.log
+
+      - name: Publish report without retriggering this workflow
+        if: always()
+        continue-on-error: true
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ci/latest_search_performance_check.json
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "Update search performance check report [skip ci]"
+          git push
