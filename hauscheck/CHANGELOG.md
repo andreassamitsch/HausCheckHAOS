@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.15.0
+
+- gewachsene Such-Wrapper durch einen eindeutigen finalen Suchablauf ersetzt
+- Portal- und Detailseiten werden pro Lauf nur einmal geladen; kurz aufeinanderfolgende Abrufe verwenden einen begrenzten Arbeitsspeicher-Cache
+- bereits geparste unveränderte Detailseiten werden nicht erneut geparst
+- Peisser-Detailpakete und Parserergebnisse werden zwischen Suche und Vorab-Deduplizierung wiederverwendet
+- starke eindeutige Faktenübereinstimmungen werden vor Bilddownloads geprüft; nur uneindeutige Fälle benötigen die visuelle Cross-Portal-Prüfung
+- ohne vorhandene Hausakten werden keine nutzlosen Vorschaubilder zur Duplikatsuche geladen
+- Medienbereinigung läuft nach einem tatsächlichen neuen Bilddownload genau einmal und in einem Worker-Thread
+- Preis- oder Textänderungen ohne neue Bilder starten keine vollständige Galeriebereinigung mehr
+- automatische Suchprofile erhalten zwischen den Läufen eine kurze Schonpause; alle Profile werden weiterhin vollständig ausgeführt
+- fehlerhafte Willhaben-Parameter wie `areaId=['8551']` werden beim Start und unmittelbar vor dem Abruf zu `areaId=8551` repariert
+- temporäre Portalfehler der HTTP-500-Klasse werden einmal kontrolliert wiederholt
+- Suchprotokoll zeigt Laufzeit, Netzwerkabrufe, Cachetreffer sowie vermiedene Bild- und Bereinigungsläufe
+- Live-Prüfung erfolgreich mit Willhaben, ImmobilienScout24 und Peisser Immobilien
+- Add-on-Version auf 0.15.0 erhöht
+
 ## 0.14.9
 
 - jedes neue Analysepaket erhält eine eindeutige `analysis_request_id`
@@ -31,15 +48,5 @@
 - KI-Bilder werden ausschließlich über das normale größenoptimierte Analysepaket übertragen
 - bestehende Base64-Optionsnamen bleiben vorübergehend nur zur Home-Assistant-Updatekompatibilität erhalten und werden nicht mehr verwendet
 - Add-on-Version auf 0.14.7 erhöht
-
-## 0.14.6
-
-- eine vorhandene alte KI-Analyse setzt einen neu gestarteten Analyselauf nicht mehr fälschlich auf „Analyse importiert“ zurück
-- Frischeprüfung vergleicht jüngsten Export, Importzeitpunkt und den Analysezeitpunkt der Ergebnisdatei
-- während ein neues Ergebnis aussteht, wird die bisherige Bewertung eindeutig als „Vorherige KI-Bewertung“ gekennzeichnet
-- Verarbeitungsstatus zeigt den alten Analysezeitpunkt und den Zeitpunkt des neuen Exports getrennt an
-- die alte Bewertung bleibt bis zum Rückimport als Vergleich sichtbar und wird danach automatisch ersetzt
-- Dashboard zählt veraltete Analysen mit neuem Export als wartend statt abgeschlossen
-- Add-on-Version auf 0.14.6 erhöht
 
 Ältere Versionshinweise bleiben über die Git-Historie des Repositorys nachvollziehbar.
