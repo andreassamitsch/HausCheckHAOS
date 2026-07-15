@@ -10,7 +10,7 @@ from fastapi import HTTPException
 import app.analysis_package as analysis_package
 import app.github_auto_import as github_auto_import
 import app.github_exchange as github_exchange
-from app.analysis_request_guard import load_latest_request
+from app.analysis_request_guard import load_latest_request, register_analysis_request_guard
 from app.pipeline_status import set_pipeline_stage
 from app.storage import connect, get_house
 
@@ -249,6 +249,9 @@ def register_github_import_runtime_fix() -> None:
     if _PATCHED:
         return
 
+    # Muss nach Medien-/PDF-Exportpatches laufen, damit die Auftragskennung den finalen
+    # Paketinhalt umschließt und von allen Exportwegen verwendet wird.
+    register_analysis_request_guard()
     github_exchange.GitHubExchangeClient.delete_file = _delete_file_compatible
     github_exchange.import_results_from_github = import_results_from_github_fixed
     # github_auto_import hat die Funktion beim Modulimport direkt gebunden.
