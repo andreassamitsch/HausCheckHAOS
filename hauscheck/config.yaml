@@ -102,3 +102,4 @@ schema:
   gmail_attach_images: bool
   gmail_image_limit: int
   gmail_send_zip_attachment: bool
+# Release 0.14.4
