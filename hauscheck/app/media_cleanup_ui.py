@@ -6,13 +6,15 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import RedirectResponse
 
 import app.media_quality_v2 as media_quality
+import app.mobile_first_ui as mobile_first_ui
 import app.modern_ui as modern_ui
 from app.pipeline_status import set_pipeline_stage
 from app.storage import get_house
 
 
 _PATCHED = False
-_ORIGINAL_GALLERY_HTML: Callable[[str], str] | None = None
+_ORIGINAL_MODERN_GALLERY: Callable[[str], str] | None = None
+_ORIGINAL_MOBILE_GALLERY: Callable[[str], str] | None = None
 
 
 def _methods(route: Any) -> set[str]:
@@ -27,8 +29,7 @@ def _remove_route(app: FastAPI, path: str, method: str) -> None:
     ]
 
 
-def gallery_with_cleanup_action(house_id: str) -> str:
-    gallery = _ORIGINAL_GALLERY_HTML(house_id) if _ORIGINAL_GALLERY_HTML else ""
+def _cleanup_action(house_id: str) -> str:
     hid = modern_ui.esc(house_id)
     return f"""
     <div class="action-row" style="margin:0 0 10px">
@@ -37,17 +38,32 @@ def gallery_with_cleanup_action(house_id: str) -> str:
       </form>
       <span class="muted">Entfernt gleiche Fotos sowie redundante Raumansichten anderer Inseratanbieter.</span>
     </div>
-    {gallery}
     """
 
 
+def modern_gallery_with_cleanup(house_id: str) -> str:
+    gallery = _ORIGINAL_MODERN_GALLERY(house_id) if _ORIGINAL_MODERN_GALLERY else ""
+    return _cleanup_action(house_id) + gallery
+
+
+def mobile_gallery_with_cleanup(house_id: str) -> str:
+    gallery = _ORIGINAL_MOBILE_GALLERY(house_id) if _ORIGINAL_MOBILE_GALLERY else ""
+    return _cleanup_action(house_id) + gallery
+
+
 def register_media_cleanup_ui(app: FastAPI) -> None:
-    global _PATCHED, _ORIGINAL_GALLERY_HTML
+    global _PATCHED, _ORIGINAL_MODERN_GALLERY, _ORIGINAL_MOBILE_GALLERY
     if _PATCHED:
         return
 
-    _ORIGINAL_GALLERY_HTML = modern_ui._gallery_html
-    modern_ui._gallery_html = gallery_with_cleanup_action
+    _ORIGINAL_MODERN_GALLERY = modern_ui._gallery_html
+    _ORIGINAL_MOBILE_GALLERY = mobile_first_ui._gallery_html
+
+    # The smartphone detail route uses its own module-level gallery and ordering functions.
+    mobile_first_ui._ordered_images = media_quality.ordered_image_items
+    modern_ui._house_images = media_quality.ordered_image_items
+    modern_ui._gallery_html = modern_gallery_with_cleanup
+    mobile_first_ui._gallery_html = mobile_gallery_with_cleanup
 
     _remove_route(app, "/houses/{house_id}/media/cleanup", "POST")
 
