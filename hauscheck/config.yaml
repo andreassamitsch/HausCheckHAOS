@@ -1,5 +1,5 @@
 name: "HausCheck Pro"
-version: "0.14.5"
+version: "0.14.6"
 slug: "hauscheck"
 description: "Persönlicher Immobilien-Assistent für Home Assistant"
 url: "https://github.com/andreassamitsch/HausCheckHAOS"
@@ -79,7 +79,7 @@ schema:
   github_cleanup_after_import: bool
   github_b64_test_path: str
   github_b64_image_limit: int
-  github_b64_image_max_size: int
+  github_b64_imae_max_size: int
   github_b64_image_quality: int
   github_b64_chunk_size: int
   github_b64_line_length: int
