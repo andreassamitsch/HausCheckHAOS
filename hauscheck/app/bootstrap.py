@@ -30,6 +30,7 @@ from app.live_filter_pan import register_live_filter_pan
 from app.media_cleanup_ui import register_media_cleanup_ui
 from app.media_quality_v2 import register_media_quality_v2
 from app.media_quality_v2_fix import register_media_quality_v2_fix
+from app.media_startup_fix import register_media_startup_fix
 from app.mobile_first_ui import register_mobile_first_ui
 from app.mobile_interaction_fix import register_mobile_interaction_fix
 from app.mobile_layout_state_fix import register_mobile_layout_state_fix
@@ -138,6 +139,8 @@ register_candidate_preimport_dedupe(app)
 register_peisser_runtime_repair(app)
 # Konservative Vergleichsregeln müssen vor der ersten Bestandsbereinigung aktiv sein.
 register_media_quality_v2_fix()
+# Die Bestandsbereinigung wird erst nach freigegebenem HTTP-Start im Hintergrund ausgeführt.
+register_media_startup_fix(app)
 # Portalübergreifende Bildbereinigung, stabile Galeriereihenfolge und vollständiger KI-Bildexport.
 register_media_quality_v2(app)
 # Sichtbarer manueller Bereinigungslauf für bereits vorhandene Galerien.
