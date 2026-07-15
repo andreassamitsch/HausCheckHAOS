@@ -1,5 +1,5 @@
 {
-  "created_at": "2026-07-15T11:45:50.952433+00:00",
+  "created_at": "2026-07-15T11:46:59.871088+00:00",
   "status": "success",
   "log_tail": "/home/runner/work/HausCheckHAOS/HausCheckHAOS/hauscheck/app/immoscout_dynamic_search.py:233: SyntaxWarning: invalid escape sequence '\\s'\n  \nHausCheck Medienbereinigung: 0 Hausakten geprüft, 0 überflüssige Bilder entfernt.\nHausCheck Gmail Exchange gestartet\nHausCheck GitHub Auto-Import gestartet\nHausCheck Such-Scheduler gestartet\nstartup_cleanup_disabled=ok\nai_export_does_not_cleanup=ok\nimport_cleanup_once=ok\nmanual_cleanup_once=ok\nno_background_cleanup_handler=ok\n"
 }
