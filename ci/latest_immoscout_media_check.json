@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-07-15T06:03:50.535007+00:00",
-  "commit": "6f9e6a2355277fc7b8550c5031f7fe9723feb74a",
-  "run_id": 29393117777,
+  "created_at": "2026-07-15T11:32:17.684049+00:00",
+  "commit": "26f0618b9d9a278fa93c9fca899e450cd57a2cec",
+  "run_id": 29411966057,
   "status": "failed",
   "test_code": 1,
   "log_tail": "/home/runner/work/HausCheckHAOS/HausCheckHAOS/hauscheck/app/immoscout_dynamic_search.py:233: SyntaxWarning: invalid escape sequence '\\s'\n  \nHausCheck Medienbereinigung: 0 Hausakten geprüft, 0 überflüssige Bilder entfernt.\nTraceback (most recent call last):\n  File \"<stdin>\", line 15, in <module>\n  File \"/opt/hostedtoolcache/Python/3.12.13/x64/lib/python3.12/site-packages/httpx/_models.py\", line 829, in raise_for_status\n    raise HTTPStatusError(message, request=request, response=self)\nhttpx.HTTPStatusError: Client error '410 Gone' for url 'https://www.immobilienscout24.at/expose/69dcb82ff88781c17db2b90a'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/410\n"
