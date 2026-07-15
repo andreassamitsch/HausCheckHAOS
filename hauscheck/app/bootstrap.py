@@ -27,6 +27,7 @@ from app.immoscout_url_runtime_fix import register_immoscout_url_runtime_fix
 from app.import_patch import register_import_patch
 from app.ingress_link_fix import register_ingress_link_fix
 from app.live_filter_pan import register_live_filter_pan
+from app.media_cleanup_policy import register_media_cleanup_policy
 from app.media_cleanup_ui import register_media_cleanup_ui
 from app.media_quality_v2 import register_media_quality_v2
 from app.media_quality_v2_fix import register_media_quality_v2_fix
@@ -137,11 +138,13 @@ register_peisser_dedupe_fix(app)
 register_candidate_preimport_dedupe(app)
 # Finale Peisser-Reparatur: faktenbasierte Zuordnung ohne veraltete Bilder/Titel und korrekte Portalmetadaten.
 register_peisser_runtime_repair(app)
-# Konservative Vergleichsregeln müssen vor der ersten Bestandsbereinigung aktiv sein.
+# Konservative Vergleichsregeln müssen vor der Medienregistrierung aktiv sein.
 register_media_quality_v2_fix()
-# Die Bestandsbereinigung wird erst nach freigegebenem HTTP-Start im Hintergrund ausgeführt.
+# Der alte Bestandslauf bleibt deaktiviert; keine automatische Bereinigung beim oder nach dem Start.
 register_media_startup_fix(app)
-# Portalübergreifende Bildbereinigung, stabile Galeriereihenfolge und vollständiger KI-Bildexport.
+# Bereinigung nach Bildimport, stabile Galeriereihenfolge und vollständiger KI-Bildexport.
 register_media_quality_v2(app)
+# Der KI-Export verwendet den bereits bereinigten Bestand und startet keinen weiteren Vergleich.
+register_media_cleanup_policy()
 # Sichtbarer manueller Bereinigungslauf für bereits vorhandene Galerien.
 register_media_cleanup_ui(app)
