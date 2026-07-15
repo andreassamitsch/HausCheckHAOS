@@ -1,5 +1,5 @@
 {
-  "status": "success",
+  "status": "failed",
   "checks": {
     "compileall": {
       "ok": true,
@@ -7,7 +7,7 @@
     },
     "final_runner_registered": {
       "ok": true,
-      "details": "<function run_search_profile_optimized at 0x7f25fc472160>"
+      "details": "<function run_search_profile_optimized at 0x7f2667eca160>"
     },
     "area_list": {
       "ok": true,
@@ -26,37 +26,14 @@
       "details": "https://www.willhaben.at/iad/immobilien/haus-kaufen/haus-angebote?areaId=8551&page=1"
     },
     "single_cleanup_after_download": {
-      "ok": true,
+      "ok": false,
       "details": {
-        "count": 1
-      }
-    },
-    "nested_cleanup_suppressed": {
-      "ok": true,
-      "details": {
-        "duplicate_cleanups_avoided": 1,
-        "media_cleanups": 1
-      }
-    },
-    "same_results_with_cache": {
-      "ok": true,
-      "details": {
-        "first": 1,
-        "second": 1
-      }
-    },
-    "detail_and_search_loaded_once": {
-      "ok": true,
-      "details": {
-        "count": 2
-      }
-    },
-    "detail_parsed_once": {
-      "ok": true,
-      "details": {
-        "count": 1
+        "count": 0
       }
     }
   },
-  "errors": []
+  "errors": [
+    "AssertionError: single_cleanup_after_download: {'count': 0}"
+  ],
+  "traceback": "Traceback (most recent call last):\n  File \"<stdin>\", line 48, in <module>\n  File \"<stdin>\", line 12, in check\nAssertionError: single_cleanup_after_download: {'count': 0}\n"
 }
