@@ -46,8 +46,6 @@ jobs:
 
           import app.analysis_package as analysis_package
           import app.bootstrap
-          import app.main as main
-          import app.media_cleanup_policy as policy
           import app.media_quality_v2 as media_quality
           from app.storage import add_media, create_house, create_source, project_dir, update_media
 
@@ -96,7 +94,6 @@ jobs:
                   target.parent.mkdir(parents=True, exist_ok=True)
                   with zipfile.ZipFile(target, "w") as archive:
                       archive.writestr("base.txt", "ok")
-                  # Simulate the normal base exporter asking for selected images.
                   analysis_package.local_image_paths(target_house_id)
                   return target
 
@@ -145,3 +142,5 @@ jobs:
           git commit -m "Update media cleanup policy check [skip ci]" || true
           git pull --rebase origin main && git push || true
           exit "$CODE"
+
+# Trigger after workflow creation.
