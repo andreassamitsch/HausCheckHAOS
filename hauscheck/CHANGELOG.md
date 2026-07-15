@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.14.9
+
+- jedes neue Analysepaket erhält eine eindeutige `analysis_request_id`
+- Rückgabeformat und Analyseprompt verlangen die unveränderte Auftragskennung im Ergebnis
+- alte Ergebnisse derselben Hausakte können einen neueren Export nicht mehr fälschlich abschließen
+- Übergangsprüfung weist Legacy-Ergebnisse zurück, deren Analysezeitpunkt vor dem jüngsten Export liegt
+- veraltete Ergebnisse werden nach `results/done/stale` archiviert und aus `results/pending` entfernt
+- das aktuelle Export-ZIP bleibt bei einem veralteten Ergebnis erhalten und wird weiter zur Analyse angeboten
+- der GitHub-Artifact-Workflow behandelt eine leere Pending-Warteschlange als normalen erfolgreichen Zustand
+- bei leerer Warteschlange wird `latest_artifact.json` auf `status: empty` gesetzt, damit kein alter Artifact-Zeiger erneut verarbeitet wird
+- Add-on-Version auf 0.14.9 erhöht
+
 ## 0.14.8
 
 - GitHub-Dateien werden mit einem `httpx`-kompatiblen DELETE-Aufruf zuverlässig entfernt
@@ -29,12 +41,5 @@
 - die alte Bewertung bleibt bis zum Rückimport als Vergleich sichtbar und wird danach automatisch ersetzt
 - Dashboard zählt veraltete Analysen mit neuem Export als wartend statt abgeschlossen
 - Add-on-Version auf 0.14.6 erhöht
-
-## 0.14.5
-
-- automatische Bestandsbereinigung beim und nach dem Add-on-Start vollständig entfernt
-- Bild-Deduplizierung läuft nach abgeschlossenem Medienimport oder manuell
-- KI-Export verwendet den bereits bereinigten und sortierten Bildbestand
-- Add-on-Version auf 0.14.5 erhöht
 
 Ältere Versionshinweise bleiben über die Git-Historie des Repositorys nachvollziehbar.
