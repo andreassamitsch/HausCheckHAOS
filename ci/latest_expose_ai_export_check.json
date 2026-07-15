@@ -1,8 +1,8 @@
 {
-  "created_at": "2026-07-14T19:58:53.553542+00:00",
-  "commit": "dcc7081d87cf75eb2a0ff0e013415670fb662be1",
-  "run_id": 29363889531,
+  "created_at": "2026-07-15T08:24:52.596531+00:00",
+  "commit": "655da0041c8ec57a4ea16e31a4fb98b2e3082612",
+  "run_id": 29400689727,
   "status": "success",
   "test_code": 0,
-  "log_tail": "/home/runner/work/HausCheckHAOS/HausCheckHAOS/hauscheck/app/immoscout_dynamic_search.py:233: SyntaxWarning: invalid escape sequence '\\s'\n  \nHausCheck Gmail Exchange gestartet\nHausCheck GitHub Auto-Import gestartet\nHausCheck Such-Scheduler gestartet\nupload_triggers_ai_reanalysis=ok\npdf_delete_action_visible=ok\npdf_and_text_in_ai_package=ok\noversize_pdf_falls_back_to_text=ok\npdf_removed_and_ai_package_refreshed=ok\n"
+  "log_tail": "/home/runner/work/HausCheckHAOS/HausCheckHAOS/hauscheck/app/immoscout_dynamic_search.py:233: SyntaxWarning: invalid escape sequence '\\s'\n  \nHausCheck Medienbereinigung: 0 Hausakten geprüft, 0 überflüssige Bilder entfernt.\nHausCheck Gmail Exchange gestartet\nHausCheck GitHub Auto-Import gestartet\nHausCheck Such-Scheduler gestartet\nupload_triggers_ai_reanalysis=ok\npdf_delete_action_visible=ok\npdf_and_text_in_ai_package=ok\noversize_pdf_falls_back_to_text=ok\npdf_removed_and_ai_package_refreshed=ok\n"
 }
