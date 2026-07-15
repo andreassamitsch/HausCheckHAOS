@@ -57,6 +57,7 @@ from app.search_lifecycle_refresh import register_search_lifecycle_refresh
 from app.search_lifecycle_ui import register_search_lifecycle_ui
 from app.search_performance import register_search_performance
 from app.search_performance_extra import register_search_performance_extra
+from app.search_runtime_final import register_search_runtime_final
 from app.search_ui_patch import register_search_profile_patch
 from app.storage import init_storage
 from app.valuation_schema import register_valuation_schema
@@ -164,3 +165,5 @@ register_dashboard_redirect_fix(app)
 register_search_performance()
 # Peisser-Cache, Fakten-vor-Bilder-Prüfung und Schonpause zwischen automatischen Profilen.
 register_search_performance_extra()
+# Ein finaler Runner bewahrt Peisser-Lifecycle und überspringt Bildprüfung ohne Vergleichsbestand.
+register_search_runtime_final()
