@@ -35,7 +35,6 @@ jobs:
           python - <<'PY' > /tmp/search-performance-check.log 2>&1
           import asyncio
           import json
-          import os
           import sys
           from pathlib import Path
 
@@ -54,6 +53,7 @@ jobs:
               import app.main as main
               import app.search_automation as automation
               import app.search_performance as perf
+              import app.search_performance_extra as extra
               import app.immoscout_support as support
               import app.storage as storage
               from app.parser import ParsedListing
@@ -69,9 +69,16 @@ jobs:
               normalized = perf._normalize_portal_url(malformed)
               check("willhaben_area_normalized", "areaId=8551" in normalized and "%5B" not in normalized, normalized)
 
+              media_house = storage.create_house({"title": "Media test"})
+              media_id = str(storage.add_media(str(media_house["id"]), {
+                  "kind": "image",
+                  "original_url": "https://example.invalid/new-image.jpg",
+                  "download_status": "pending",
+              })["id"])
               cleanup_calls = {"count": 0}
               async def fake_download(house_id, limit=120):
                   support.dedupe_house_images_perceptually(house_id)
+                  storage.update_media(media_id, {"download_status": "downloaded"})
               def fake_cleanup(house_id):
                   cleanup_calls["count"] += 1
                   return {"house_id": house_id, "removed": 0}
@@ -79,9 +86,63 @@ jobs:
               perf._ORIGINAL_CLEANUP = fake_cleanup
               perf._RECENT_CLEANUP.clear()
               perf._STATS.clear()
-              asyncio.run(perf.download_media_once("house-test", 10))
+              asyncio.run(extra.download_pending_media_optimized(str(media_house["id"]), 10))
               check("single_cleanup_after_download", cleanup_calls["count"] == 1, cleanup_calls)
               check("nested_cleanup_suppressed", perf._STATS.get("duplicate_cleanups_avoided") == 1, dict(perf._STATS))
+              asyncio.run(extra.download_pending_media_optimized(str(media_house["id"]), 10))
+              check("no_cleanup_without_pending_media", cleanup_calls["count"] == 1, {"cleanup": cleanup_calls, "stats": dict(perf._STATS)})
+
+              matching_house = storage.create_house({
+                  "title": "Familienhaus Wies mit Garten",
+                  "location_text": "8551 Wies",
+                  "address_status": "municipality_only",
+                  "price_eur": 320000,
+                  "living_area_m2": 150,
+                  "plot_area_m2": 900,
+                  "rooms": 5,
+                  "heating": "Gasheizung",
+                  "energy_hwb": 80,
+              })
+              incoming = ParsedListing(source_name="willhaben.at", source_url="https://www.willhaben.at/iad/immobilien/d/haus-kaufen/familienhaus-wies-9999999999", external_id="9999999999")
+              incoming.title = "Familienhaus Wies mit Garten"
+              incoming.location_text = "8551 Wies"
+              incoming.address_status = "municipality_only"
+              incoming.price_eur = 320000
+              incoming.living_area_m2 = 150
+              incoming.plot_area_m2 = 900
+              incoming.rooms = 5
+              incoming.heating = "Gas-Zentralheizung"
+              incoming.energy_hwb = 80
+              incoming.image_urls = ["https://example.invalid/1.jpg"]
+              fallback = {"count": 0}
+              async def fake_fallback(parsed):
+                  fallback["count"] += 1
+                  return None, None, 0.0, {}
+              extra._ORIGINAL_FIND_DUPLICATE = fake_fallback
+              matched, method, score, details = asyncio.run(extra.find_probable_duplicate_resource_aware(incoming))
+              check("facts_before_images", str((matched or {}).get("id")) == str(matching_house["id"]) and method == "structured_facts", {"matched": (matched or {}).get("id"), "method": method, "score": score, "details": details})
+              check("remote_images_skipped_for_unique_facts", fallback["count"] == 0, fallback)
+
+              peisser_network = {"count": 0}
+              async def fake_peisser_bundle(url):
+                  peisser_network["count"] += 1
+                  return "<html><body>PEISSER</body></html>"
+              extra._ORIGINAL_PEISSER_BUNDLE = fake_peisser_bundle
+              perf._HTML_CACHE.clear()
+              peisser_url = "https://www.peisser-immobilien.at/expose.php?id=149"
+              first_bundle = asyncio.run(extra.peisser_bundle_cached(peisser_url))
+              second_bundle = asyncio.run(extra.peisser_bundle_cached(peisser_url))
+              check("peisser_bundle_loaded_once", first_bundle == second_bundle and peisser_network["count"] == 1, peisser_network)
+
+              peisser_parse = {"count": 0}
+              def fake_peisser_parse(url, html):
+                  peisser_parse["count"] += 1
+                  return ParsedListing(source_name="peisser-immobilien.at", source_url=url, external_id="149")
+              extra._ORIGINAL_PEISSER_PARSE = fake_peisser_parse
+              perf._PARSE_CACHE.clear()
+              extra.peisser_parse_cached(peisser_url, first_bundle)
+              extra.peisser_parse_cached(peisser_url, first_bundle)
+              check("peisser_detail_parsed_once", peisser_parse["count"] == 1, peisser_parse)
 
               profile = storage.create_search_profile({
                   "name": "Performance test",
