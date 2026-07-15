@@ -1,9 +1,9 @@
 {
-  "created_at": "2026-07-14T19:51:20.374440+00:00",
-  "commit": "e9a67e5c873c27a4fbaaf92f5e09eccb68e81d88",
-  "run_id": 29363399511,
+  "created_at": "2026-07-15T06:09:11.376793+00:00",
+  "commit": "f3ca239778e0bc99649705e8f425b3cb343e251f",
+  "run_id": 29393370024,
   "status": "success",
   "compile_code": 0,
   "import_code": 0,
-  "log_tail": "app/immoscout_dynamic_search.py:233: SyntaxWarning: invalid escape sequence '\\s'\n  \nroutes=71\nbootstrap_import=ok\nhwb_decimal_and_table_priority=ok\ncandidate_lifecycle_price_offline_reactivated=ok\nsearch_profile_delete=ok\nhouse_merge_and_preview_selection=ok\nHausCheck Gmail Exchange gestartet\nHausCheck GitHub Auto-Import gestartet\nHausCheck Such-Scheduler gestartet\nGET /=ok\nGET /search=ok\nGET /settings=ok\nGET /settings/search=ok\nGET /settings/search/new=ok\nGET /rejected=ok\nGET /import=ok\nGET /github/status=ok\nmerge_preview_ui=ok\nsearch_profile_create=ok\nhouse_detail_product_ui=ok\nhouse_reject_restore=ok\n"
+  "log_tail": "app/immoscout_dynamic_search.py:233: SyntaxWarning: invalid escape sequence '\\s'\n  \nHausCheck Medienbereinigung: 0 Hausakten geprüft, 0 überflüssige Bilder entfernt.\nroutes=72\nbootstrap_import=ok\nhwb_decimal_and_table_priority=ok\ncandidate_lifecycle_price_offline_reactivated=ok\nsearch_profile_delete=ok\nhouse_merge_and_preview_selection=ok\nHausCheck Gmail Exchange gestartet\nHausCheck GitHub Auto-Import gestartet\nHausCheck Such-Scheduler gestartet\nGET /=ok\nGET /search=ok\nGET /settings=ok\nGET /settings/search=ok\nGET /settings/search/new=ok\nGET /rejected=ok\nGET /import=ok\nGET /github/status=ok\nmerge_preview_ui=ok\nsearch_profile_create=ok\nhouse_detail_product_ui=ok\nhouse_reject_restore=ok\n"
 }
