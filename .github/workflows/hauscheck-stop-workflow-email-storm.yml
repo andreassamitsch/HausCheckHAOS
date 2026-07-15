@@ -74,3 +74,5 @@ jobs:
           git add -A .github/workflows
           git commit -m "Replace noisy workflows with manual CI [skip ci]"
           git push
+
+# Trigger after workflow registration.
