@@ -1,0 +1,39 @@
+name: HausCheck Manual CI
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        working-directory: hauscheck
+        run: python -m pip install -r requirements.txt
+      - name: Compile and import application
+        working-directory: hauscheck
+        env:
+          HAUSCHECK_DATA_DIR: /tmp/hauscheck-manual-ci
+          HAUSCHECK_GITHUB_EXCHANGE_ENABLED: "false"
+          HAUSCHECK_GMAIL_EXCHANGE_ENABLED: "false"
+        run: |
+          rm -rf /tmp/hauscheck-manual-ci
+          mkdir -p /tmp/hauscheck-manual-ci
+          python -m compileall -q app
+          python - <<'PY'
+          import app.bootstrap
+          from fastapi.testclient import TestClient
+
+          with TestClient(app.bootstrap.app) as client:
+              response = client.get("/")
+              assert response.status_code == 200, response.text
+          print("HausCheck manual CI successful")
+          PY
