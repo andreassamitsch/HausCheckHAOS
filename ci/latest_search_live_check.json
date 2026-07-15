@@ -1,0 +1,57 @@
+{
+  "status": "success",
+  "checks": {
+    "final_runner_registered": {
+      "ok": true,
+      "details": "<function run_search_profile_final at 0x7f627097a840>"
+    },
+    "willhaben_live_results": {
+      "ok": true,
+      "details": {
+        "count": 4,
+        "seconds": 4.87
+      }
+    },
+    "immoscout_live_results": {
+      "ok": true,
+      "details": {
+        "count": 3,
+        "seconds": 1.99
+      }
+    },
+    "immoscout_same_results_second_run": {
+      "ok": true,
+      "details": {
+        "first": 3,
+        "second": 3
+      }
+    },
+    "immoscout_second_run_uses_cache": {
+      "ok": true,
+      "details": {
+        "seconds": 0.02,
+        "stats": {
+          "search_page_cache_hits": 1,
+          "html_cache_hits": 6,
+          "parse_cache_hits": 6,
+          "remote_image_checks_avoided": 3
+        }
+      }
+    },
+    "peisser_live_results": {
+      "ok": true,
+      "details": {
+        "count": 5,
+        "seconds": 6.18,
+        "stats": {
+          "html_network_fetches": 10,
+          "parse_runs": 10,
+          "peisser_bundle_cache_hits": 5,
+          "parse_cache_hits": 5,
+          "remote_image_checks_avoided": 5
+        }
+      }
+    }
+  },
+  "errors": []
+}
