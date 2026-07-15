@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-07-15T11:43:51.066041+00:00",
-  "commit": "dd8d05a405e7e605436919efcffdcd218825c8f3",
-  "run_id": 29412643998,
+  "created_at": "2026-07-15T11:44:49.068052+00:00",
+  "commit": "d5cd95829e4bf44eb062eca5fdbb080ccab8fa56",
+  "run_id": 29412700729,
   "status": "success",
   "audit_code": 0,
   "log_tail": "/home/runner/work/HausCheckHAOS/HausCheckHAOS/hauscheck/app/immoscout_dynamic_search.py:233: SyntaxWarning: invalid escape sequence '\\s'\n  \nHausCheck Medienbereinigung: 0 Hausakten geprüft, 0 überflüssige Bilder entfernt.\nHausCheck Gmail Exchange gestartet\nHausCheck GitHub Auto-Import gestartet\nHausCheck Such-Scheduler gestartet\nlink_audit=ok checked=106\n"
