@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -144,8 +145,87 @@ def list_pipeline_events(house_id: str, limit: int = 12) -> list[dict[str, Any]]
     return [row_to_dict(row) or {} for row in rows]
 
 
-def _analysis_exists(house_id: str) -> bool:
-    return (project_dir(house_id) / "analysis" / "hauscheck_analysis.json").exists()
+def _analysis_path(house_id: str) -> Path:
+    return project_dir(house_id) / "analysis" / "hauscheck_analysis.json"
+
+
+def _parse_datetime(value: object) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    # Ein reines Datum ist für einen sekundengenauen Frischevergleich ungeeignet.
+    if len(text) == 10:
+        try:
+            date.fromisoformat(text)
+        except ValueError:
+            pass
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _analysis_metadata(house_id: str) -> dict[str, Any]:
+    path = _analysis_path(house_id)
+    if not path.exists():
+        return {"exists": False, "analysis_date": None, "file_updated_at": None}
+
+    analysis_date: object = None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(payload, dict):
+            analysis_date = payload.get("analysis_date")
+    except Exception:
+        analysis_date = None
+
+    try:
+        file_updated_at = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).isoformat()
+    except OSError:
+        file_updated_at = None
+    return {
+        "exists": True,
+        "analysis_date": analysis_date,
+        "file_updated_at": file_updated_at,
+    }
+
+
+def _analysis_is_current(status: dict[str, Any], metadata: dict[str, Any]) -> bool:
+    if not metadata.get("exists"):
+        return False
+
+    stage = str(status.get("stage") or "created")
+    exported_at = _parse_datetime(status.get("exported_at"))
+    imported_at = _parse_datetime(status.get("analysis_imported_at"))
+    generated_at = _parse_datetime(metadata.get("analysis_date"))
+    file_updated_at = _parse_datetime(metadata.get("file_updated_at"))
+
+    # Sobald ein neues Paket exportiert wird, bleibt die vorhandene Analyse nur
+    # noch eine historische Vorschau – sie darf den neuen Lauf nicht abschließen.
+    if stage in {"exporting", "waiting_analysis"}:
+        return False
+
+    if exported_at is None:
+        return True
+
+    # Ein Import muss nach dem jüngsten Export erfolgt sein. Diese Prüfung
+    # repariert auch bereits fälschlich auf "completed" gesetzte Altbestände.
+    if imported_at is not None and imported_at < exported_at:
+        return False
+
+    # Ein zurückgeliefertes Ergebnis mit altem Analysezeitpunkt gehört nicht zum
+    # jüngsten Paket. Fünf Minuten Toleranz decken kleine Uhrabweichungen ab.
+    if generated_at is not None and generated_at < exported_at - timedelta(minutes=5):
+        return False
+
+    if imported_at is not None:
+        return imported_at >= exported_at
+    if file_updated_at is not None:
+        return file_updated_at >= exported_at
+    return stage == "completed"
 
 
 def get_pipeline_status(house_id: str) -> dict[str, Any]:
@@ -155,14 +235,16 @@ def get_pipeline_status(house_id: str) -> dict[str, Any]:
     downloaded = len([item for item in media if item.get("download_status") == "downloaded"])
     pending = len([item for item in media if item.get("download_status") == "pending"])
     failed = len([item for item in media if item.get("download_status") == "failed"])
-    analysis_exists = _analysis_exists(house_id)
+    metadata = _analysis_metadata(house_id)
 
     with connect() as con:
         row = con.execute("SELECT * FROM house_pipeline_status WHERE house_id = ?", (house_id,)).fetchone()
     status = row_to_dict(row) or {}
+    analysis_current = _analysis_is_current(status, metadata)
 
-    # Bestehende Hausakten ohne Ereignishistorie werden aus dem realen Datenstand eingeordnet.
-    if analysis_exists and status.get("stage") != "completed":
+    # Bestehende Hausakten ohne Ereignishistorie werden nur dann aus dem realen
+    # Datenstand als abgeschlossen eingeordnet, wenn kein neuer Export aussteht.
+    if analysis_current and status.get("stage") != "completed":
         status = set_pipeline_stage(
             house_id,
             "completed",
@@ -170,16 +252,31 @@ def get_pipeline_status(house_id: str) -> dict[str, Any]:
             "ChatGPT-Analyse wurde importiert.",
             add_event=False,
         )
+        analysis_current = _analysis_is_current(status, metadata)
     elif sources and not status.get("listing_imported_at"):
+        timestamp = now_iso()
         with connect() as con:
             con.execute(
                 "UPDATE house_pipeline_status SET listing_imported_at = ?, updated_at = ? WHERE house_id = ?",
-                (now_iso(), now_iso(), house_id),
+                (timestamp, timestamp, house_id),
             )
             con.commit()
         with connect() as con:
             row = con.execute("SELECT * FROM house_pipeline_status WHERE house_id = ?", (house_id,)).fetchone()
         status = row_to_dict(row) or status
+        analysis_current = _analysis_is_current(status, metadata)
+
+    analysis_exists = bool(metadata.get("exists"))
+    analysis_stale = analysis_exists and not analysis_current
+    stored_stage = str(status.get("stage") or "created")
+    if analysis_stale and status.get("exported_at") and stored_stage != "error":
+        # Alte Versionen konnten einen noch laufenden Export wegen der vorhandenen
+        # Altanalyse fälschlich wieder auf completed setzen. Für die Anzeige und
+        # Zählung gilt der Lauf weiterhin als ausstehend; die Zeitstempel bleiben erhalten.
+        status["stored_stage"] = stored_stage
+        status["stage"] = "waiting_analysis"
+        status["state"] = "pending"
+        status["message"] = "Neue ChatGPT-Analyse ist ausstehend; die vorige Analyse bleibt vorläufig sichtbar."
 
     status.update(
         {
@@ -189,6 +286,10 @@ def get_pipeline_status(house_id: str) -> dict[str, Any]:
             "pending_count": pending,
             "failed_count": failed,
             "analysis_exists": analysis_exists,
+            "analysis_current": analysis_current,
+            "analysis_stale": analysis_stale,
+            "analysis_date": metadata.get("analysis_date"),
+            "analysis_file_updated_at": metadata.get("file_updated_at"),
             "stage_label": STAGE_LABELS.get(str(status.get("stage") or "created"), "Unbekannt"),
         }
     )
@@ -198,10 +299,17 @@ def get_pipeline_status(house_id: str) -> dict[str, Any]:
 def pipeline_counts() -> dict[str, int]:
     ensure_pipeline_schema()
     with connect() as con:
-        rows = con.execute("SELECT stage, COUNT(*) AS count FROM house_pipeline_status GROUP BY stage").fetchall()
-    counts = {str(row["stage"]): int(row["count"]) for row in rows}
-    return {
-        "waiting": counts.get("waiting_analysis", 0) + counts.get("exporting", 0),
-        "completed": counts.get("completed", 0),
-        "errors": counts.get("error", 0),
-    }
+        rows = con.execute("SELECT house_id FROM house_pipeline_status").fetchall()
+
+    waiting = completed = errors = 0
+    for row in rows:
+        status = get_pipeline_status(str(row["house_id"]))
+        stage = str(status.get("stage") or "created")
+        state = str(status.get("state") or "pending")
+        if state == "error" or stage == "error":
+            errors += 1
+        elif status.get("analysis_current"):
+            completed += 1
+        elif stage in {"exporting", "waiting_analysis"} or status.get("analysis_stale"):
+            waiting += 1
+    return {"waiting": waiting, "completed": completed, "errors": errors}
