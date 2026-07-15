@@ -1,8 +1,8 @@
 {
-  "created_at": "2026-07-15T06:09:58.743718+00:00",
-  "commit": "dce400d398acd5dc1f7c6fad9e873fab859ccd61",
-  "run_id": "29393405564",
-  "status": "failed",
-  "test_code": 1,
-  "log_tail": "/home/runner/work/HausCheckHAOS/HausCheckHAOS/hauscheck/app/immoscout_dynamic_search.py:233: SyntaxWarning: invalid escape sequence '\\s'\n  \nHausCheck Medienbereinigung: 0 Hausakten geprüft, 0 überflüssige Bilder entfernt.\ncleanup={\"house_id\": \"4dc689ef\", \"before\": 7, \"after\": 5, \"removed\": 2, \"removed_files\": 2, \"primary_source_id\": \"cfc5f06e\"}\nordered_urls=[\"https://portal-a.test/img0.jpg\", \"https://portal-a.test/img1.jpg\", \"https://portal-a.test/img2.jpg\", \"https://portal-a.test/img3.jpg\", \"https://portal-b.test/recompressed.jpg\"]\nTraceback (most recent call last):\n  File \"<stdin>\", line 95, in <module>\nAssertionError\n"
+  "created_at": "2026-07-15T06:12:02.212229+00:00",
+  "commit": "1c737899c0448e84a9f6cadc87c756dd7e757c19",
+  "run_id": "29393499246",
+  "status": "success",
+  "test_code": 0,
+  "log_tail": "/home/runner/work/HausCheckHAOS/HausCheckHAOS/hauscheck/app/immoscout_dynamic_search.py:233: SyntaxWarning: invalid escape sequence '\\s'\n  \nHausCheck Medienbereinigung: 0 Hausakten geprüft, 0 überflüssige Bilder entfernt.\ncleanup={\"house_id\": \"dced852a\", \"before\": 7, \"after\": 5, \"removed\": 2, \"removed_files\": 2, \"primary_source_id\": \"8d24170a\"}\nordered_urls=[\"https://portal-a.test/img0.jpg\", \"https://portal-a.test/img1.jpg\", \"https://portal-a.test/img2.jpg\", \"https://portal-a.test/img3.jpg\", \"https://portal-b.test/unique.jpg\"]\ncross_provider_physical_dedupe=ok\nsimilar_but_distinct_images_preserved=ok\nprimary_portal_order=ok\nportal_reorder_refresh=ok\nai_images=29\nselection={\"selection_mode\": \"all\", \"total_unique_images\": 29, \"exported_images\": 29, \"omitted_images\": 0}\nlate_gallery_images_exported=ok\nbalanced_ai_prompt_and_manifest=ok\n"
 }
