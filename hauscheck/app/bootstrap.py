@@ -7,6 +7,7 @@ from app.blank_query_fix import register_blank_query_fix
 from app.candidate_preimport_dedupe import register_candidate_preimport_dedupe
 from app.chatgpt_api import register_chatgpt_api
 from app.dashboard_automation_ui import register_dashboard_automation_ui
+from app.dashboard_redirect_fix import register_dashboard_redirect_fix
 from app.expose_address_quality import register_expose_address_quality
 from app.expose_ai_export import register_expose_ai_export
 from app.expose_review import register_expose_review
@@ -155,3 +156,5 @@ register_media_cleanup_ui(app)
 register_github_import_runtime_fix()
 # Der manuelle Suchknopf startet zuletzt registriert und blockiert die Oberfläche nicht.
 register_search_background_run(app)
+# Gespeicherte Dashboardfilter werden ohne 307-Redirectschleife intern angewandt.
+register_dashboard_redirect_fix(app)
