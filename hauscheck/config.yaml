@@ -1,5 +1,5 @@
 name: "HausCheck Pro"
-version: "0.14.4"
+version: "0.14.5"
 slug: "hauscheck"
 description: "Persönlicher Immobilien-Assistent für Home Assistant"
 url: "https://github.com/andreassamitsch/HausCheckHAOS"
@@ -102,4 +102,3 @@ schema:
   gmail_attach_images: bool
   gmail_image_limit: int
   gmail_send_zip_attachment: bool
-# Release 0.14.4
