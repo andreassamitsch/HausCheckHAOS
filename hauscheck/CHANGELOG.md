@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.14.5
+
+- automatische Bestandsbereinigung beim und nach dem Add-on-Start vollständig entfernt
+- keine wiederkehrende oder verzögerte Prüfung sämtlicher bestehender Hausakten mehr
+- Bild-Deduplizierung läuft genau einmal nach abgeschlossenem Medienimport oder Aktualisieren einer Hausakte
+- manuelle Aktion `Doppelte Bilder bereinigen` bleibt für bestehende Galerien verfügbar
+- KI-Export verwendet den bereits bereinigten und sortierten Bildbestand ohne erneuten Vergleich
+- Regressionstest prüft Start, KI-Export, Import und manuellen Auslöser getrennt
+- Add-on-Version auf 0.14.5 erhöht
+
 ## 0.14.4
 
 - blockierende vollständige Bildbereinigung aus dem Add-on-Start entfernt
@@ -291,7 +301,7 @@
 ## 0.5.11
 
 - automatischer GitHub-Rückimport für fertige KI-Analysen ergänzt
-- neue Add-on-Optionen `github_auto_import_results` und `github_auto_import_interval_minutes`
+- neue Option `github_auto_import_results` und `github_auto_import_interval_minutes`
 - Standard: HausCheck prüft alle 5 Minuten `ai_exchange/results/pending`
 - gefundene `hauscheck_analysis.json` werden automatisch in die passende Hausakte importiert
 - erfolgreiche Ergebnisse werden wie bisher nach `results/done` archiviert und pending-Dateien/Export-ZIPs aufgeräumt
@@ -300,7 +310,7 @@
 ## 0.5.10
 
 - automatischer GitHub-AI-Export nach Inserat-Import ergänzt
-- neue Add-on-Option `github_auto_export_on_import`
+- neue Option `github_auto_export_on_import`
 - Standard: Nach erfolgreichem Import und Medien-Download wird automatisch `<house_id>.zip` nach `ai_exchange/exports/pending` geschrieben
 - Fehler beim Auto-Export blockieren den Hausimport nicht; Details stehen im Add-on-Log
 - Import-Route über Patch-Modul stabilisiert, damit Direktimport und Kandidatenimport denselben Auto-Export nutzen
