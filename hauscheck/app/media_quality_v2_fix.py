@@ -11,7 +11,9 @@ import app.media_quality_v2 as media_quality
 
 _PATCHED = False
 _ORIGINAL_FINGERPRINT = media_quality._fingerprint
+_ORIGINAL_CLEANUP = media_quality.cleanup_house_media
 _RESAMPLE = getattr(Image, "Resampling", Image).LANCZOS
+_SCENE_MATCHED_MEDIA_IDS: set[str] = set()
 
 
 def _color_vector(image: Image.Image, size: int = 8) -> list[int]:
@@ -65,6 +67,7 @@ def fingerprint_scene_aware(path: Path, media: dict[str, Any]) -> dict[str, Any]
         result["crop_color_vectors"] = []
 
     # The more tolerant scene comparison is intentionally allowed only across different sources.
+    result["media_id"] = str(media.get("id") or "")
     result["source_id"] = str(media.get("source_id") or "")
     result["source_name"] = str(media.get("source_name") or "")
     return result
@@ -184,11 +187,17 @@ def visual_duplicate_scene_aware(
 
     left_source = str(left.get("source_id") or "")
     right_source = str(right.get("source_id") or "")
+    left_media = str(left.get("media_id") or "")
+    right_media = str(right.get("media_id") or "")
     cross_source = bool(left_source and right_source and left_source != right_source)
+    scene_media_available = bool(left_media and right_media)
+    scene_media_unused = left_media not in _SCENE_MATCHED_MEDIA_IDS and right_media not in _SCENE_MATCHED_MEDIA_IDS
     # Different brokers often use a second shot of the same room with a small camera shift or
     # changed towel/chair. Remove that redundant scene only across sources, never within one gallery.
     same_scene_cross_source = (
         cross_source
+        and scene_media_available
+        and scene_media_unused
         and ratio_delta <= 0.18
         and float(alignment["score"]) <= 31.0
         and float(alignment["gray_distance"]) <= 16.5
@@ -205,11 +214,20 @@ def visual_duplicate_scene_aware(
     if mildly_cropped:
         return True, "visual_mild_crop", details
     if same_scene_cross_source:
+        _SCENE_MATCHED_MEDIA_IDS.update((left_media, right_media))
         details["cross_source"] = True
         details["left_source"] = left_source
         details["right_source"] = right_source
         return True, "cross_source_same_scene", details
     return False, "", details
+
+
+def cleanup_house_media_scene_aware(house_id: str) -> dict[str, Any]:
+    _SCENE_MATCHED_MEDIA_IDS.clear()
+    try:
+        return _ORIGINAL_CLEANUP(house_id)
+    finally:
+        _SCENE_MATCHED_MEDIA_IDS.clear()
 
 
 def register_media_quality_v2_fix() -> None:
@@ -220,4 +238,5 @@ def register_media_quality_v2_fix() -> None:
     media_quality.DEDUPE_VERSION = 4
     media_quality._fingerprint = fingerprint_scene_aware
     media_quality._visual_duplicate = visual_duplicate_scene_aware
+    media_quality.cleanup_house_media = cleanup_house_media_scene_aware
     _PATCHED = True
