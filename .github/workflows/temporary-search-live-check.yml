@@ -1,0 +1,157 @@
+name: Temporary silent live portal validation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ci/search_live_trigger.txt"
+      - ".github/workflows/temporary-search-live-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate-live:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        continue-on-error: true
+        run: python -m pip install -r hauscheck/requirements.txt
+
+      - name: Run live checks and always write report
+        continue-on-error: true
+        env:
+          HAUSCHECK_DATA_DIR: /tmp/hauscheck-search-live-test
+        run: |
+          set +e
+          rm -rf "$HAUSCHECK_DATA_DIR"
+          mkdir -p "$HAUSCHECK_DATA_DIR"
+          cd hauscheck
+          python - <<'PY' > /tmp/search-live-check.log 2>&1
+          import asyncio
+          import json
+          import sys
+          import time
+          from pathlib import Path
+
+          report = {"status": "running", "checks": {}, "errors": []}
+
+          def check(name, condition, details=None):
+              report["checks"][name] = {"ok": bool(condition), "details": details}
+              if not condition:
+                  raise AssertionError(f"{name}: {details}")
+
+          def profile(storage, **values):
+              base = {
+                  "name": "Live portal test",
+                  "source_name": "willhaben.at",
+                  "search_url": "",
+                  "area_ids": "8551",
+                  "max_price_eur": 420000,
+                  "soft_max_price_eur": 400000,
+                  "min_living_area_m2": 120,
+                  "min_plot_area_m2": 700,
+                  "hwb_warn": 200,
+                  "hwb_reject": 300,
+                  "oil_policy": "review",
+                  "automation_mode": "manual",
+                  "max_results": 5,
+              }
+              base.update(values)
+              return storage.create_search_profile(base)
+
+          try:
+              import app.bootstrap  # noqa: F401
+              import app.search_automation as automation
+              import app.search_performance as performance
+              import app.search_runtime_final as final_runtime
+              import app.storage as storage
+
+              check(
+                  "final_runner_registered",
+                  automation.run_search_profile is final_runtime.run_search_profile_final,
+                  repr(automation.run_search_profile),
+              )
+
+              willhaben = profile(
+                  storage,
+                  name="Willhaben live",
+                  source_name="willhaben.at",
+                  search_url="https://www.willhaben.at/iad/immobilien/haus-kaufen/haus-angebote?areaId=%5B%278551%27%5D&page=1&PRICE_TO=420000&ESTATE_SIZE/LIVING_AREA_FROM=120",
+                  area_ids="['8551']",
+                  max_results=5,
+              )
+              started = time.monotonic()
+              willhaben_count = asyncio.run(automation.run_search_profile(str(willhaben["id"]), 5))
+              willhaben_seconds = round(time.monotonic() - started, 2)
+              check("willhaben_live_results", willhaben_count > 0, {"count": willhaben_count, "seconds": willhaben_seconds})
+
+              immoscout = profile(
+                  storage,
+                  name="ImmobilienScout live",
+                  source_name="immobilienscout24.at",
+                  search_url="https://www.immobilienscout24.at/regional/8523/haus-kaufen?plotAreaFrom=700&primaryAreaFrom=120&primaryPriceTo=420000",
+                  area_ids="8523",
+                  max_results=5,
+              )
+              started = time.monotonic()
+              immoscout_count = asyncio.run(automation.run_search_profile(str(immoscout["id"]), 5))
+              immoscout_first_seconds = round(time.monotonic() - started, 2)
+              check("immoscout_live_results", immoscout_count > 0, {"count": immoscout_count, "seconds": immoscout_first_seconds})
+
+              started = time.monotonic()
+              immoscout_second = asyncio.run(automation.run_search_profile(str(immoscout["id"]), 5))
+              immoscout_second_seconds = round(time.monotonic() - started, 2)
+              check("immoscout_same_results_second_run", immoscout_second == immoscout_count, {"first": immoscout_count, "second": immoscout_second})
+              check(
+                  "immoscout_second_run_uses_cache",
+                  performance._STATS.get("html_network_fetches", 0) == 0 and performance._STATS.get("search_page_cache_hits", 0) >= 1,
+                  {"seconds": immoscout_second_seconds, "stats": dict(performance._STATS)},
+              )
+
+              peisser = profile(
+                  storage,
+                  name="Peisser live",
+                  source_name="peisser-immobilien.at",
+                  search_url="https://www.peisser-immobilien.at/index.php?page=1&view=index&mode=entry&lang=de",
+                  area_ids="8551",
+                  max_results=10,
+              )
+              started = time.monotonic()
+              peisser_count = asyncio.run(automation.run_search_profile(str(peisser["id"]), 10))
+              peisser_seconds = round(time.monotonic() - started, 2)
+              check("peisser_live_results", peisser_count > 0, {"count": peisser_count, "seconds": peisser_seconds, "stats": dict(performance._STATS)})
+
+              report["status"] = "success"
+          except Exception as exc:
+              report["status"] = "failed"
+              report["errors"].append(f"{type(exc).__name__}: {exc}")
+              import traceback
+              report["traceback"] = traceback.format_exc()
+          finally:
+              Path("../ci").mkdir(exist_ok=True)
+              Path("../ci/latest_search_live_check.json").write_text(
+                  json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
+              )
+              print(json.dumps(report, ensure_ascii=False, indent=2))
+              sys.exit(0)
+          PY
+          cat /tmp/search-live-check.log
+
+      - name: Publish report without retriggering
+        if: always()
+        continue-on-error: true
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ci/latest_search_live_check.json
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "Update live search check report [skip ci]"
+          git push
