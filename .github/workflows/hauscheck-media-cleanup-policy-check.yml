@@ -1,0 +1,147 @@
+name: HausCheck Media Cleanup Policy Check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "hauscheck/app/media_cleanup_policy.py"
+      - "hauscheck/app/media_startup_fix.py"
+      - "hauscheck/app/bootstrap.py"
+      - ".github/workflows/hauscheck-media-cleanup-policy-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        working-directory: hauscheck
+        run: python -m pip install -r requirements.txt
+      - name: Verify cleanup triggers
+        shell: bash
+        env:
+          HAUSCHECK_DATA_DIR: /tmp/hauscheck-cleanup-policy
+          HAUSCHECK_GITHUB_EXCHANGE_ENABLED: "false"
+          HAUSCHECK_GMAIL_EXCHANGE_ENABLED: "false"
+        run: |
+          set +e
+          rm -rf /tmp/hauscheck-cleanup-policy
+          mkdir -p /tmp/hauscheck-cleanup-policy
+          cd hauscheck
+          python - <<'PY' > /tmp/cleanup-policy.log 2>&1
+          import asyncio
+          import json
+          import zipfile
+          from pathlib import Path
+
+          from fastapi.testclient import TestClient
+          from PIL import Image
+
+          import app.analysis_package as analysis_package
+          import app.bootstrap
+          import app.main as main
+          import app.media_cleanup_policy as policy
+          import app.media_quality_v2 as media_quality
+          from app.storage import add_media, create_house, create_source, project_dir, update_media
+
+          app = app.bootstrap.app
+          calls = []
+
+          def fake_cleanup(house_id):
+              calls.append(str(house_id))
+              return {"house_id": str(house_id), "before": 1, "after": 1, "removed": 0, "removed_files": 0}
+
+          media_quality.cleanup_house_media = fake_cleanup
+
+          house = create_house({"title": "Cleanup Policy Test", "location_text": "8551 Wies"})
+          house_id = str(house["id"])
+          source = create_source(house_id, {
+              "source_name": "test-provider",
+              "source_url": "https://example.test/house",
+              "external_id": "cleanup-test",
+          })
+          image_path = project_dir(house_id) / "images" / "image.jpg"
+          Image.new("RGB", (800, 600), (120, 160, 190)).save(image_path, "JPEG")
+          media = add_media(house_id, {
+              "source_id": source["id"],
+              "kind": "image",
+              "original_url": "https://example.test/image.jpg",
+              "download_status": "pending",
+              "source_order": 0,
+          })
+          update_media(str(media["id"]), {
+              "local_path": str(image_path),
+              "mime_type": "image/jpeg",
+              "download_status": "downloaded",
+              "file_size_bytes": image_path.stat().st_size,
+              "width": 800,
+              "height": 600,
+              "display_order": 0,
+          })
+
+          with TestClient(app) as client:
+              assert client.get("/").status_code == 200
+              assert calls == [], calls
+              print("startup_cleanup_disabled=ok")
+
+              def fake_base_zip(target_house_id):
+                  target = project_dir(target_house_id) / "exports" / "base.zip"
+                  target.parent.mkdir(parents=True, exist_ok=True)
+                  with zipfile.ZipFile(target, "w") as archive:
+                      archive.writestr("base.txt", "ok")
+                  # Simulate the normal base exporter asking for selected images.
+                  analysis_package.local_image_paths(target_house_id)
+                  return target
+
+              media_quality._ORIGINAL_CREATE_ZIP = fake_base_zip
+              archive_path = analysis_package.create_analysis_zip(house_id)
+              with zipfile.ZipFile(archive_path) as archive:
+                  selection = json.loads(archive.read("image_selection.json"))
+              assert calls == [], calls
+              assert selection["media_cleanup"]["performed"] is False
+              assert selection["cleanup_policy"] == "after_import_or_manual_only"
+              print("ai_export_does_not_cleanup=ok")
+
+              async def fake_download(_house_id, _limit=120):
+                  return None
+
+              media_quality._ORIGINAL_DOWNLOAD = fake_download
+              asyncio.run(media_quality.download_with_cleanup(house_id))
+              assert calls == [house_id], calls
+              print("import_cleanup_once=ok")
+
+              response = client.post(f"/houses/{house_id}/media/cleanup", follow_redirects=False)
+              assert response.status_code == 303, response.text
+              assert calls == [house_id, house_id], calls
+              print("manual_cleanup_once=ok")
+
+          assert not any(getattr(handler, "__name__", "") == "_schedule_background_cleanup" for handler in app.router.on_startup)
+          print("no_background_cleanup_handler=ok")
+          PY
+          CODE=$?
+          cat /tmp/cleanup-policy.log
+          python - <<'PY'
+          import json
+          from datetime import datetime, timezone
+          from pathlib import Path
+          log = Path('/tmp/cleanup-policy.log').read_text(encoding='utf-8', errors='replace')
+          Path('ci').mkdir(exist_ok=True)
+          Path('ci/latest_media_cleanup_policy_check.json').write_text(json.dumps({
+              'created_at': datetime.now(timezone.utc).isoformat(),
+              'status': 'success' if 'no_background_cleanup_handler=ok' in log else 'failed',
+              'log_tail': log[-5000:],
+          }, ensure_ascii=False, indent=2), encoding='utf-8')
+          PY
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add ci/latest_media_cleanup_policy_check.json
+          git commit -m "Update media cleanup policy check [skip ci]" || true
+          git pull --rebase origin main && git push || true
+          exit "$CODE"
