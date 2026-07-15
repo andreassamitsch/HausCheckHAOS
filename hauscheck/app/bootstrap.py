@@ -13,6 +13,7 @@ from app.expose_review import register_expose_review
 from app.focused_ui import register_focused_ui
 from app.github_auto_import import register_github_auto_import
 from app.github_exchange import register_github_exchange
+from app.github_import_runtime_fix import register_github_import_runtime_fix
 from app.gmail_exchange import register_gmail_exchange
 from app.house_manage import register_house_management
 from app.house_merge import register_house_merge
@@ -49,6 +50,7 @@ from app.product_ui import register_product_ui
 from app.product_ui_fix import register_product_ui_fix
 from app.search_automation import register_search_automation
 from app.search_automation_ui import register_search_automation_ui
+from app.search_background_run import register_search_background_run
 from app.search_lifecycle import register_search_lifecycle
 from app.search_lifecycle_refresh import register_search_lifecycle_refresh
 from app.search_lifecycle_ui import register_search_lifecycle_ui
@@ -149,3 +151,7 @@ register_media_quality_v2(app)
 register_media_cleanup_policy()
 # Sichtbarer manueller Bereinigungslauf für bereits vorhandene Galerien.
 register_media_cleanup_ui(app)
+# GitHub-DELETE, verwaiste Ergebnisse und wiederholte Auto-Import-Fehler reparieren.
+register_github_import_runtime_fix()
+# Der manuelle Suchknopf startet zuletzt registriert und blockiert die Oberfläche nicht.
+register_search_background_run(app)
