@@ -1,0 +1,159 @@
+name: HausCheck Cross-Provider Scene Cleanup Check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "hauscheck/app/media_quality_v2.py"
+      - "hauscheck/app/media_quality_v2_fix.py"
+      - "hauscheck/app/media_cleanup_ui.py"
+      - "hauscheck/app/bootstrap.py"
+      - ".github/workflows/hauscheck-cross-provider-scene-cleanup-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        working-directory: hauscheck
+        run: python -m pip install -r requirements.txt
+      - name: Run scene cleanup regression
+        shell: bash
+        env:
+          HAUSCHECK_DATA_DIR: /tmp/hauscheck-scene-cleanup
+          HAUSCHECK_GITHUB_EXCHANGE_ENABLED: "false"
+          HAUSCHECK_GMAIL_EXCHANGE_ENABLED: "false"
+        run: |
+          set +e
+          rm -rf /tmp/hauscheck-scene-cleanup
+          mkdir -p /tmp/hauscheck-scene-cleanup
+          cd hauscheck
+          python - <<'PY' > /tmp/scene-cleanup.log 2>&1
+          import json
+          from pathlib import Path
+
+          from PIL import Image, ImageDraw
+          from fastapi.testclient import TestClient
+
+          import app.bootstrap
+          import app.media_quality_v2 as quality
+          import app.modern_ui as modern_ui
+          import app.storage as storage
+          from app.main import app
+          from app.storage import create_house, create_source, list_media, project_dir, update_media
+
+          def room_scene():
+              image = Image.new('RGB', (900, 650), (225, 220, 210))
+              draw = ImageDraw.Draw(image)
+              draw.rectangle((0, 500, 900, 650), fill=(120, 85, 55))
+              draw.rectangle((50, 160, 210, 500), fill=(210, 220, 225), outline=(50, 50, 50), width=6)
+              draw.rectangle((250, 120, 520, 300), fill=(25, 25, 30), outline=(50, 50, 50), width=5)
+              draw.rectangle((240, 320, 600, 500), fill=(175, 135, 95), outline=(50, 50, 50), width=5)
+              draw.rectangle((610, 300, 880, 520), fill=(205, 190, 175), outline=(60, 60, 60), width=5)
+              draw.rectangle((670, 100, 850, 240), fill=(165, 110, 70), outline=(50, 50, 50), width=5)
+              return image
+
+          def shifted_scene(base):
+              image = base.crop((50, 0, 900, 620)).resize((900, 650), Image.Resampling.LANCZOS)
+              draw = ImageDraw.Draw(image)
+              draw.rectangle((560, 340, 590, 410), fill=(30, 120, 200))
+              return image
+
+          def save(path, image, quality_value):
+              image.save(path, format='JPEG', quality=quality_value, optimize=True)
+              return path
+
+          base = room_scene()
+          shifted = shifted_scene(base)
+          temp = Path('/tmp/hauscheck-scene-cleanup')
+          base_path = save(temp / 'base.jpg', base, 92)
+          shifted_path = save(temp / 'shifted.jpg', shifted, 78)
+
+          same_left = quality._fingerprint(base_path, {'id': 'same-a', 'source_id': 'source-a', 'source_name': 'willhaben.at'})
+          same_right = quality._fingerprint(shifted_path, {'id': 'same-b', 'source_id': 'source-a', 'source_name': 'willhaben.at'})
+          duplicate, method, details = quality._visual_duplicate(same_left, same_right)
+          print('same_source=' + json.dumps({'duplicate': duplicate, 'method': method, 'details': details}, ensure_ascii=False))
+          assert not duplicate, (method, details)
+
+          cross_left = quality._fingerprint(base_path, {'id': 'cross-a', 'source_id': 'source-a', 'source_name': 'willhaben.at'})
+          cross_right = quality._fingerprint(shifted_path, {'id': 'cross-b', 'source_id': 'source-b', 'source_name': 'peisser-immobilien.at'})
+          duplicate, method, details = quality._visual_duplicate(cross_left, cross_right)
+          print('cross_source=' + json.dumps({'duplicate': duplicate, 'method': method, 'details': details}, ensure_ascii=False))
+          assert duplicate and method == 'cross_source_same_scene', (method, details)
+          print('same_room_different_camera_detected=ok')
+          print('same_portal_perspective_preserved=ok')
+
+          house = create_house({'title': 'Szenenbereinigung', 'location_text': '8551 Wies'})
+          house_id = str(house['id'])
+          source_a = create_source(house_id, {'source_name': 'willhaben.at', 'source_url': 'https://example.test/a', 'external_id': 'a'})
+          source_b = create_source(house_id, {'source_name': 'peisser-immobilien.at', 'source_url': 'https://example.test/b', 'external_id': 'b'})
+          image_dir = project_dir(house_id) / 'images'
+          stored_base = save(image_dir / 'base.jpg', base, 92)
+          stored_shifted = save(image_dir / 'shifted.jpg', shifted, 78)
+
+          def add_downloaded(source, order, url, path):
+              media = storage.add_media(house_id, {
+                  'source_id': source['id'], 'kind': 'image', 'original_url': url,
+                  'download_status': 'pending', 'source_order': order,
+              })
+              with Image.open(path) as opened:
+                  width, height = opened.size
+              update_media(str(media['id']), {
+                  'local_path': str(path), 'mime_type': 'image/jpeg', 'download_status': 'downloaded',
+                  'file_size_bytes': path.stat().st_size, 'width': width, 'height': height,
+              })
+              return media
+
+          add_downloaded(source_a, 0, 'https://portal-a.test/room.jpg', stored_base)
+          add_downloaded(source_b, 0, 'https://portal-b.test/room-shifted.jpg', stored_shifted)
+          result = quality.cleanup_house_media(house_id)
+          remaining = [item for item in list_media(house_id) if item.get('kind') == 'image' and item.get('download_status') == 'downloaded']
+          print('cleanup=' + json.dumps(result, ensure_ascii=False))
+          assert result['removed'] == 1, result
+          assert len(remaining) == 1, remaining
+          assert sum(path.exists() for path in (stored_base, stored_shifted)) == 1
+          print('redundant_file_physically_removed=ok')
+
+          html = TestClient(app).get(f'/houses/{house_id}').text
+          assert 'Doppelte Bilder bereinigen' in html
+          print('manual_cleanup_action_visible=ok')
+          PY
+          CODE=$?
+          cat /tmp/scene-cleanup.log
+          echo "CODE=$CODE" >> "$GITHUB_ENV"
+          exit "$CODE"
+      - name: Publish result
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+          log = Path('/tmp/scene-cleanup.log').read_text(encoding='utf-8', errors='replace') if Path('/tmp/scene-cleanup.log').exists() else ''
+          Path('ci').mkdir(exist_ok=True)
+          Path('ci/latest_cross_provider_scene_cleanup_check.json').write_text(json.dumps({
+              'created_at': datetime.now(timezone.utc).isoformat(),
+              'commit': os.environ.get('GITHUB_SHA'),
+              'run_id': os.environ.get('GITHUB_RUN_ID'),
+              'status': 'success' if os.environ.get('CODE') == '0' else 'failed',
+              'test_code': int(os.environ.get('CODE') or 1),
+              'log_tail': log[-5000:],
+          }, ensure_ascii=False, indent=2), encoding='utf-8')
+          PY
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add ci/latest_cross_provider_scene_cleanup_check.json
+          git commit -m "Update cross-provider scene cleanup check [skip ci]" || exit 0
+          for attempt in 1 2 3; do
+            git pull --rebase origin main && git push && exit 0
+            sleep $((attempt * 2))
+          done
+          exit 1
