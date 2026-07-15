@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.14.4
+
+- blockierende vollständige Bildbereinigung aus dem Add-on-Start entfernt
+- Home-Assistant-Ingress und HTTP-Server werden sofort freigegeben
+- bestehende Hausakten werden erst nach dem Start gedrosselt im Hintergrund bereinigt
+- jede Hausakte wird in einem separaten Worker-Schritt verarbeitet, damit die Oberfläche erreichbar bleibt
+- manueller Bereinigungsbutton und automatische Bereinigung nach neuen Downloads bleiben erhalten
+- Starttest mit einer vorbereiteten Galerie aus 70 Bildern ergänzt
+- Add-on-Version auf 0.14.4 erhöht
+
 ## 0.14.3
 
 - Bildbereinigung erkennt nun auch redundante Aufnahmen desselben Raums mit leicht versetzter Kameraposition
