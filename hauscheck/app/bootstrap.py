@@ -55,6 +55,7 @@ from app.search_background_run import register_search_background_run
 from app.search_lifecycle import register_search_lifecycle
 from app.search_lifecycle_refresh import register_search_lifecycle_refresh
 from app.search_lifecycle_ui import register_search_lifecycle_ui
+from app.search_performance import register_search_performance
 from app.search_ui_patch import register_search_profile_patch
 from app.storage import init_storage
 from app.valuation_schema import register_valuation_schema
@@ -158,3 +159,5 @@ register_github_import_runtime_fix()
 register_search_background_run(app)
 # Gespeicherte Dashboardfilter werden ohne 307-Redirectschleife intern angewandt.
 register_dashboard_redirect_fix(app)
+# Finaler Suchablauf: keine Wrapper-Rekursion, gemeinsame Caches und genau eine Medienbereinigung.
+register_search_performance()
