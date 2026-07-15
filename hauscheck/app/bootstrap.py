@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.main import app
+from app.analysis_freshness_ui import register_analysis_freshness_ui
 from app.analysis_package import register_analysis_package
 from app.blank_query_fix import register_blank_query_fix
 from app.candidate_preimport_dedupe import register_candidate_preimport_dedupe
@@ -84,6 +85,8 @@ register_search_automation_ui(app)
 register_dashboard_automation_ui(app)
 # Formatiert Zeiten lokal und erweitert die Hausansicht um KI-Kaufpreis und Investitionsposten.
 register_valuation_ui(app)
+# Unterscheidet die letzte importierte Analyse eindeutig von einem neu ausstehenden Lauf.
+register_analysis_freshness_ui(app)
 # Hausakten im Fokus, Suche per Lupe, Profile unter Einstellungen und Ablehnungsarchiv.
 register_focused_ui(app)
 # Preisverlauf, Offline-/Wieder-online-Status, Profil löschen und Plus-Dialog.
