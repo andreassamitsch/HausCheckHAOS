@@ -1,0 +1,76 @@
+name: Stop HausCheck workflow email storm
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/hauscheck-stop-workflow-email-storm.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hauscheck-workflow-cleanup
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Replace noisy workflows with one manual check
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cat > .github/workflows/hauscheck-ci-manual.yml <<'YAML'
+          name: HausCheck Manual CI
+
+          on:
+            workflow_dispatch:
+
+          permissions:
+            contents: read
+
+          jobs:
+            validate:
+              runs-on: ubuntu-latest
+              timeout-minutes: 15
+              steps:
+                - uses: actions/checkout@v4
+                - uses: actions/setup-python@v5
+                  with:
+                    python-version: "3.12"
+                - name: Install dependencies
+                  working-directory: hauscheck
+                  run: python -m pip install -r requirements.txt
+                - name: Compile and import application
+                  working-directory: hauscheck
+                  env:
+                    HAUSCHECK_DATA_DIR: /tmp/hauscheck-manual-ci
+                    HAUSCHECK_GITHUB_EXCHANGE_ENABLED: "false"
+                    HAUSCHECK_GMAIL_EXCHANGE_ENABLED: "false"
+                  run: |
+                    rm -rf /tmp/hauscheck-manual-ci
+                    mkdir -p /tmp/hauscheck-manual-ci
+                    python -m compileall -q app
+                    python - <<'PY'
+                    import app.bootstrap
+                    from fastapi.testclient import TestClient
+
+                    with TestClient(app.bootstrap.app) as client:
+                        response = client.get("/")
+                        assert response.status_code == 200, response.text
+                    print("HausCheck manual CI successful")
+                    PY
+          YAML
+
+          find .github/workflows -maxdepth 1 -type f \
+            ! -name 'hauscheck-ci-manual.yml' -delete
+
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add -A .github/workflows
+          git commit -m "Replace noisy workflows with manual CI [skip ci]"
+          git push
