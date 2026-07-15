@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.14.3
+
+- Bildbereinigung erkennt nun auch redundante Aufnahmen desselben Raums mit leicht versetzter Kameraposition
+- tolerantere Szenenerkennung wird ausschließlich zwischen verschiedenen Inseratquellen angewandt
+- unterschiedliche Perspektiven innerhalb derselben Portalgalerie bleiben erhalten
+- überflüssige Bilddatensätze und lokale Dateien werden physisch entfernt
+- die mobile Smartphone-Galerie verwendet jetzt ebenfalls die gespeicherte Portalreihenfolge
+- sichtbare Aktion `Doppelte Bilder bereinigen` in jeder Hausakte ergänzt
+- vorhandene Bilder werden wegen der neuen Fingerprint-Version beim ersten Start vollständig neu geprüft
+- Add-on-Version auf 0.14.3 erhöht
+
 ## 0.14.2
 
 - portalübergreifende Bild-Deduplizierung für identische, neu komprimierte, verkleinerte und leicht zugeschnittene Fotos verbessert
