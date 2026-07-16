@@ -16,9 +16,10 @@ from app.analysis_request_guard import (
     force_new_analysis_request,
     load_latest_request,
     mark_latest_request_uploaded,
+    save_latest_request,
 )
 from app.pipeline_status import set_pipeline_stage
-from app.storage import get_house
+from app.storage import get_house, now_iso
 
 
 OPTIONS_PATH = Path("/data/options.json")
@@ -131,11 +132,24 @@ def _matching_local_analysis(house_id: str, request: dict[str, Any]) -> bool:
     return bool(request_id and str(analysis.get("analysis_request_id") or "") == request_id)
 
 
-async def auto_export_house_to_github(house_id: str, *, force: bool = False) -> bool:
-    """Exportiert nur bei fachlich neuem Inhalt.
+def _request_is_pending(house_id: str, request: dict[str, Any]) -> bool:
+    return bool(request.get("analysis_request_id") and request.get("uploaded_at") and not _matching_local_analysis(house_id, request))
 
-    Automatische Such-/Importpfade dürfen einen bereits hochgeladenen oder bereits analysierten
-    identischen Auftrag nicht ersetzen. Ein bewusster manueller Neustart verwendet ``force=True``.
+
+def _defer_refresh(house_id: str, active: dict[str, Any], proposed: dict[str, Any]) -> None:
+    deferred = dict(active)
+    deferred["refresh_after_current"] = True
+    deferred["deferred_at"] = now_iso()
+    deferred["deferred_content_fingerprint"] = proposed.get("content_fingerprint")
+    deferred["deferred_reason"] = "Automatische Aktualisierung während eines laufenden Analyseauftrags"
+    save_latest_request(house_id, deferred)
+
+
+async def auto_export_house_to_github(house_id: str, *, force: bool = False) -> bool:
+    """Exportiert nur fachlich neue Inhalte und ersetzt keine laufenden Auto-Aufträge.
+
+    Automatische Such-/Importpfade werden zusammengefasst. Ein bewusster manueller Neustart
+    verwendet ``force=True`` und darf einen laufenden Auftrag ausdrücklich ersetzen.
     """
     settings = load_auto_export_settings()
     if not settings.ready:
@@ -153,11 +167,37 @@ async def auto_export_house_to_github(house_id: str, *, force: bool = False) -> 
             print(f"HausCheck GitHub Auto-Export übersprungen: Hausakte nicht gefunden: {house_id}", flush=True)
             return False
 
+        active_request = load_latest_request(house_id) or {}
         context = force_new_analysis_request() if force else nullcontext()
         with context:
             zip_path = create_analysis_zip(house_id)
-        request = load_latest_request(house_id) or {}
+        proposed_request = load_latest_request(house_id) or {}
 
+        if not force and _request_is_pending(house_id, active_request):
+            active_id = str(active_request.get("analysis_request_id") or "")
+            proposed_id = str(proposed_request.get("analysis_request_id") or "")
+            if proposed_id != active_id:
+                _defer_refresh(house_id, active_request, proposed_request)
+                set_pipeline_stage(
+                    house_id,
+                    "waiting_analysis",
+                    "pending",
+                    "Eine Analyse läuft bereits. Neuere automatische Änderungen wurden vorgemerkt und ersetzen den laufenden Auftrag nicht.",
+                )
+                print(f"HausCheck GitHub Auto-Export vorgemerkt: laufender Auftrag bleibt gültig: {house_id}", flush=True)
+                return True
+            # Identischer Inhalt während eines laufenden Auftrags.
+            save_latest_request(house_id, active_request)
+            set_pipeline_stage(
+                house_id,
+                "waiting_analysis",
+                "pending",
+                "Ein inhaltlich identischer Analyseauftrag läuft bereits; kein neuer Export erzeugt.",
+            )
+            print(f"HausCheck GitHub Auto-Export übersprungen: identischer Auftrag läuft bereits: {house_id}", flush=True)
+            return True
+
+        request = proposed_request
         if not force and bool(request.get("reused")):
             if _matching_local_analysis(house_id, request):
                 set_pipeline_stage(
