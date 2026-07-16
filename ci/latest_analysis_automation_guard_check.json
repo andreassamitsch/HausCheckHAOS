@@ -1,0 +1,108 @@
+{
+  "status": "success",
+  "checks": {
+    "compileall": {
+      "ok": true,
+      "details": null
+    },
+    "first_upload": {
+      "ok": true,
+      "details": {
+        "uploads": 1,
+        "request": {
+          "kind": "hauscheck_analysis_request",
+          "version": 2,
+          "house_id": "f2f54038",
+          "analysis_request_id": "c09737deb1c24cbc9bf33a0b363c0523",
+          "created_at": "2026-07-16T05:33:17.567473+00:00",
+          "content_fingerprint": "9aba54ed66b601ca6f6f302132678722bc72ff515302fdf8ea47d6f67b3290e9",
+          "reused": false,
+          "uploaded_at": "2026-07-16T05:33:17.571790+00:00",
+          "github_path": "pending/f2f54038.zip"
+        }
+      }
+    },
+    "volatile_changes_reuse_request": {
+      "ok": true,
+      "details": {
+        "first": "c09737deb1c24cbc9bf33a0b363c0523",
+        "second": "c09737deb1c24cbc9bf33a0b363c0523"
+      }
+    },
+    "identical_auto_export_not_uploaded_twice": {
+      "ok": true,
+      "details": {
+        "uploads": 1
+      }
+    },
+    "running_request_not_replaced": {
+      "ok": true,
+      "details": {
+        "kind": "hauscheck_analysis_request",
+        "version": 2,
+        "house_id": "f2f54038",
+        "analysis_request_id": "c09737deb1c24cbc9bf33a0b363c0523",
+        "created_at": "2026-07-16T05:33:17.567473+00:00",
+        "content_fingerprint": "9aba54ed66b601ca6f6f302132678722bc72ff515302fdf8ea47d6f67b3290e9",
+        "reused": false,
+        "uploaded_at": "2026-07-16T05:33:17.571790+00:00",
+        "github_path": "pending/f2f54038.zip",
+        "refresh_after_current": true,
+        "deferred_at": "2026-07-16T05:33:17.585320+00:00",
+        "deferred_content_fingerprint": "c6a4559e15838513823528c0244697316b7c664e33d50d26afb857e9faddc06b",
+        "deferred_reason": "Automatische Aktualisierung während eines laufenden Analyseauftrags"
+      }
+    },
+    "changed_content_deferred": {
+      "ok": true,
+      "details": {
+        "kind": "hauscheck_analysis_request",
+        "version": 2,
+        "house_id": "f2f54038",
+        "analysis_request_id": "c09737deb1c24cbc9bf33a0b363c0523",
+        "created_at": "2026-07-16T05:33:17.567473+00:00",
+        "content_fingerprint": "9aba54ed66b601ca6f6f302132678722bc72ff515302fdf8ea47d6f67b3290e9",
+        "reused": false,
+        "uploaded_at": "2026-07-16T05:33:17.571790+00:00",
+        "github_path": "pending/f2f54038.zip",
+        "refresh_after_current": true,
+        "deferred_at": "2026-07-16T05:33:17.585320+00:00",
+        "deferred_content_fingerprint": "c6a4559e15838513823528c0244697316b7c664e33d50d26afb857e9faddc06b",
+        "deferred_reason": "Automatische Aktualisierung während eines laufenden Analyseauftrags"
+      }
+    },
+    "deferred_change_not_uploaded_immediately": {
+      "ok": true,
+      "details": {
+        "uploads": 1
+      }
+    },
+    "one_follow_up_after_result": {
+      "ok": true,
+      "details": {
+        "uploads": 2
+      }
+    },
+    "follow_up_has_new_request": {
+      "ok": true,
+      "details": {
+        "first": "c09737deb1c24cbc9bf33a0b363c0523",
+        "follow_up": "4ec8e079af72421e99634aa2af066967"
+      }
+    },
+    "manual_retry_forces_new_request": {
+      "ok": true,
+      "details": {
+        "before": "4ec8e079af72421e99634aa2af066967",
+        "after": "730995201a5d42ab83c5b499fe33775a"
+      }
+    },
+    "manual_retry_uploaded": {
+      "ok": true,
+      "details": {
+        "uploads": 3
+      }
+    }
+  },
+  "errors": []
+}
