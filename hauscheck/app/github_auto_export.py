@@ -4,13 +4,19 @@ import base64
 import json
 import os
 import re
+from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import httpx
 
-from app.analysis_package import create_analysis_zip
+from app.analysis_package import create_analysis_zip, load_analysis
+from app.analysis_request_guard import (
+    force_new_analysis_request,
+    load_latest_request,
+    mark_latest_request_uploaded,
+)
 from app.pipeline_status import set_pipeline_stage
 from app.storage import get_house
 
@@ -119,11 +125,17 @@ class GitHubAutoClient:
             response.raise_for_status()
 
 
-async def auto_export_house_to_github(house_id: str) -> bool:
-    """Best-effort Export nach GitHub direkt nach Inserat-Import.
+def _matching_local_analysis(house_id: str, request: dict[str, Any]) -> bool:
+    analysis = load_analysis(house_id) or {}
+    request_id = str(request.get("analysis_request_id") or "")
+    return bool(request_id and str(analysis.get("analysis_request_id") or "") == request_id)
 
-    Fehler blockieren bewusst nicht den eigentlichen Hausimport. Der persistente
-    Pipeline-Status macht den aktuellen Stand in der Hausakte sichtbar.
+
+async def auto_export_house_to_github(house_id: str, *, force: bool = False) -> bool:
+    """Exportiert nur bei fachlich neuem Inhalt.
+
+    Automatische Such-/Importpfade dürfen einen bereits hochgeladenen oder bereits analysierten
+    identischen Auftrag nicht ersetzen. Ein bewusster manueller Neustart verwendet ``force=True``.
     """
     settings = load_auto_export_settings()
     if not settings.ready:
@@ -140,10 +152,36 @@ async def auto_export_house_to_github(house_id: str) -> bool:
         if not house:
             print(f"HausCheck GitHub Auto-Export übersprungen: Hausakte nicht gefunden: {house_id}", flush=True)
             return False
+
+        context = force_new_analysis_request() if force else nullcontext()
+        with context:
+            zip_path = create_analysis_zip(house_id)
+        request = load_latest_request(house_id) or {}
+
+        if not force and bool(request.get("reused")):
+            if _matching_local_analysis(house_id, request):
+                set_pipeline_stage(
+                    house_id,
+                    "completed",
+                    "ok",
+                    "Der unveränderte Analyseinhalt wurde bereits bewertet; kein neuer Auftrag nötig.",
+                )
+                print(f"HausCheck GitHub Auto-Export übersprungen: identischer Auftrag bereits importiert: {house_id}", flush=True)
+                return True
+            if request.get("uploaded_at"):
+                set_pipeline_stage(
+                    house_id,
+                    "waiting_analysis",
+                    "pending",
+                    "Ein inhaltlich identischer Analyseauftrag läuft bereits; kein neuer Export erzeugt.",
+                )
+                print(f"HausCheck GitHub Auto-Export übersprungen: identischer Auftrag bereits hochgeladen: {house_id}", flush=True)
+                return True
+
         set_pipeline_stage(house_id, "exporting", "running", "Analysepaket wird erstellt und nach GitHub übertragen.")
-        zip_path = create_analysis_zip(house_id)
         target = f"{settings.export_path}/{house_id}.zip"
         await GitHubAutoClient(settings).put_file(target, zip_path.read_bytes(), f"HausCheck auto export {house_id}")
+        mark_latest_request_uploaded(house_id, target)
         set_pipeline_stage(
             house_id,
             "waiting_analysis",
