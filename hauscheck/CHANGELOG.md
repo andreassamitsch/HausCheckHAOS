@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.15.1
+
+- automatische Suchläufe erzeugen für inhaltlich identische Analysepakete keine neue Auftragskennung mehr
+- fachlicher Paket-Fingerprint ignoriert Zeitstempel, wechselnde Parser-Textausschnitte, Trackingparameter und ZIP-Metadaten
+- ein bereits hochgeladener oder bereits importierter identischer Auftrag wird nicht erneut nach GitHub übertragen
+- eine laufende Analyse wird durch spätere automatische Such- oder Quellenaktualisierungen nicht mehr ersetzt
+- echte Änderungen während eines laufenden Auftrags werden vorgemerkt und nach dem Ergebnis zu höchstens einem Folgeauftrag zusammengefasst
+- Feldnachweise werden semantisch verglichen; wechselnde Snippets und Whitespace gelten nicht mehr als neue Information
+- Bild-URL-Parameter gelten nicht mehr als neues Bild, sofern der stabile Bildinhalt beziehungsweise die kanonische URL gleich bleibt
+- der manuelle Button `Analyse erneut anstoßen` erzwingt weiterhin bewusst einen neuen Auftrag
+- Regressionstest des nächtlichen Automatismus vollständig erfolgreich
+- Add-on-Version auf 0.15.1 erhöht
+
 ## 0.15.0
 
 - gewachsene Such-Wrapper durch einen eindeutigen finalen Suchablauf ersetzt
