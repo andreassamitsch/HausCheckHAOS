@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.main import app
+from app.analysis_automation_guard import register_analysis_automation_guard
 from app.analysis_freshness_ui import register_analysis_freshness_ui
 from app.analysis_package import register_analysis_package
 from app.blank_query_fix import register_blank_query_fix
@@ -157,6 +158,8 @@ register_media_cleanup_policy()
 register_media_cleanup_ui(app)
 # GitHub-DELETE, verwaiste Ergebnisse und wiederholte Auto-Import-Fehler reparieren.
 register_github_import_runtime_fix()
+# Automatische Analyseexports sind inhaltlich idempotent; laufende Aufträge werden nicht ersetzt.
+register_analysis_automation_guard()
 # Der manuelle Suchknopf startet zuletzt registriert und blockiert die Oberfläche nicht.
 register_search_background_run(app)
 # Gespeicherte Dashboardfilter werden ohne 307-Redirectschleife intern angewandt.
