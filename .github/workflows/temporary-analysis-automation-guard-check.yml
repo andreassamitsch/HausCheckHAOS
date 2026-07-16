@@ -1,0 +1,156 @@
+name: Temporary silent analysis automation guard check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ci/analysis_automation_guard_trigger.txt"
+      - ".github/workflows/temporary-analysis-automation-guard-check.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        continue-on-error: true
+        run: python -m pip install -r hauscheck/requirements.txt
+      - name: Run guard regression checks
+        continue-on-error: true
+        env:
+          HAUSCHECK_DATA_DIR: /tmp/hauscheck-analysis-guard-test
+        run: |
+          set +e
+          rm -rf "$HAUSCHECK_DATA_DIR"
+          mkdir -p "$HAUSCHECK_DATA_DIR"
+          cd hauscheck
+          python - <<'PY' > /tmp/analysis-guard-check.log 2>&1
+          import asyncio
+          import json
+          import sys
+          import zipfile
+          from pathlib import Path
+
+          report = {"status": "running", "checks": {}, "errors": []}
+
+          def check(name, condition, details=None):
+              report["checks"][name] = {"ok": bool(condition), "details": details}
+              if not condition:
+                  raise AssertionError(f"{name}: {details}")
+
+          try:
+              import compileall
+              check("compileall", compileall.compile_dir("app", quiet=1))
+
+              import app.bootstrap  # noqa: F401
+              import app.analysis_package as analysis_package
+              import app.analysis_request_guard as guard
+              import app.github_auto_export as auto
+              import app.product_ui as product_ui
+              import app.storage as storage
+
+              house = storage.create_house({"title": "Guard test", "price_eur": 300000, "living_area_m2": 150})
+              house_id = str(house["id"])
+              state = {"description": "Stable description", "snippet": "Preis 300.000", "stamp": 1}
+
+              def base_export(target_house_id):
+                  target = storage.project_dir(target_house_id) / "exports" / "guard.zip"
+                  target.parent.mkdir(parents=True, exist_ok=True)
+                  with zipfile.ZipFile(target, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+                      zf.writestr("README_PROMPT.md", f"generated {state['stamp']}")
+                      zf.writestr("listing.json", json.dumps({
+                          "house": {"id": target_house_id, "price_eur": 300000, "updated_at": f"2026-01-01T00:00:0{state['stamp']}Z"},
+                          "sources": [{"source_name": "test", "source_url": "https://example.test/a?utm_source=x", "external_id": "a", "description": state["description"], "parser_status": "ok"}],
+                      }))
+                      zf.writestr("evidence.json", json.dumps({"evidence": [{"field_name": "price_eur", "value_text": "300000", "source_label": "test", "source_text_snippet": state["snippet"], "confidence": "high"}]}))
+                      zf.writestr("current_score.json", json.dumps({"score": 70}))
+                      zf.writestr("import_schema.json", json.dumps({"type": "object", "required": ["house_id"], "properties": {"house_id": {"const": target_house_id}}}))
+                      zf.writestr("images/01.jpg", b"same-image")
+                  return target
+
+              guard._ORIGINAL_CREATE_ZIP = base_export
+              auto.create_analysis_zip = guard.create_analysis_zip_with_request
+              uploads = []
+
+              class FakeSettings:
+                  ready = True
+                  enabled = True
+                  auto_export_on_import = True
+                  repo = "test/repo"
+                  branch = "main"
+                  token = "x"
+                  export_path = "pending"
+
+              class FakeClient:
+                  def __init__(self, settings):
+                      self.settings = settings
+                  async def put_file(self, path, content, message):
+                      uploads.append({"path": path, "message": message, "bytes": len(content)})
+
+              auto.load_auto_export_settings = lambda: FakeSettings()
+              auto.GitHubAutoClient = FakeClient
+
+              asyncio.run(auto.auto_export_house_to_github(house_id))
+              first = guard.load_latest_request(house_id)
+              check("first_upload", len(uploads) == 1 and first.get("uploaded_at"), {"uploads": len(uploads), "request": first})
+
+              state.update({"snippet": "  Preis   300.000  ", "stamp": 2})
+              asyncio.run(auto.auto_export_house_to_github(house_id))
+              second = guard.load_latest_request(house_id)
+              check("volatile_changes_reuse_request", second.get("analysis_request_id") == first.get("analysis_request_id"), {"first": first.get("analysis_request_id"), "second": second.get("analysis_request_id")})
+              check("identical_auto_export_not_uploaded_twice", len(uploads) == 1, {"uploads": len(uploads)})
+
+              state.update({"description": "Meaningfully changed description", "stamp": 3})
+              asyncio.run(auto.auto_export_house_to_github(house_id))
+              deferred = guard.load_latest_request(house_id)
+              check("running_request_not_replaced", deferred.get("analysis_request_id") == first.get("analysis_request_id"), deferred)
+              check("changed_content_deferred", bool(deferred.get("refresh_after_current")) and deferred.get("deferred_content_fingerprint"), deferred)
+              check("deferred_change_not_uploaded_immediately", len(uploads) == 1, {"uploads": len(uploads)})
+
+              analysis_package.save_analysis(house_id, {
+                  "house_id": house_id,
+                  "analysis_request_id": first["analysis_request_id"],
+                  "analysis_date": "2026-07-16T00:00:00+00:00",
+                  "new_score": 70,
+                  "confidence": "mittel",
+                  "summary": "done",
+                  "recommendation": "done",
+              })
+              asyncio.run(auto.auto_export_house_to_github(house_id))
+              follow_up = guard.load_latest_request(house_id)
+              check("one_follow_up_after_result", len(uploads) == 2, {"uploads": len(uploads)})
+              check("follow_up_has_new_request", follow_up.get("analysis_request_id") != first.get("analysis_request_id"), {"first": first.get("analysis_request_id"), "follow_up": follow_up.get("analysis_request_id")})
+
+              before_manual = follow_up.get("analysis_request_id")
+              asyncio.run(product_ui.auto_export_house_to_github(house_id))
+              manual = guard.load_latest_request(house_id)
+              check("manual_retry_forces_new_request", manual.get("analysis_request_id") != before_manual, {"before": before_manual, "after": manual.get("analysis_request_id")})
+              check("manual_retry_uploaded", len(uploads) == 3, {"uploads": len(uploads)})
+
+              report["status"] = "success"
+          except Exception as exc:
+              report["status"] = "failed"
+              report["errors"].append(f"{type(exc).__name__}: {exc}")
+              import traceback
+              report["traceback"] = traceback.format_exc()
+          finally:
+              Path("../ci").mkdir(exist_ok=True)
+              Path("../ci/latest_analysis_automation_guard_check.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+              print(json.dumps(report, ensure_ascii=False, indent=2))
+              sys.exit(0)
+          PY
+          cat /tmp/analysis-guard-check.log
+      - name: Publish report
+        if: always()
+        continue-on-error: true
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ci/latest_analysis_automation_guard_check.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Update analysis automation guard check [skip ci]"
+          git push
