@@ -1,0 +1,62 @@
+from __future__ import annotations
+
+from typing import Callable
+
+import app.modern_ui as modern_ui
+from app.storage import list_media, list_sources
+from app.ui_helpers import esc
+
+
+def register_mail_import_source_ui() -> None:
+    current: Callable[[str], str] = modern_ui._sources_html
+    if getattr(current, "_mail_import_source_ui_patched", False):
+        return
+
+    def sources_with_mail_import(house_id: str) -> str:
+        sources = list_sources(house_id)
+        if not any(str(source.get("source_url") or "").startswith("mail-import://") for source in sources):
+            return current(house_id)
+        if not sources:
+            return '<p class="muted">Keine Quelle gespeichert.</p>'
+
+        media = list_media(house_id)
+        cards: list[str] = []
+        for index, source in enumerate(reversed(sources), start=1):
+            source_id = str(source.get("id") or "")
+            url = str(source.get("source_url") or "")
+            if url.startswith("mail-import://"):
+                originals = [
+                    item
+                    for item in media
+                    if str(item.get("source_id") or "") == source_id
+                    and item.get("kind") == "email"
+                    and item.get("download_status") == "downloaded"
+                ]
+                original_links = "".join(
+                    f'<a class="button ghost" href="../media/{esc(item.get("id"))}" target="_blank">{modern_ui.icon("external")} Original-E-Mail öffnen</a>'
+                    for item in originals
+                )
+                cards.append(
+                    f"""
+                    <div class="source-card">
+                      <strong>E-Mail-/Dokumentquelle {index}: {esc(source.get('source_name') or 'Manueller Import')}</strong>
+                      <p class="muted">{esc(source.get('description') or 'Original-E-Mail, Anhänge und Feldherkunft wurden lokal archiviert.')}</p>
+                      <p class="muted">Importstatus {esc(source.get('parser_status') or 'partial')} · {esc(modern_ui.format_datetime(source.get('updated_at')))}</p>
+                      {original_links or '<span class="pill">Original in der Hausakte archiviert</span>'}
+                    </div>
+                    """
+                )
+            else:
+                cards.append(
+                    f"""
+                    <div class="source-card">
+                      <strong>Inserat {index}: {esc(source.get('source_name') or 'Quelle')}</strong>
+                      <p class="muted">ID {esc(source.get('external_id') or '–')} · zuletzt gelesen {esc(modern_ui.format_datetime(source.get('updated_at')))}</p>
+                      <a class="button ghost" href="{esc(url)}" target="_blank">{modern_ui.icon('external')} Inserat öffnen</a>
+                    </div>
+                    """
+                )
+        return '<div class="grid">' + "".join(cards) + "</div>"
+
+    setattr(sources_with_mail_import, "_mail_import_source_ui_patched", True)
+    modern_ui._sources_html = sources_with_mail_import
