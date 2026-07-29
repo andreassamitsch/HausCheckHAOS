@@ -131,6 +131,9 @@ def _relax_import_page(response: Any) -> Any:
 
 
 def register_mail_import_android_fix(app: FastAPI) -> None:
+    if getattr(app.state, "mail_import_android_fix_registered", False):
+        return
+
     import_endpoint = _take_route(app, "/import", "GET")
     preview_endpoint = _take_route(app, "/import/mail/preview", "POST")
     if import_endpoint is None or preview_endpoint is None:
@@ -145,3 +148,5 @@ def register_mail_import_android_fix(app: FastAPI) -> None:
         for upload in files:
             await _normalize_upload_filename(upload)
         return await _call(preview_endpoint, files=files)
+
+    app.state.mail_import_android_fix_registered = True
