@@ -3,11 +3,17 @@ from __future__ import annotations
 from typing import Callable
 
 import app.modern_ui as modern_ui
+from app.mail_import_android_fix import register_mail_import_android_fix
+from app.main import app
 from app.storage import list_media, list_sources
 from app.ui_helpers import esc
 
 
 def register_mail_import_source_ui() -> None:
+    # Wird direkt nach register_mail_import(app) aufgerufen und ersetzt dessen
+    # Android-inkompatiblen Dateifilter durch eine sichere Inhaltsprüfung.
+    register_mail_import_android_fix(app)
+
     current: Callable[[str], str] = modern_ui._sources_html
     if getattr(current, "_mail_import_source_ui_patched", False):
         return
