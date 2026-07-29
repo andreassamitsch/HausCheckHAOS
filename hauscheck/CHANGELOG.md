@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.16.1
+
+- Android-/Home-Assistant-Dateidialog für den manuellen Import nicht mehr auf unzuverlässige MIME-Filter beschränkt
+- Gmail-E-Mails werden als `.eml` auch bei `application/octet-stream`, `text/plain`, fehlender Dateiendung oder generischem Android-Dateityp erkannt
+- Dateiinhalt wird vor dem Import sicher geprüft; nicht unterstützte Dateien bleiben abgelehnt
+- mehrere E-Mails, PDFs und Bilder können weiterhin gemeinsam importiert werden
+- Regressionstests für EML-, PDF-, JPEG- und PNG-Erkennung ergänzt
+- Add-on-Version auf 0.16.1 erhöht
+
+## 0.16.0
+
+- Hausakten können aus mehreren heruntergeladenen Gmail-Nachrichten (`.eml`), PDFs und Bildern angelegt werden
+- E-Mail-Text, PDF-Anhänge und eingebettete Bilder werden automatisch extrahiert
+- erkannte Objektdaten werden vor dem Speichern mit Feldherkunft und Konflikthinweisen angezeigt
+- Original-E-Mails, Dokumente und Bilder werden in der Hausakte archiviert
+- doppelte Anhänge und Bilder werden anhand ihres Inhalts erkannt
+- bestehende KI-Analyse kann nach dem Import automatisch gestartet werden
+- Add-on-Version auf 0.16.0 erhöht
+
 ## 0.15.1
 
 - automatische Suchläufe erzeugen für inhaltlich identische Analysepakete keine neue Auftragskennung mehr
