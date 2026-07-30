@@ -5,6 +5,7 @@ from typing import Callable
 import app.modern_ui as modern_ui
 from app.mail_import_android_fix import register_mail_import_android_fix
 from app.mail_inbox import register_mail_inbox
+from app.mail_inbox_error_handling import register_mail_inbox_error_handling
 from app.mail_inbox_route_fix import register_mail_inbox_route_fix
 from app.main import app
 from app.storage import list_media, list_sources
@@ -25,6 +26,9 @@ def register_mail_import_source_ui() -> None:
     # Relative Formular- und Kartenpfade werden an den tatsächlichen Ingress-Pfad
     # gebunden, damit sie mit und ohne abschließenden Schrägstrich funktionieren.
     register_mail_inbox_route_fix(app)
+    # Erwartbare IMAP-, Login- und Netzwerkfehler werden im Posteingang verständlich
+    # angezeigt und erzeugen keinen unbrauchbaren HTTP-500-Fehler mehr.
+    register_mail_inbox_error_handling(app)
     # Letzte UI-Erweiterung: Home-Assistant-App-Store bei Bedarf direkt neu laden.
     register_supervisor_update_refresh(app)
 

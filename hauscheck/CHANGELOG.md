@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.17.3
+
+- erwartbare IMAP-Anmelde-, Netzwerk-, DNS- und TLS-Fehler erzeugen keinen `Internal Server Error` mehr
+- Gmail-Fehler `AUTHENTICATIONFAILED Invalid credentials` wird im Posteingang mit konkretem Hinweis auf das 16-stellige Google-App-Passwort angezeigt
+- normales Google-Passwort und vollständige Gmail-Adresse werden in der Hilfemeldung eindeutig voneinander abgegrenzt
+- technische Fehler bleiben im Add-on-Protokoll sichtbar, ohne Zugangsdaten offenzulegen
+- Regressionstests für Gmail-Anmeldefehler, DNS-Fehler und sichere Fehlermeldungen ergänzt
+- Add-on-Version auf 0.17.3 erhöht
+
 ## 0.17.2
 
 - Home-Assistant-App-Store kann direkt aus HausCheck unter `Einstellungen → HausCheck-Updates` neu geladen werden
