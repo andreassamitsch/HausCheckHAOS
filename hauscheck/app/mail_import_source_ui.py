@@ -8,6 +8,7 @@ from app.mail_inbox import register_mail_inbox
 from app.mail_inbox_route_fix import register_mail_inbox_route_fix
 from app.main import app
 from app.storage import list_media, list_sources
+from app.supervisor_update_refresh import register_supervisor_update_refresh
 from app.ui_helpers import esc
 
 
@@ -24,6 +25,8 @@ def register_mail_import_source_ui() -> None:
     # Relative Formular- und Kartenpfade werden an den tatsächlichen Ingress-Pfad
     # gebunden, damit sie mit und ohne abschließenden Schrägstrich funktionieren.
     register_mail_inbox_route_fix(app)
+    # Letzte UI-Erweiterung: Home-Assistant-App-Store bei Bedarf direkt neu laden.
+    register_supervisor_update_refresh(app)
 
     current: Callable[[str], str] = modern_ui._sources_html
     if getattr(current, "_mail_import_source_ui_patched", False):

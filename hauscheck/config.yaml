@@ -1,5 +1,5 @@
 name: "HausCheck Pro"
-version: "0.17.1"
+version: "0.17.2"
 slug: "hauscheck"
 description: "Persönlicher Immobilien-Assistent für Home Assistant"
 url: "https://github.com/andreassamitsch/HausCheckHAOS"
@@ -14,6 +14,8 @@ ingress: true
 ingress_port: 8088
 panel_icon: mdi:home-search
 panel_title: HausCheck
+hassio_api: true
+hassio_role: manager
 ports:
   8088/tcp: null
 ports_description:
