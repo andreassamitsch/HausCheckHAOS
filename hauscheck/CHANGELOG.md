@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.17.2
+
+- Home-Assistant-App-Store kann direkt aus HausCheck unter `Einstellungen → HausCheck-Updates` neu geladen werden
+- neue Releases werden damit sichtbar, ohne auf den zeitgesteuerten Repository-Check zu warten
+- Supervisor-Zugriff ist ausschließlich für den offiziellen Endpunkt `/store/reload` vorgesehen
+- verbindlicher Release-Guard prüft Versionsnummer, Changelog, Syntax, Tests und den veröffentlichten `main`-Stand
+- Release-Ablauf und Ursache des wiederholten scheinbaren Updatefehlers dauerhaft im Repository dokumentiert
+- Add-on-Version auf 0.17.2 erhöht
+
 ## 0.17.1
 
 - `Postfach jetzt prüfen` verwendet unter Home-Assistant-Ingress wieder den korrekten POST-Endpunkt
@@ -86,7 +95,7 @@
 - erfolgreich importierte Analyseergebnisse bleiben nicht mehr in `results/pending` hängen
 - Ergebnisse für bereits gelöschte Hausakten werden einmalig nach `results/done/orphaned` verschoben statt alle fünf Minuten erneut Fehler zu erzeugen
 - zugehörige veraltete Export-ZIPs werden beim Aufräumen ebenfalls entfernt
-- manueller Suchlauf startet als Hintergrundauftrag und blockiert die App-Oberfläche nicht mehr bis zum Ende aller Portal- und Detailabfragen
+- manueller Suchlauf startet als Hintergrundauftrag und blockiert die Oberfläche nicht mehr bis zum Ende aller Portal- und Detailabfragen
 - wiederholtes Antippen startet keinen zweiten parallelen Lauf desselben Suchprofils
 - gespeicherte Dashboardfilter werden ohne 307-Redirect angewandt; die Startseite antwortet unter Home-Assistant-Ingress direkt mit HTTP 200
 - Add-on-Version auf 0.14.8 erhöht
