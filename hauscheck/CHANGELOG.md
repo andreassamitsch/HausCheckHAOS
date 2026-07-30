@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.17.1
+
+- `Postfach jetzt prüfen` verwendet unter Home-Assistant-Ingress wieder den korrekten POST-Endpunkt
+- E-Mail-Karten öffnen unabhängig von einem abschließenden Schrägstrich die richtige Nachricht
+- `Zuordnen`, `Ignorieren` und die Rückkehr zum Posteingang behalten Ingress-Präfix und Nachrichten-ID bei
+- Regressionstests für alle Posteingangs- und Detailaktionen ergänzt
+- Add-on-Version auf 0.17.1 erhöht
+
 ## 0.17.0
 
 - eigener IMAP-Posteingang für weitergeleitete Hausunterlagen ergänzt
