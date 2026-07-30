@@ -4,15 +4,22 @@ from typing import Callable
 
 import app.modern_ui as modern_ui
 from app.mail_import_android_fix import register_mail_import_android_fix
+from app.mail_inbox import register_mail_inbox
 from app.main import app
 from app.storage import list_media, list_sources
 from app.ui_helpers import esc
+
+
+MAIL_SOURCE_SCHEMES = ("mail-import://", "mail-inbox://")
 
 
 def register_mail_import_source_ui() -> None:
     # Wird direkt nach register_mail_import(app) aufgerufen und ersetzt dessen
     # Android-inkompatiblen Dateifilter durch eine sichere Inhaltsprüfung.
     register_mail_import_android_fix(app)
+    # Der Posteingang wird bewusst erst nach dem manuellen Import registriert,
+    # damit er dessen finale Importseite ergänzt statt eine Parallel-UI zu bauen.
+    register_mail_inbox(app)
 
     current: Callable[[str], str] = modern_ui._sources_html
     if getattr(current, "_mail_import_source_ui_patched", False):
@@ -20,7 +27,7 @@ def register_mail_import_source_ui() -> None:
 
     def sources_with_mail_import(house_id: str) -> str:
         sources = list_sources(house_id)
-        if not any(str(source.get("source_url") or "").startswith("mail-import://") for source in sources):
+        if not any(str(source.get("source_url") or "").startswith(MAIL_SOURCE_SCHEMES) for source in sources):
             return current(house_id)
         if not sources:
             return '<p class="muted">Keine Quelle gespeichert.</p>'
@@ -30,7 +37,7 @@ def register_mail_import_source_ui() -> None:
         for index, source in enumerate(reversed(sources), start=1):
             source_id = str(source.get("id") or "")
             url = str(source.get("source_url") or "")
-            if url.startswith("mail-import://"):
+            if url.startswith(MAIL_SOURCE_SCHEMES):
                 originals = [
                     item
                     for item in media
@@ -42,12 +49,13 @@ def register_mail_import_source_ui() -> None:
                     f'<a class="button ghost" href="../media/{esc(item.get("id"))}" target="_blank">{modern_ui.icon("external")} Original-E-Mail öffnen</a>'
                     for item in originals
                 )
+                source_kind = "Posteingang" if url.startswith("mail-inbox://") else "Manueller Import"
                 cards.append(
                     f"""
                     <div class="source-card">
-                      <strong>E-Mail-/Dokumentquelle {index}: {esc(source.get('source_name') or 'Manueller Import')}</strong>
+                      <strong>E-Mail-/Dokumentquelle {index}: {esc(source.get('source_name') or source_kind)}</strong>
                       <p class="muted">{esc(source.get('description') or 'Original-E-Mail, Anhänge und Feldherkunft wurden lokal archiviert.')}</p>
-                      <p class="muted">Importstatus {esc(source.get('parser_status') or 'partial')} · {esc(modern_ui.format_datetime(source.get('updated_at')))}</p>
+                      <p class="muted">{esc(source_kind)} · Importstatus {esc(source.get('parser_status') or 'partial')} · {esc(modern_ui.format_datetime(source.get('updated_at')))}</p>
                       {original_links or '<span class="pill">Original in der Hausakte archiviert</span>'}
                     </div>
                     """

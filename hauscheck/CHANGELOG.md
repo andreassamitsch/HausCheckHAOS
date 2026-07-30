@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.17.0
+
+- eigener IMAP-Posteingang für weitergeleitete Hausunterlagen ergänzt
+- neue E-Mails werden lokal als Original-EML archiviert und mit Anhängen, Bildern und erkannten Objektdaten aufbereitet
+- ausdrücklich keine automatische Zuordnung und keine automatische Hausakte: jede E-Mail wartet im Bereich `E-Mail-Posteingang` auf eine manuelle Entscheidung
+- E-Mail kann einer bestehenden Hausakte zugeordnet, als neue Hausakte angelegt oder ignoriert werden
+- nach der manuellen Zuordnung können Dokumente, Bilder, Feldnachweise und die bestehende KI-Analyse übernommen beziehungsweise aktualisiert werden
+- doppelte Nachrichten werden anhand von Message-ID beziehungsweise Inhalts-Hash erkannt
+- IMAP-Server, Postfach, Passwort, Ordner, Abrufintervall und Gelesen-Markierung sind in den Add-on-Einstellungen konfigurierbar
+- Add-on-Version auf 0.17.0 erhöht
+
 ## 0.16.1
 
 - Android-/Home-Assistant-Dateidialog für den manuellen Import nicht mehr auf unzuverlässige MIME-Filter beschränkt
