@@ -5,6 +5,7 @@ from typing import Callable
 import app.modern_ui as modern_ui
 from app.mail_import_android_fix import register_mail_import_android_fix
 from app.mail_inbox import register_mail_inbox
+from app.mail_inbox_route_fix import register_mail_inbox_route_fix
 from app.main import app
 from app.storage import list_media, list_sources
 from app.ui_helpers import esc
@@ -20,6 +21,9 @@ def register_mail_import_source_ui() -> None:
     # Der Posteingang wird bewusst erst nach dem manuellen Import registriert,
     # damit er dessen finale Importseite ergänzt statt eine Parallel-UI zu bauen.
     register_mail_inbox(app)
+    # Relative Formular- und Kartenpfade werden an den tatsächlichen Ingress-Pfad
+    # gebunden, damit sie mit und ohne abschließenden Schrägstrich funktionieren.
+    register_mail_inbox_route_fix(app)
 
     current: Callable[[str], str] = modern_ui._sources_html
     if getattr(current, "_mail_import_source_ui_patched", False):
