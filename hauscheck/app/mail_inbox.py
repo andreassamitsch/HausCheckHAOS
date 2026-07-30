@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import html as html_lib
 import imaplib
 import inspect
 import json
@@ -144,6 +145,34 @@ def _message_header(message: Message, name: str) -> str:
     return re.sub(r"\s+", " ", str(message.get(name, "") or "")).strip()
 
 
+def _body_preview(message: Message, max_chars: int = 12000) -> str:
+    plain: list[str] = []
+    rich: list[str] = []
+    parts = message.walk() if message.is_multipart() else [message]
+    for part in parts:
+        if part.get_content_maintype() == "multipart" or part.get_filename():
+            continue
+        content_type = part.get_content_type()
+        if content_type not in {"text/plain", "text/html"}:
+            continue
+        try:
+            value = part.get_content()
+        except Exception:
+            value = ""
+        if not isinstance(value, str) or not value.strip():
+            continue
+        if content_type == "text/plain":
+            plain.append(value)
+        else:
+            text = re.sub(r"(?is)<(script|style).*?>.*?</\\1>", " ", value)
+            text = re.sub(r"(?s)<[^>]+>", " ", text)
+            rich.append(html_lib.unescape(text))
+    result = "\n\n".join(plain or rich)
+    result = re.sub(r"\r\n?", "\n", result)
+    result = re.sub(r"\n{3,}", "\n\n", result).strip()
+    return result[:max_chars]
+
+
 def _message_meta(message: Message, raw_hash: str, imap_id: str) -> dict[str, Any]:
     message_id = _message_header(message, "Message-ID").strip("<>")
     return {
@@ -154,6 +183,7 @@ def _message_meta(message: Message, raw_hash: str, imap_id: str) -> dict[str, An
         "recipient": _message_header(message, "To"),
         "message_date": _message_header(message, "Date"),
         "message_id": message_id,
+        "body_preview": _body_preview(message),
         "imap_id": imap_id,
         "content_hash": raw_hash,
         "received_at": now_iso(),
@@ -240,6 +270,8 @@ def _imap_fetch_sync(settings: MailInboxSettings) -> dict[str, Any]:
                 message = BytesParser(policy=policy.default).parsebytes(raw)
                 subject = _message_header(message, "Subject").upper()
                 if "HAUSCHECK_RESULT" in subject or "HAUSCHECK_EXPORT" in subject:
+                    if settings.mark_seen:
+                        imap.store(message_number, "+FLAGS", "\\Seen")
                     continue
 
                 meta, created = _capture_raw_message(raw, imap_id)
@@ -435,6 +467,10 @@ def _detail_page(item_id: str, meta: dict[str, Any], manifest: dict[str, Any]) -
       <p><strong>Betreff:</strong> {esc(meta.get('subject'))}</p>
       <p><strong>Absender:</strong> {esc(meta.get('sender'))}</p>
       <p><strong>Datum:</strong> {esc(meta.get('message_date') or meta.get('received_at'))}</p>
+      <details class="section" open>
+        <summary><strong>E-Mail-Text</strong></summary>
+        <pre style="white-space:pre-wrap;overflow-wrap:anywhere">{esc(meta.get('body_preview') or 'Kein lesbarer E-Mail-Text erkannt.')}</pre>
+      </details>
     </div>
     <div class="card section">
       <h2>Manuell zuordnen</h2>
@@ -616,6 +652,10 @@ def _add_inbox_to_import_page(response: Any) -> Any:
 
 
 def register_mail_inbox(app: FastAPI) -> None:
+    if getattr(app.state, "mail_inbox_registered", False):
+        return
+    app.state.mail_inbox_registered = True
+
     import_endpoint = _take_route(app, "/import", "GET")
 
     if import_endpoint is not None:
