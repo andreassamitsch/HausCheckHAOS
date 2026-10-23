@@ -179,16 +179,14 @@ def _hero_src(house: dict[str, Any]) -> str:
     images = _ordered_images(str(house.get("id") or ""))
     selected = str(house.get("preview_media_id") or "")
     portal_preview = str(house.get("preview_image_url") or "").strip()
-    if selected and images:
-        return f'../media/{esc(images[0].get("id"))}'
-    if portal_preview:
-        for image in images:
-            if str(image.get("original_url") or "").strip() == portal_preview:
-                return f'../media/{esc(image.get("id"))}'
-        return esc(portal_preview)
     if images:
+        if not selected and portal_preview:
+            for image in images:
+                if str(image.get("original_url") or "").strip() == portal_preview:
+                    return f'../media/{esc(image.get("id"))}'
+        # Never prefer a hotlink to an already downloaded gallery image.
         return f'../media/{esc(images[0].get("id"))}'
-    return ""
+    return esc(portal_preview) if portal_preview.startswith(("https://", "http://")) else ""
 
 
 def _score_value(house: dict[str, Any]) -> int:
