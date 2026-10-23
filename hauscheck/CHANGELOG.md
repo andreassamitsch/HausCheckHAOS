@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.17.4
+
+- Hausaktenübersicht verwendet bevorzugt vorhandene lokale Galeriebilder statt externer Makler-Bildlinks, die im Browser oft blockiert werden
+- manuell gewähltes Titelbild hat Vorrang; falls nicht gesetzt, wird die lokal gespeicherte Portal-Vorschau beziehungsweise ein anderes verfügbares Galeriebild verwendet
+- fehlende oder nicht zulässige lokale Bilddateien werden übersprungen; externe Bilder werden nur ohne lokales Bild als Rückfall verwendet
+- dieselbe Priorisierung korrigiert das Titelbild im Hausaktenkopf
+- Regressionstests für lokale Vorschaubilder, Titelbild-Priorität und Hotlink-Rückfall ergänzt
+- Add-on-Version auf 0.17.4 erhöht
+
 ## 0.17.3
 
 - erwartbare IMAP-Anmelde-, Netzwerk-, DNS- und TLS-Fehler erzeugen keinen `Internal Server Error` mehr
