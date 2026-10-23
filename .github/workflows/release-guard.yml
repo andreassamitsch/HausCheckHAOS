@@ -93,6 +93,7 @@ jobs:
           python hauscheck/tests/test_supervisor_update_refresh.py
           python hauscheck/tests/test_mail_inbox_route_fix.py
           python hauscheck/tests/test_mail_inbox.py
+          python hauscheck/tests/test_dashboard_preview.py
 
       - name: Verify published main version
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
