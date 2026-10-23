@@ -439,6 +439,19 @@ def set_preview_media(house_id: str, media_id: str | None) -> None:
         con.commit()
 
 
+def _is_available_local_image(item: dict[str, Any]) -> bool:
+    """Use only gallery images that the local /media route can actually serve."""
+    raw_path = str(item.get("local_path") or "").strip()
+    if not raw_path:
+        return False
+    path = Path(raw_path)
+    try:
+        path.resolve().relative_to(PROJECTS_DIR.resolve())
+    except ValueError:
+        return False
+    return path.is_file()
+
+
 def _selected_image_items(house_id: str) -> list[dict[str, Any]]:
     house = get_house(house_id) or {}
     selected = str(house.get("preview_media_id") or "")
@@ -447,7 +460,7 @@ def _selected_image_items(house_id: str) -> list[dict[str, Any]]:
         for item in list_media(house_id)
         if item.get("kind") == "image"
         and item.get("download_status") == "downloaded"
-        and item.get("local_path")
+        and _is_available_local_image(item)
     ]
     items.sort(
         key=lambda item: (
@@ -459,23 +472,28 @@ def _selected_image_items(house_id: str) -> list[dict[str, Any]]:
 
 
 def preview_for_dashboard(house: dict[str, Any]) -> str:
+    """Prefer the working local gallery over potentially blocked broker hotlinks."""
     house_id = str(house.get("id") or "")
     selected = str(house.get("preview_media_id") or "")
-    if selected:
-        media = get_media(selected)
-        if (
-            media
-            and str(media.get("house_id") or "") == house_id
-            and media.get("kind") == "image"
-            and media.get("download_status") == "downloaded"
-        ):
-            return f'<img src="media/{esc(selected)}" alt="Ausgewähltes Vorschaubild">'
     preview_url = str(house.get("preview_image_url") or "").strip()
-    if preview_url:
-        return f'<img src="{esc(preview_url)}" alt="Vorschaubild">'
     items = _selected_image_items(house_id)
+
     if items:
-        return f'<img src="media/{esc(items[0].get("id"))}" alt="Hausbild">'
+        # The explicitly chosen local cover has first priority (sort order above).
+        chosen = items[0]
+        if not selected and preview_url:
+            # A portal cover that was already downloaded should also stay local.
+            chosen = next(
+                (item for item in items if str(item.get("original_url") or "").strip() == preview_url),
+                chosen,
+            )
+        media_id = esc(chosen.get("id"))
+        alt = "Ausgewähltes Vorschaubild" if selected == str(chosen.get("id") or "") else "Hausbild"
+        return f'<img src="media/{media_id}" alt="{alt}" loading="lazy">'
+
+    # Only when no usable local image exists should a remote thumbnail be tried.
+    if preview_url.startswith(("https://", "http://")):
+        return f'<img src="{esc(preview_url)}" alt="Vorschaubild" loading="lazy">'
     return '<div class="listing-no-image">Noch kein Bild</div>'
 
 
