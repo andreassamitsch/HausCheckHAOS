@@ -156,7 +156,7 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
         args = parse_qs(parsed.query)
         if path == "/health":
-            return self.json_reply(200, {"ok": True, "version": "0.2.2",
+            return self.json_reply(200, {"ok": True, "version": "0.2.3",
                                          "player_client": CLIENT,
                                          "api_auth": True})
         stream = VIDEO_RE.fullmatch(path)
@@ -244,7 +244,8 @@ class Handler(BaseHTTPRequestHandler):
                     track, selected_by_search = results[0], True
                 # Warm the short-lived audio URL before instructing the Cast receiver.
                 resolve_source(track["video_id"])
-                result = PLAYER.start(track, radio=bool(body.get("radio", False)))
+                result = PLAYER.start(track, radio=bool(body.get("radio", False)),
+                                      volume=body.get("volume_level", 0.07))
                 result["selected_by_search"] = selected_by_search
             elif path == "/api/queue":
                 if isinstance(body.get("tracks"), list):
@@ -367,6 +368,6 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    LOG.info("server_started version=0.2.2 player_client=%s player=%s",
+    LOG.info("server_started version=0.2.3 player_client=%s player=%s",
              CLIENT, PLAYER.entity_id)
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever(poll_interval=0.25)
