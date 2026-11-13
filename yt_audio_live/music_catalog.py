@@ -115,7 +115,7 @@ class Catalog:
             raw = self.api.get_playlist(playlist_id, limit=max(1, min(int(limit), 200)))
         tracks = [t for r in raw.get("tracks", []) if (t := normalize_track(r)) is not None]
         return {"playlist_id": playlist_id, "title": str(raw.get("title") or playlist_id),
-                "tracks": tracks}
+                "tracks": tracks[:max(1, min(int(limit), 200))]}
 
     def library_playlists(self, limit=30):
         if not self.authenticated:
