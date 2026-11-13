@@ -8,6 +8,8 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError
 
 import yt_dlp
 
@@ -15,7 +17,11 @@ LOG = logging.getLogger("yt_audio_live")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 VIDEO_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
 PORT = 8765
-VIDEO_ID = json.load(open("/data/options.json", encoding="utf-8")).get("video_id", "")
+APP_OPTIONS = json.load(open("/data/options.json", encoding="utf-8"))
+VIDEO_ID = APP_OPTIONS.get("video_id", "")
+CLIENT = APP_OPTIONS.get("player_client", "web_embedded")
+if CLIENT not in ("web_embedded", "tv", "web_safari", "mweb", "android_vr"):
+    raise SystemExit("Unsupported player_client")
 if not isinstance(VIDEO_ID, str) or not VIDEO_RE.fullmatch(VIDEO_ID):
     raise SystemExit("Invalid video_id; expected an 11-character YouTube video ID")
 
@@ -33,7 +39,8 @@ def resolve_source():
             "quiet": True,
             "no_warnings": True,
             "noplaylist": True,
-            "format": "18/bestaudio/best",
+            "format": "bestaudio/best",
+            "extractor_args": {"youtube": {"player_client": [CLIENT]}},
             "skip_download": True,
             "socket_timeout": 12,
             "retries": 1,
@@ -49,7 +56,8 @@ def resolve_source():
             raise RuntimeError("No HTTPS media URL returned by yt-dlp")
         headers = info.get("http_headers", {}) or {}
         SOURCE_CACHE.update(url=url, headers=headers, time=time.monotonic())
-        LOG.info("resolved_format id=%s ext=%s protocol=%s",
+        LOG.info("resolved_format client=%s id=%s ext=%s protocol=%s",
+                 CLIENT,
                  info.get("format_id"), info.get("ext"), info.get("protocol"))
         LOG.info("source_resolved id=%s latency_ms=%d title=%r",
                  VIDEO_ID, (time.monotonic() - t0) * 1000, info.get("title"))
@@ -85,6 +93,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def handle_request(self, head):
         path = urlsplit(self.path).path
+        if path == "/probe":
+            return self.probe_source()
         if path == "/health":
             return self.respond_json(200, {
                 "ok": True, "video_id": VIDEO_ID, "mode": "live-mp3",
@@ -102,6 +112,28 @@ class Handler(BaseHTTPRequestHandler):
             self.stream_audio()
         finally:
             STREAM_LOCK.release()
+
+    def probe_source(self):
+        t0 = time.monotonic()
+        try:
+            url, headers = resolve_source()
+            probe_headers = {k: v for k, v in headers.items()
+                             if isinstance(v, str) and "\r" not in v and "\n" not in v}
+            probe_headers["Range"] = "bytes=0-1023"
+            with urlopen(Request(url, headers=probe_headers), timeout=15) as response:
+                data = response.read(1024)
+                status = response.status
+                mime = response.headers.get("Content-Type", "")
+            return self.respond_json(200, {"client": CLIENT, "http_status": status,
+                        "content_type": mime, "bytes_received": len(data),
+                        "elapsed_ms": int((time.monotonic()-t0)*1000)})
+        except HTTPError as exc:
+            LOG.warning("source_probe_failed client=%s code=%s", CLIENT, exc.code)
+            return self.respond_json(200, {"client": CLIENT, "http_status": exc.code,
+                        "elapsed_ms": int((time.monotonic()-t0)*1000)})
+        except Exception as exc:
+            LOG.warning("source_probe_error client=%s error=%s", CLIENT, type(exc).__name__)
+            return self.respond_json(502, {"client": CLIENT, "error": type(exc).__name__})
 
     def stream_audio(self):
         started = time.monotonic()
@@ -176,5 +208,5 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    LOG.info("starting fixed_video_id=%s port=%d", VIDEO_ID, PORT)
+    LOG.info("starting fixed_video_id=%s client=%s port=%d", VIDEO_ID, CLIENT, PORT)
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever(poll_interval=0.25)
