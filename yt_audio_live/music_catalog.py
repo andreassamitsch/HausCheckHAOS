@@ -66,7 +66,9 @@ def normalize_track(item):
 def normalize_playlist(item):
     if not isinstance(item, dict):
         return None
-    pid = item.get("playlistId") or item.get("id")
+    pid = item.get("playlistId") or item.get("id") or item.get("browseId")
+    if isinstance(pid, str) and pid.startswith("VL"):
+        pid = pid[2:]
     if not isinstance(pid, str) or not PLAYLIST_ID_RE.fullmatch(pid):
         return None
     return {"playlist_id": pid, "title": str(item.get("title") or pid),
@@ -98,7 +100,14 @@ class Catalog:
         with self.lock:
             raw = self.api.search(query.strip(), filter=kind, limit=count)
         normalize = normalize_playlist if kind == "playlists" else normalize_track
-        return [t for r in raw if (t := normalize(r)) is not None][:count]
+        tracks = [t for r in raw if (t := normalize(r)) is not None][:count]
+        if kind == "songs" and not tracks:
+            # Some guest sessions return an empty "songs" shelf but valid music videos.
+            with self.lock:
+                fallback = self.api.search(query.strip(), filter="videos", limit=count)
+            tracks = [t for r in fallback if (t := normalize_track(r)) is not None][:count]
+            LOG.info("song_search_fallback kind=videos count=%d", len(tracks))
+        return tracks
 
     def playlist(self, playlist_id, limit=100):
         checked_playlist_id(playlist_id)
