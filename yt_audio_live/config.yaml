@@ -1,6 +1,6 @@
 name: "YouTube Audio Live Proxy (Test)"
 slug: "yt_audio_live"
-version: "0.1.2"
+version: "0.1.3"
 description: "Local single-video YouTube audio streaming test for Google Cast"
 arch:
   - amd64

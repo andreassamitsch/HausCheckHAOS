@@ -33,7 +33,7 @@ def resolve_source():
             "quiet": True,
             "no_warnings": True,
             "noplaylist": True,
-            "format": "bestaudio/best",
+            "format": "18/bestaudio/best",
             "skip_download": True,
             "socket_timeout": 12,
             "retries": 1,
