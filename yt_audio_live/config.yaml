@@ -1,19 +1,28 @@
-name: "YouTube Audio Live Proxy (Test)"
+name: "YouTube Music Live (Test)"
 slug: "yt_audio_live"
-version: "0.1.5"
-description: "Local single-video YouTube audio streaming test for Google Cast"
+version: "0.2.0"
+description: "YouTube Music search, playback queue, playlists and radio for HA Cast"
 arch:
   - amd64
 startup: services
 boot: manual
 init: false
+homeassistant_api: true
 ports:
   8765/tcp: 8765
 ports_description:
-  8765/tcp: "Local audio stream; never forward this port on your router"
+  8765/tcp: "Local LAN music server. Do not forward this port from the internet."
 options:
   video_id: "tba_zo_8ye4"
   player_client: "visionos"
+  player_entity: "media_player.ultra_slim_soundbar"
+  stream_base_url: "http://192.168.1.66:8765"
+  api_key: ""
+  ytmusic_auth_json: ""
 schema:
   video_id: str
-  player_client: list(visionos|web_embedded|tv|tv_samsung|web_safari|mweb|android_vr)
+  player_client: list(visionos|mweb|web_embedded|web_safari|tv)
+  player_entity: str
+  stream_base_url: str
+  api_key: password
+  ytmusic_auth_json: password
