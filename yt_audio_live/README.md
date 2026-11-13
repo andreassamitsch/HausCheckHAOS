@@ -1,51 +1,90 @@
-# YouTube Audio Live Proxy (Test)
+# YouTube Music Live for Home Assistant OS
 
-A small Home Assistant OS App for testing low-latency playback of a **single preconfigured** YouTube video as a live MP3 stream on a Google Cast speaker. It does not download the whole video first.
+Local music playback for a Samsung Ultra Slim Soundbar via Home Assistant
+Google Cast. This app intentionally separates the YouTube Music catalog
+(ytmusicapi) from audio-stream extraction (yt-dlp + FFmpeg).
 
-## Configuration
+## Confirmed on 13 November 2026
 
-The App option video_id is the 11-character YouTube video ID. Initially this App is configured for tba_zo_8ye4 (Nowhere Land). It does not expose an arbitrary-URL endpoint.
+- YouTube client: visionos. It resolved the HTTP 403 problems observed
+  with android_vr, web_embedded and tv on the test video.
+- Public catalog search (including fallback from songs to videos), public
+  playlist search, playlist item retrieval and YouTube Music radio work.
+- Starting an exact video by ID works via Home Assistant Cast.
+- Playlist playback works, and the next songs and radio suggestions are
+  added to an in-memory queue.
+- The soundbar reported playing at volume 0.07 (7%).
+- Actual automatic transitions at the natural end of a song are not yet
+  fully verified; they rely on the media player changing from playing
+  to idle after it finishes playback.
 
-- App host port: 8765 TCP, **local network only**. Never set up router port forwarding.
-- GET /health returns a short JSON status.
-- GET /stream/<video_id>.mp3 streams audio/mpeg with HTTP chunked transfer.
-- Only one simultaneous stream is permitted.
-- The App starts only when manually started, does not alter Home Assistant configuration, and can be uninstalled.
+## Setup
 
-## Test with Home Assistant
+Home Assistant Settings -> Apps -> YouTube Music Live (Test).
 
-First set media_player.ultra_slim_soundbar volume to 0.07 (7%). Then use media_player.play_media with:
+App options:
+- player_client: visionos
+- player_entity: media_player.ultra_slim_soundbar
+- stream_base_url: http://192.168.1.66:8765
+- api_key: a secret random 32+ character key (already set on the test install)
+- ytmusic_auth_json: optional YouTube Music browser credentials
 
-- Entity: media_player.ultra_slim_soundbar (Google Cast, not Alexa)
-- media_content_id: http://<HOME_ASSISTANT_LAN_IP>:8765/stream/tba_zo_8ye4.mp3
-- media_content_type: audio/mpeg
+Do not forward port 8765 on the router. Control endpoints require the
+X-API-Key header or Authorization Bearer token. Stream links are signed
+and expire after one hour. Keep credentials and tokens out of GitHub.
 
-Verify actual playback and stop after the test with media_player.media_stop.
+## API
 
-The App logs source_resolved and first_audio_bytes times. These are **not** the same as audible start latency. Note that some Google Cast receivers may reject chunked MP3 streams. YouTube extraction may stop working when YouTube changes.
+The following endpoints require API authentication.
 
-## Requirements
+GET /api/auth                         account connection status
+GET /api/search?q=...&kind=songs      song search (fallback to videos)
+GET /api/search?q=...&kind=playlists  public playlist search
+GET /api/playlist?id=...&limit=100    playlist preview
+GET /api/library                      own library playlists (requires account)
+GET /api/recommendations?video_id=... radio/mix preview
+GET /api/status                       current title, queue, radio status
+GET /api/probe?video_id=...           diagnostic 1024-byte source test
 
-Home Assistant OS amd64, outgoing access to YouTube, a LAN-connected Cast speaker. The container installs FFmpeg, Node.js >=22 (the Alpine package), yt-dlp and its default external JavaScript solver dependencies. This App is a proof of concept and has **no authentication** on the LAN port. Use only for streams that you are authorized to access.
+POST /api/play      {"video_id":"tba_zo_8ye4","radio":true}
+POST /api/play      {"query":"Gigi D Agostino Nowhere Land","radio":true}
+POST /api/queue     {"video_id":"<YouTube video ID>"}
+POST /api/queue     {"query":"song or artist"}
+POST /api/playlist  {"playlist_id":"<playlist ID>","shuffle":false,"radio_after":true}
+POST /api/radio     {"enabled":true}
+POST /api/radio     {"video_id":"<video ID>","start_now":true,"enabled":true}
+POST /api/next      {}
+POST /api/stop      {}
+POST /api/pause     {}
+POST /api/resume    {}
 
-## Tested YouTube 403 fix (13 Nov 2026)
+Queries with a title automatically play the first search result. To avoid
+unwanted versions, use /api/search and then play an exact video ID.
 
-The original default extraction returned video URLs, but Google Video Server rejected media GET requests with HTTP 403.
-Both WebM/Opus format 251 and progressive MP4 format 18 failed. The web_embedded client also received 403; tv returned a yt-dlp DownloadError.
+## Optional YouTube Music sign-in
 
-**Confirmed working for video ID tba_zo_8ye4:**
-- Set the App option player_client to visionos (version 0.1.5 and later).
-- yt-dlp extracts WebM/Opus format 251 using the VisionOS Innertube client.
-- /probe successfully fetched 1024 audio bytes with HTTP 206 in approximately 2.4 seconds.
-- FFmpeg produced audio/mpeg, first output bytes in 257 ms on a warm source cache.
-- Proxy delivered about 5.5 MB with exit_code=0; Samsung Cast entity reached playing at 7% volume.
-- Total time to audible start was not directly measured.
+Unregistered catalog searches, playlists and radio work without a login.
+To access personal playlists, ytmusicapi browser authentication is supported.
+On your own computer, sign into music.youtube.com and copy the request
+headers from an authenticated network /browse request, as explained by
+https://ytmusicapi.readthedocs.io/en/stable/setup/browser.html .
+Provide the header dictionary in JSON form in the HA App's private
+ytmusic_auth_json option and restart the App. Then verify /api/auth and
+/api/library. Never paste cookies or authorization headers in chat or
+GitHub. Personal catalog login does not guarantee access to restricted
+yt-dlp playback streams.
 
-The /probe endpoint is diagnostic: it extracts a source and fetches 1024 bytes.
-It returns only client, HTTP status, content type and timing, without exposing signed URLs.
-The 90-second source cache is warmed by the probe.
+## Design and limitations
 
-YouTube client requirements change. If VisionOS stops working, see https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide .
-A BgUtils GVS PO-token provider with the mweb client is the maintainer-recommended fallback.
+music_catalog.py  ytmusicapi lookup/playlist/radio adapter
+playback.py       Home Assistant media-player control, queue and auto-next
+server.py         authenticated HTTP API, yt-dlp/FFmpeg streaming
+Dockerfile        Python, FFmpeg, Node, yt-dlp, ytmusicapi
 
-This app exposes a fixed test video, not a general music search API; it remains in manual boot mode until hardened for normal use.
+The app uses the supervisor's Home Assistant API permission solely to
+control its configured media_player. All app requests remain local.
+
+The app keeps its queue in RAM; restarting clears it. Radio playback
+relies on the Cast state changing to idle at a song's end. yt-dlp's
+visionos client currently works but YouTube may change its enforcement
+of PO tokens. This is an unofficial integration; follow YouTube's terms.
