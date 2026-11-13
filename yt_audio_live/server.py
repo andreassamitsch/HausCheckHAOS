@@ -108,7 +108,7 @@ class Handler(BaseHTTPRequestHandler):
     server_version = "HAYouTubeMusic/0.2"
 
     def log_message(self, fmt, *args):
-        clean = re.sub(r"\\?exp=[0-9]+&sig=[a-f0-9]{64}", "?signed", fmt % args)
+        clean = re.sub(r"\?exp=[0-9]+&sig=[a-f0-9]{64}", "?signed", fmt % args)
         LOG.info("client=%s %s", self.client_address[0], clean)
 
     def json_reply(self, status, value):
