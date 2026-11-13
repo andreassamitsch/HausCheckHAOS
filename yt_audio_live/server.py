@@ -49,6 +49,8 @@ def resolve_source():
             raise RuntimeError("No HTTPS media URL returned by yt-dlp")
         headers = info.get("http_headers", {}) or {}
         SOURCE_CACHE.update(url=url, headers=headers, time=time.monotonic())
+        LOG.info("resolved_format id=%s ext=%s protocol=%s",
+                 info.get("format_id"), info.get("ext"), info.get("protocol"))
         LOG.info("source_resolved id=%s latency_ms=%d title=%r",
                  VIDEO_ID, (time.monotonic() - t0) * 1000, info.get("title"))
         return url, headers
@@ -125,7 +127,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             proc = subprocess.Popen(
                 command, stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0,
             )
         except OSError as exc:
             LOG.error("ffmpeg_failed %s", exc)
@@ -162,6 +164,13 @@ class Handler(BaseHTTPRequestHandler):
                     proc.kill()
                     proc.wait()
             proc.stdout.close()
+            if proc.stderr:
+                err = proc.stderr.read(2000).decode("utf-8", "replace")
+                proc.stderr.close()
+                if err and proc.returncode:
+                    clean = re.sub(r"https?://\S+", "[redacted-url]", err)
+                    LOG.warning("ffmpeg_diagnostic code=%s message=%r",
+                                proc.returncode, clean[:700])
             LOG.info("stream_ended bytes=%d duration_ms=%d exit_code=%s",
                      total, (time.monotonic() - started) * 1000, proc.returncode)
 
