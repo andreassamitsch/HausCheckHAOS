@@ -27,3 +27,25 @@ The App logs source_resolved and first_audio_bytes times. These are **not** the 
 ## Requirements
 
 Home Assistant OS amd64, outgoing access to YouTube, a LAN-connected Cast speaker. The container installs FFmpeg, Node.js >=22 (the Alpine package), yt-dlp and its default external JavaScript solver dependencies. This App is a proof of concept and has **no authentication** on the LAN port. Use only for streams that you are authorized to access.
+
+## Tested YouTube 403 fix (13 Nov 2026)
+
+The original default extraction returned video URLs, but Google Video Server rejected media GET requests with HTTP 403.
+Both WebM/Opus format 251 and progressive MP4 format 18 failed. The web_embedded client also received 403; tv returned a yt-dlp DownloadError.
+
+**Confirmed working for video ID tba_zo_8ye4:**
+- Set the App option player_client to visionos (version 0.1.5 and later).
+- yt-dlp extracts WebM/Opus format 251 using the VisionOS Innertube client.
+- /probe successfully fetched 1024 audio bytes with HTTP 206 in approximately 2.4 seconds.
+- FFmpeg produced audio/mpeg, first output bytes in 257 ms on a warm source cache.
+- Proxy delivered about 5.5 MB with exit_code=0; Samsung Cast entity reached playing at 7% volume.
+- Total time to audible start was not directly measured.
+
+The /probe endpoint is diagnostic: it extracts a source and fetches 1024 bytes.
+It returns only client, HTTP status, content type and timing, without exposing signed URLs.
+The 90-second source cache is warmed by the probe.
+
+YouTube client requirements change. If VisionOS stops working, see https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide .
+A BgUtils GVS PO-token provider with the mweb client is the maintainer-recommended fallback.
+
+This app exposes a fixed test video, not a general music search API; it remains in manual boot mode until hardened for normal use.
