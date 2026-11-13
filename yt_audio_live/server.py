@@ -20,7 +20,7 @@ PORT = 8765
 APP_OPTIONS = json.load(open("/data/options.json", encoding="utf-8"))
 VIDEO_ID = APP_OPTIONS.get("video_id", "")
 CLIENT = APP_OPTIONS.get("player_client", "web_embedded")
-if CLIENT not in ("web_embedded", "tv", "web_safari", "mweb", "android_vr"):
+if CLIENT not in ("visionos", "web_embedded", "tv", "tv_samsung", "web_safari", "mweb", "android_vr"):
     raise SystemExit("Unsupported player_client")
 if not isinstance(VIDEO_ID, str) or not VIDEO_RE.fullmatch(VIDEO_ID):
     raise SystemExit("Invalid video_id; expected an 11-character YouTube video ID")
