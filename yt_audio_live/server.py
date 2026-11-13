@@ -108,7 +108,8 @@ class Handler(BaseHTTPRequestHandler):
     server_version = "HAYouTubeMusic/0.2"
 
     def log_message(self, fmt, *args):
-        LOG.info("client=%s " + fmt, self.client_address[0], *args)
+        clean = re.sub(r"\\?exp=[0-9]+&sig=[a-f0-9]{64}", "?signed", fmt % args)
+        LOG.info("client=%s %s", self.client_address[0], clean)
 
     def json_reply(self, status, value):
         data = json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode()
@@ -155,7 +156,7 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
         args = parse_qs(parsed.query)
         if path == "/health":
-            return self.json_reply(200, {"ok": True, "version": "0.2.1",
+            return self.json_reply(200, {"ok": True, "version": "0.2.2",
                                          "player_client": CLIENT,
                                          "api_auth": True})
         stream = VIDEO_RE.fullmatch(path)
@@ -366,6 +367,6 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    LOG.info("server_started version=0.2.1 player_client=%s player=%s",
+    LOG.info("server_started version=0.2.2 player_client=%s player=%s",
              CLIENT, PLAYER.entity_id)
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever(poll_interval=0.25)
