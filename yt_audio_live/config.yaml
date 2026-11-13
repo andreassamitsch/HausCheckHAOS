@@ -1,0 +1,17 @@
+name: "YouTube Audio Live Proxy (Test)"
+slug: "yt_audio_live"
+version: "0.1.1"
+description: "Local single-video YouTube audio streaming test for Google Cast"
+arch:
+  - amd64
+startup: services
+boot: manual
+init: false
+ports:
+  8765/tcp: 8765
+ports_description:
+  8765/tcp: "Local audio stream; never forward this port on your router"
+options:
+  video_id: "tba_zo_8ye4"
+schema:
+  video_id: str
