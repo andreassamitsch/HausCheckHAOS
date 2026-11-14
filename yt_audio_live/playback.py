@@ -91,6 +91,34 @@ class Playback:
             self.queue.extend(items)
             return self.status()
 
+    def queue_remove(self, index):
+        if type(index) is not int:
+            raise ValueError("index must be an integer")
+        with self.lock:
+            if index < 0 or index >= len(self.queue):
+                raise ValueError("queue index is out of range")
+            items = list(self.queue)
+            items.pop(index)
+            self.queue = deque(items)
+            return self.status()
+
+    def queue_move(self, from_index, to_index):
+        if type(from_index) is not int or type(to_index) is not int:
+            raise ValueError("queue indices must be integers")
+        with self.lock:
+            items = list(self.queue)
+            if not 0 <= from_index < len(items) or not 0 <= to_index < len(items):
+                raise ValueError("queue index is out of range")
+            item = items.pop(from_index)
+            items.insert(to_index, item)
+            self.queue = deque(items)
+            return self.status()
+
+    def queue_clear(self):
+        with self.lock:
+            self.queue.clear()
+            return self.status()
+
     def start(self, track, rest=(), radio=False):
         first = self._minimal_track(track)
         rest = [self._minimal_track(t) for t in rest][:199]
