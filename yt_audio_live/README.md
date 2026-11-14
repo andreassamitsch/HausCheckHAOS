@@ -50,6 +50,9 @@ POST /api/play      {"video_id":"tba_zo_8ye4","radio":true}
 POST /api/play      {"query":"Gigi D Agostino Nowhere Land","radio":true}
 POST /api/queue     {"video_id":"<YouTube video ID>"}
 POST /api/queue     {"query":"song or artist"}
+POST /api/queue/remove  {"index":0}                  remove queued track (0-based)
+POST /api/queue/move    {"from_index":1,"to_index":0} reorder upcoming tracks
+POST /api/queue/clear   {}                           clear upcoming tracks only
 POST /api/playlist  {"playlist_id":"<playlist ID>","shuffle":false,"radio_after":true}
 POST /api/radio     {"enabled":true}
 POST /api/radio     {"video_id":"<video ID>","start_now":true,"enabled":true}
