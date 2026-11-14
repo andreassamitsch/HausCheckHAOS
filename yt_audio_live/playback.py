@@ -32,7 +32,6 @@ class Playback:
         self.playing_seen = False
         self.last_player_state = "unknown"
         self.last_error = None
-        self.volume_level = 0.07
         self.generation = 0
         self._poller = threading.Thread(target=self._poll, name="cast-monitor", daemon=True)
         self._poller.start()
@@ -68,7 +67,6 @@ class Playback:
                 "cast_seen_playing": self.playing_seen,
                 "last_error": self.last_error,
                 "player_entity": self.entity_id,
-                "volume_level": self.volume_level,
             }
 
     @staticmethod
@@ -93,15 +91,12 @@ class Playback:
             self.queue.extend(items)
             return self.status()
 
-    def start(self, track, rest=(), radio=False, volume=0.07):
-        if isinstance(volume, bool) or not isinstance(volume, (float, int)) or not (0.0 <= float(volume) <= 0.07):
-            raise ValueError("volume must be between 0.0 and 0.07")
+    def start(self, track, rest=(), radio=False):
         first = self._minimal_track(track)
         rest = [self._minimal_track(t) for t in rest][:199]
         with self.lock:
             self.generation += 1
             gen = self.generation
-            self.volume_level = float(volume)
             self.queue = deque(rest)
             self.current = first
             self.seen = deque([first["video_id"]], maxlen=250)
@@ -124,7 +119,6 @@ class Playback:
     def _play(self, track, generation):
         LOG.info("starting_track video_id=%s title=%r", track["video_id"], track["title"])
         url = self.stream_url(track["video_id"])
-        self._service("volume_set", {"volume_level": self.volume_level})
         self._service("play_media", {"media_content_id": url,
                                      "media_content_type": "audio/mpeg"})
         with self.lock:
