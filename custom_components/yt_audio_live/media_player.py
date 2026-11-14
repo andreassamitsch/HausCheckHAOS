@@ -48,9 +48,11 @@ class YTMusicPlayer(YTMusicEntity, MediaPlayerEntity):
             return MediaPlayerState.PLAYING
         if cast == "paused":
             return MediaPlayerState.PAUSED
-        if status.get("current"):
-            return MediaPlayerState.IDLE
-        return MediaPlayerState.OFF
+        if cast == "off":
+            return MediaPlayerState.OFF
+        if cast in ("starting", "buffering"):
+            return MediaPlayerState.BUFFERING
+        return MediaPlayerState.IDLE if status.get("current") else MediaPlayerState.OFF
 
     @property
     def media_title(self) -> str | None:
