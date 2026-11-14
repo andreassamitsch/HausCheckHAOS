@@ -244,8 +244,7 @@ class Handler(BaseHTTPRequestHandler):
                     track, selected_by_search = results[0], True
                 # Warm the short-lived audio URL before instructing the Cast receiver.
                 resolve_source(track["video_id"])
-                result = PLAYER.start(track, radio=bool(body.get("radio", False)),
-                                      volume=body.get("volume_level", 0.07))
+                result = PLAYER.start(track, radio=bool(body.get("radio", False)))
                 result["selected_by_search"] = selected_by_search
             elif path == "/api/queue":
                 if isinstance(body.get("tracks"), list):
