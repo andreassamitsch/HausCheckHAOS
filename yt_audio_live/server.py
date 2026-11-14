@@ -156,7 +156,7 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
         args = parse_qs(parsed.query)
         if path == "/health":
-            return self.json_reply(200, {"ok": True, "version": "0.2.5",
+            return self.json_reply(200, {"ok": True, "version": "0.2.6",
                                          "player_client": CLIENT,
                                          "api_auth": True})
         stream = VIDEO_RE.fullmatch(path)
@@ -191,12 +191,6 @@ class Handler(BaseHTTPRequestHandler):
                 vid = checked_video_id((args.get("video_id") or [""])[0])
                 result = {"video_id": vid, "tracks": CATALOG.radio(
                     vid, limit=int((args.get("limit") or ["15"])[0]))}
-            elif path == "/api/queue/remove":
-                result = PLAYER.queue_remove(body.get("index"))
-            elif path == "/api/queue/move":
-                result = PLAYER.queue_move(body.get("from_index"), body.get("to_index"))
-            elif path == "/api/queue/clear":
-                result = PLAYER.queue_clear()
             elif path == "/api/playlist":
                 result = CATALOG.playlist(
                     (args.get("id") or [""])[0],
@@ -266,6 +260,12 @@ class Handler(BaseHTTPRequestHandler):
                         raise ValueError("No matching song found")
                     tracks = [matches[0]]
                 result = PLAYER.enqueue(tracks)
+            elif path == "/api/queue/remove":
+                result = PLAYER.queue_remove(body.get("index"))
+            elif path == "/api/queue/move":
+                result = PLAYER.queue_move(body.get("from_index"), body.get("to_index"))
+            elif path == "/api/queue/clear":
+                result = PLAYER.queue_clear()
             elif path == "/api/playlist":
                 playlist_id = checked_playlist_id(body.get("playlist_id"))
                 playlist = CATALOG.playlist(playlist_id,
@@ -373,6 +373,6 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    LOG.info("server_started version=0.2.5 player_client=%s player=%s",
+    LOG.info("server_started version=0.2.6 player_client=%s player=%s",
              CLIENT, PLAYER.entity_id)
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever(poll_interval=0.25)
