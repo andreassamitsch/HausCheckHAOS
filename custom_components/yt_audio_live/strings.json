@@ -1,0 +1,23 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "YouTube Music Live",
+        "description": "Connect the local YouTube Music Live app. The API key is in Home Assistant → Settings → Apps → YouTube Music Live → Configuration.",
+        "data": {
+          "url": "Base URL",
+          "api_key": "API key"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to the music app",
+      "invalid_auth": "Invalid API key",
+      "invalid_url": "Use a valid http:// or https:// address without credentials",
+      "invalid_response": "The endpoint is not the YouTube Music Live API"
+    },
+    "abort": {
+      "already_configured": "This endpoint is already configured"
+    }
+  }
+}
