@@ -21,8 +21,8 @@ This integration intentionally offers no volume controls.
 Copy this folder to Home Assistant as
 `config/custom_components/yt_audio_live/`, then restart Home Assistant.
 Go to **Settings → Devices & Services → Add Integration → YouTube Music Live**.
-Enter the app URL (on HAOS usually `http://127.0.0.1:8765`, or your HA host's
-LAN IP and port 8765) and the app's `api_key` from its private configuration.
+Enter the app URL (on HAOS usually `http://01c80471-yt-audio-live:8765` via Supervisor DNS,
+or your HA host's LAN IP and port 8765) and the app's `api_key` from its private configuration.
 Do not publish the key; it is kept in Home Assistant's config entry.
 
 The integration polls the authenticated app `GET /api/status` every 5 seconds.
