@@ -1,6 +1,6 @@
 name: "YouTube Music Live (Test)"
 slug: "yt_audio_live"
-version: "0.2.4"
+version: "0.2.5"
 description: "YouTube Music search, playback queue, playlists and radio for HA Cast"
 arch:
   - amd64
