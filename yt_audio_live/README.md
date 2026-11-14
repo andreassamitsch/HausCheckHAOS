@@ -13,7 +13,7 @@ Google Cast. This app intentionally separates the YouTube Music catalog
 - Starting an exact video by ID works via Home Assistant Cast.
 - Playlist playback works, and the next songs and radio suggestions are
   added to an in-memory queue.
-- The soundbar reported playing at volume 0.07 (7%).
+- Music starts without sending a volume change; the soundbar manages its own level.
 - Actual automatic transitions at the natural end of a song are not yet
   fully verified; they rely on the media player changing from playing
   to idle after it finishes playback.
