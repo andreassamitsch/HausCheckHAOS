@@ -9,6 +9,7 @@ import voluptuous as vol
 from aiohttp import ClientError
 
 from homeassistant import config_entries
+from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import YTMusicAPIError, YTMusicAuthError, YTMusicClient
@@ -25,7 +26,7 @@ class YTMusicFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             url = str(user_input["url"]).strip().rstrip("/")
             parsed = urlsplit(url)
-            if parsed.scheme not in ("http", "https") or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
+            if parsed.scheme not in ("http", "https") or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment or parsed.path not in ("", "/"):
                 errors["base"] = "invalid_url"
             else:
                 try:
@@ -53,7 +54,9 @@ class YTMusicFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema(
                 {
                     vol.Required("url", default=DEFAULT_URL): str,
-                    vol.Required(CONF_API_KEY): str,
+                    vol.Required(CONF_API_KEY): selector.TextSelector(
+                        selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)
+                    ),
                 }
             ),
             errors=errors,
