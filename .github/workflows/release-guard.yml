@@ -94,6 +94,7 @@ jobs:
           python hauscheck/tests/test_mail_inbox_route_fix.py
           python hauscheck/tests/test_mail_inbox.py
           python hauscheck/tests/test_gmail_export_guard.py
+          python hauscheck/tests/test_new_listing_email.py
           python hauscheck/tests/test_dashboard_preview.py
 
       - name: Verify published main version
