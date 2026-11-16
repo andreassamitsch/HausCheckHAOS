@@ -1,5 +1,5 @@
 name: "HausCheck Pro"
-version: "0.17.4"
+version: "0.17.5"
 slug: "hauscheck"
 description: "Persönlicher Immobilien-Assistent für Home Assistant"
 url: "https://github.com/andreassamitsch/HausCheckHAOS"
@@ -55,7 +55,7 @@ options:
   mail_inbox_interval_minutes: 2
   mail_inbox_mark_seen: true
   gmail_exchange_enabled: false
-  gmail_auto_send_on_import: true
+  gmail_auto_send_on_import: false
   gmail_auto_import_results: true
   gmail_import_interval_minutes: 5
   gmail_smtp_host: "smtp.gmail.com"
