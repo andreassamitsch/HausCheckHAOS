@@ -6,7 +6,6 @@ from fastapi import FastAPI, Form, HTTPException
 from fastapi.responses import RedirectResponse
 
 from app.github_auto_export import auto_export_house_to_github
-from app.gmail_exchange import send_analysis_zip_via_gmail
 from app.house_manage import set_house_preview
 from app.main import download_pending_media_files, fetch_html, parse_listing
 from app.pipeline_status import set_pipeline_stage
@@ -137,8 +136,6 @@ async def import_listing_to_pipeline(url: str, preview_image_url: str | None = N
         )
 
         await auto_export_house_to_github(house_id)
-        # Gmail bleibt aus Kompatibilitätsgründen im Hintergrund verfügbar, ist standardmäßig deaktiviert.
-        await send_analysis_zip_via_gmail(house_id)
         return {"house": get_house(house_id) or house, "created": True}
     except Exception as exc:
         if house_id:
