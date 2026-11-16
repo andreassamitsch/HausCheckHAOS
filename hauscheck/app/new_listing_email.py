@@ -65,6 +65,10 @@ def ensure_notification_schema() -> None:
 
 
 def _listing_key(url: str) -> str:
+    provider = listing_sources.provider_for_url(url)
+    external_id = listing_sources.external_id_for_url(url)
+    if external_id:
+        return f"{provider}:{external_id}".lower()
     return listing_sources.canonical_listing_url(url).strip().lower()
 
 
