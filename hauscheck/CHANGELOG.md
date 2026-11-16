@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.17.6
+
+- Separater optionaler E-Mail-Alarm für erstmals gefundene passende oder prüfenswerte Immobilieninserate ergänzt
+- Jede Benachrichtigung enthält Titel, direkt anklickbaren Inseratslink, Preis/Flächen und bis zu zwei eingebettete Vorschaubilder aus bereits vorhandenen Suchdaten; bei blockierten Bildern bleibt der Link erhalten
+- Versandhistorie pro kanonischer Inserats-URL wird dauerhaft gespeichert: keine Wiederholung bei Folgesuchen, Preisänderung oder erneutem Onlinegehen, auch nicht profilübergreifend
+- Zustellung nach SMTP-Fehlern mit 15 Minuten Wiederholsperre; bereits verschickte Mails werden nicht erneut versendet
+- Neue Einstellung `new_listing_email_enabled` (standardmäßig aus); bestehende Gmail-SMTP-Zugangsdaten werden wiederverwendet
+- Automatische `HAUSCHECK_EXPORT`-Analyse-Mails bleiben weiterhin gesperrt, GitHub-Analyse läuft unverändert
+- Regressionstests für Neu-/Alt-Kandidaten, Filter, Duplikate, Mailinhalt, Bilder und Versandwiederholung ergänzt
+
+
 ## 0.17.5
 
 - Wiederholte automatische `HAUSCHECK_EXPORT`-E-Mails bei erneut gefundenen/aktualisierten Immobilien unterbunden
