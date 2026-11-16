@@ -31,6 +31,7 @@ from app.import_patch import register_import_patch
 from app.ingress_link_fix import register_ingress_link_fix
 from app.live_filter_pan import register_live_filter_pan
 from app.mail_import import register_mail_import
+from app.new_listing_email import register_new_listing_email
 from app.mail_import_source_ui import register_mail_import_source_ui
 from app.media_cleanup_policy import register_media_cleanup_policy
 from app.media_cleanup_ui import register_media_cleanup_ui
@@ -172,6 +173,8 @@ register_search_performance()
 register_search_performance_extra()
 # Ein finaler Runner bewahrt Peisser-Lifecycle und überspringt Bildprüfung ohne Vergleichsbestand.
 register_search_runtime_final()
+# Neue Angebote genau einmal per E-Mail melden; alte KI-Export-Mails bleiben abgeschaltet.
+register_new_listing_email()
 # Ersetzt abschließend nur die Import-Auswahl und ergänzt E-Mail-, PDF- und Bildimport.
 register_mail_import(app)
 # Stellt manuell importierte E-Mails als lokale Quellen mit öffnbarem Original dar.
