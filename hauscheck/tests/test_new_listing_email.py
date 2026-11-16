@@ -112,8 +112,11 @@ class NewListingEmailTests(unittest.TestCase):
         msg = alerts._build_notification_mail(settings, data, [("eins.jpg", b"a"), ("zwei.jpg", b"b")])
         self.assertIn("Neues Inserat:", msg["Subject"])
         self.assertNotIn("HAUSCHECK_EXPORT", msg["Subject"])
-        self.assertIn(data["url"], str(msg))
-        self.assertIn("275.000", str(msg))
+        plain_text = next(part.get_content() for part in msg.walk() if part.get_content_type() == "text/plain")
+        html_text = next(part.get_content() for part in msg.walk() if part.get_content_type() == "text/html")
+        self.assertIn(data["url"], plain_text)
+        self.assertIn(data["url"], html_text)
+        self.assertIn("275.000", plain_text)
         self.assertEqual(2, sum(part.get_content_type() == "image/jpeg" for part in msg.walk()))
 
     def test_converts_image_to_small_jpeg(self) -> None:
