@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.17.5
+
+- Wiederholte automatische `HAUSCHECK_EXPORT`-E-Mails bei erneut gefundenen/aktualisierten Immobilien unterbunden
+- Neue und aktualisierte Inserate starten weiterhin nur den bestehenden idempotenten GitHub-Analyseauftrag; doppelte unveränderte Aufträge bleiben gesperrt
+- Gmail-Export ist nur noch durch die ausdrücklich manuelle Aktion der Hausakte möglich; bestehende Gmail-Zugangsdaten und der Ergebnis-Import bleiben erhalten
+- Der veraltete Schalter `gmail_auto_send_on_import` ist standardmäßig aus und löst auch bei alten gespeicherten Einstellungen keinen automatischen Versand mehr aus
+- Regressionstests für automatischen Versand-Guard und manuellen Versand ergänzt
+
+
 ## 0.17.4
 
 - Hausaktenübersicht verwendet bevorzugt vorhandene lokale Galeriebilder statt externer Makler-Bildlinks, die im Browser oft blockiert werden
