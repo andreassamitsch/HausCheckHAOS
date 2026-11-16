@@ -32,7 +32,7 @@ _gmail_import_task: asyncio.Task | None = None
 @dataclass
 class GmailExchangeSettings:
     enabled: bool = False
-    auto_send_on_import: bool = True
+    auto_send_on_import: bool = False
     auto_import_results: bool = True
     import_interval_minutes: int = 5
     smtp_host: str = "smtp.gmail.com"
@@ -51,7 +51,7 @@ class GmailExchangeSettings:
 
     @property
     def send_ready(self) -> bool:
-        return bool(self.enabled and self.auto_send_on_import and self.username and self.app_password and self.to)
+        return bool(self.enabled and self.username and self.app_password and self.to)
 
     @property
     def import_ready(self) -> bool:
@@ -103,7 +103,7 @@ def load_gmail_settings() -> GmailExchangeSettings:
     to = str(env_or_option("gmail_to", "") or "").strip() or username
     return GmailExchangeSettings(
         enabled=_truthy(env_or_option("gmail_exchange_enabled", False), False),
-        auto_send_on_import=_truthy(env_or_option("gmail_auto_send_on_import", True), True),
+        auto_send_on_import=_truthy(env_or_option("gmail_auto_send_on_import", False), False),
         auto_import_results=_truthy(env_or_option("gmail_auto_import_results", True), True),
         import_interval_minutes=_int_option(env_or_option("gmail_import_interval_minutes", 5), 5),
         smtp_host=str(env_or_option("gmail_smtp_host", "smtp.gmail.com") or "smtp.gmail.com").strip(),
@@ -293,7 +293,12 @@ def _send_mail_sync(settings: GmailExchangeSettings, house_id: str, zip_path: Pa
         smtp.send_message(msg)
 
 
-async def send_analysis_zip_via_gmail(house_id: str) -> bool:
+async def send_analysis_zip_via_gmail(house_id: str, *, manual: bool = False) -> bool:
+    # Exports per E-Mail sind ausschließlich eine explizite Benutzeraktion.
+    # Automatische Importe/Quellenupdates nutzen den idempotenten GitHub-Analyseauftrag.
+    # Der Guard schützt auch vor versehentlichen zukünftigen automatischen Aufrufen.
+    if not manual:
+        return False
     settings = load_gmail_settings()
     if not settings.send_ready:
         return False
@@ -430,7 +435,7 @@ def register_gmail_exchange(app: FastAPI) -> None:
     async def gmail_send_house_route(house_id: str) -> RedirectResponse:
         if not get_house(house_id):
             raise HTTPException(status_code=404, detail="Hausakte nicht gefunden")
-        await send_analysis_zip_via_gmail(house_id)
+        await send_analysis_zip_via_gmail(house_id, manual=True)
         return RedirectResponse(f"../{house_id}", status_code=303)
 
     @app.post("/houses/{house_id}/gmail-import-results")

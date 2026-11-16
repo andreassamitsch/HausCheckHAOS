@@ -6,7 +6,6 @@ from typing import Any, Awaitable, Callable
 from fastapi import FastAPI
 
 import app.github_auto_export as github_auto_export
-import app.gmail_exchange as gmail_exchange
 import app.immoscout_support as support
 import app.main as main
 import app.pipeline_status as pipeline_status
@@ -346,10 +345,6 @@ async def _merge_into_existing_house(
                 "Neue Informationen wurden gespeichert, der KI-Export ist jedoch fehlgeschlagen.",
                 error=str(exc),
             )
-        try:
-            await gmail_exchange.send_analysis_zip_via_gmail(house_id)
-        except Exception:
-            pass
     return changed
 
 
