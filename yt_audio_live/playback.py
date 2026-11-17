@@ -525,7 +525,11 @@ class Playback:
                             # Keep this deliberately tight: stopping 20 seconds before
                             # the end must never be mistaken for finishing a song.
                             ended = self.position_seen and recent_position >= float(duration) - 4
-                            if not self.position_seen and self.position >= float(duration) - 2:
+                            # Without a trustworthy Cast position, use the
+                            # locally advanced clock up to this poll. The last
+                            # ~2.5 seconds may have elapsed since the previous
+                            # observation, so include recent_position too.
+                            if not self.position_seen and previous_state == "playing" and recent_position >= float(duration) - 3:
                                 ended = True
                         else:
                             ended = False  # unknown duration: safer to stop than skip
