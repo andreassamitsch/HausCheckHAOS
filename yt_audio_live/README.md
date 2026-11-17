@@ -91,3 +91,14 @@ The app keeps its queue in RAM; restarting clears it. Radio playback
 relies on the Cast state changing to idle at a song's end. yt-dlp's
 visionos client currently works but YouTube may change its enforcement
 of PO tokens. This is an unofficial integration; follow YouTube's terms.
+
+## Version 0.2.7 – Stopp, Cover und Fortschritt
+
+- Ein manuelles **Stopp** oder Ausschalten der Cast-Soundbar beendet die Wiedergabesitzung und die Radio-Automatik, statt sofort den nächsten Titel zu starten.
+- Nur wenn die zuletzt beobachtete Position tatsächlich das Titelende erreicht, erfolgt ein automatischer Titelwechsel.
+- Die Integration kann einen gezielten HA-Service-Stopp über `POST /api/external_stop` ohne erneuten Cast-Stopp synchronisieren.
+- Die API liefert `media_position`, `media_position_updated_at` und ein YouTube-Music-Cover mit dem aktuellen Titel.
+- `POST /api/seek {"position":120}` sucht im aktuellen Titel durch einen neu signierten Stream mit FFmpeg-Offset. Der Offset ist an die Signatur gebunden.
+- Wiederaufnehmen ohne einen aktiven Titel wird abgelehnt, um eine unerwartete Wiederaufnahme nach Stopp zu verhindern.
+
+**Hinweis:** Code- und Queue-Tests sind offline möglich. Die akustische Prüfung des echten Cast-Übergangs und des Suchlaufs muss erfolgen, wenn die Soundbar wieder verwendet werden darf.
