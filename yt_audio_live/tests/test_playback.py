@@ -92,6 +92,35 @@ class FakePlayback(playback.Playback):
 
 
 class PlaybackTests(unittest.TestCase):
+    def test_cast_is_temporarily_idle_during_start(self):
+        p = FakePlayback()
+        p.last_player_state = "starting"
+        p.playing_seen = False
+        p.started_at = time.monotonic() - 3
+        p.run_one_poll("idle")
+        self.assertEqual(p.last_player_state, "starting")
+        self.assertIsNotNone(p.current)
+        self.assertEqual(p.played, [])
+        self.assertEqual(len(p.queue), 1)
+
+    def test_cast_is_temporarily_off_during_seek(self):
+        p = FakePlayback()
+        p.seek(65)
+        p.run_one_poll("off")
+        self.assertEqual(p.last_player_state, "starting")
+        self.assertEqual(p.current["video_id"], "aaaaaaaaaaa")
+        self.assertEqual(p.played, [("aaaaaaaaaaa", 65)])
+        self.assertEqual(len(p.queue), 1)
+
+    def test_cast_reports_playing_after_loading(self):
+        p = FakePlayback()
+        p.last_player_state = "starting"
+        p.playing_seen = False
+        p.started_at = time.monotonic() - 2
+        p.run_one_poll("playing")
+        self.assertTrue(p.playing_seen)
+        self.assertEqual(p.last_player_state, "playing")
+
     def test_manual_stop_early_does_not_advance(self):
         p = FakePlayback(pos=60)
         p.run_one_poll("idle")
