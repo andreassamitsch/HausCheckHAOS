@@ -132,6 +132,14 @@ class PlaybackTests(unittest.TestCase):
         self.assertGreaterEqual(state["media_position"], 12.5)
         self.assertAlmostEqual(state["media_position_updated_at"], time.time(), delta=2)
 
+    def test_natural_end_without_cast_position_advances(self):
+        p = FakePlayback(pos=177.5, duration=180)
+        p.position_seen = False
+        p.position_observed_monotonic = time.monotonic() - 3.0
+        p.run_one_poll("idle")
+        self.assertEqual(p.current["video_id"], "bbbbbbbbbbb")
+        self.assertEqual(p.played, [("bbbbbbbbbbb", 0)])
+
     def test_cast_zero_position_does_not_reset_progress(self):
         p = FakePlayback(pos=15)
         p.position_seen = False
