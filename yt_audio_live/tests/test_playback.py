@@ -145,7 +145,7 @@ class PlaybackTests(unittest.TestCase):
         }
         import playback as module
         from unittest.mock import patch
-        with patch.object(module.time, "sleep", side_effect=StopIteration):
+        with patch.object(module.time, "sleep", side_effect=[None, StopIteration]):
             with self.assertRaises(StopIteration):
                 p._poll()
         self.assertGreaterEqual(p.position, 18.5)
