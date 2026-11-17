@@ -1,0 +1,23 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "YouTube Music Live",
+        "description": "Verbindung zur lokalen YouTube-Music-Live-App. Den API-Schlüssel findest du unter Einstellungen → Apps → YouTube Music Live → Konfiguration.",
+        "data": {
+          "url": "Basis-URL",
+          "api_key": "API-Schlüssel"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Musik-App nicht erreichbar",
+      "invalid_auth": "Ungültiger API-Schlüssel",
+      "invalid_url": "Gültige http://- oder https://-Adresse ohne Zugangsdaten eingeben",
+      "invalid_response": "Diese Adresse gehört nicht zur YouTube-Music-Live-API"
+    },
+    "abort": {
+      "already_configured": "Diese Adresse ist bereits eingerichtet"
+    }
+  }
+}

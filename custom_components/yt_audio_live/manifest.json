@@ -1,0 +1,12 @@
+{
+  "domain": "yt_audio_live",
+  "name": "YouTube Music Live",
+  "version": "0.1.0",
+  "documentation": "https://github.com/andreassamitsch/HausCheckHAOS",
+  "codeowners": [],
+  "requirements": [],
+  "dependencies": [],
+  "config_flow": true,
+  "iot_class": "local_polling",
+  "integration_type": "service"
+}
