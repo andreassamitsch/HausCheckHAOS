@@ -72,7 +72,9 @@ class Playback:
             # Keep a monotonic local clock in sync with the last polling
             # observation. Its timestamp must describe the *same instant*
             # as the returned position, or HA's progress bar double-counts.
-            if self.current and self.last_player_state in ("playing", "starting"):
+            if (self.current and self.last_player_state == "playing"
+                    and self.playing_seen):
+                # Count only audible playback, never an initial Cast buffer.
                 position += max(0.0, time.monotonic() - self.position_observed_monotonic)
                 updated_at = time.time()
             duration = (self.current or {}).get("duration_seconds")
@@ -164,7 +166,7 @@ class Playback:
             self.seek_offset = 0
             self.position = 0.0
             self.position_seen = False
-            self.position_observed_monotonic = 0.0
+            self.position_observed_monotonic = time.monotonic()
             self.position_updated_at = time.time()
             self.last_error = None
         try:
@@ -497,7 +499,11 @@ class Playback:
                     # Advance our own clock even when Cast does not expose
                     # a position, or repeatedly sends a stale zero. Pause
                     # freezes the clock; seeking resets the offset first.
-                    if previous_state in ("playing", "starting"):
+                    # First 'playing' observation marks when audio actually
+                    # began; the previous 'starting' interval was buffering.
+                    # When going from playing to paused, include the final
+                    # partial interval, then freeze the clock.
+                    if previous_state == "playing" and self.playing_seen:
                         self.position += max(0.0, now - self.position_observed_monotonic)
                     if (isinstance(raw_position, (int, float))
                             and not isinstance(raw_position, bool)
