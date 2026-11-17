@@ -36,6 +36,7 @@ class FakePlayback(playback.Playback):
         self.lock = threading.RLock()
         self.current = track(duration=duration)
         self.queue = deque([track("bbbbbbbbbbb", 200)])
+        self.history = deque(maxlen=50)
         self.radio_enabled = True
         self.radio_prefetching = False
         self.seen = deque(maxlen=250)
@@ -160,6 +161,48 @@ class PlaybackTests(unittest.TestCase):
         for value in (-1, 180, 3.5):
             with self.assertRaises(ValueError):
                 p.seek(value)
+        self.assertEqual(p.services, [])
+
+    def test_select_queued_song_preserves_other_titles(self):
+        p = FakePlayback()
+        p.queue.extend([track("ccccccccccc", 111),track("ddddddddddd", 118)])
+        p.play_queued(1, "ccccccccccc")
+        self.assertEqual(p.current["video_id"], "ccccccccccc")
+        self.assertEqual([x["video_id"] for x in p.queue],
+                         ["bbbbbbbbbbb","ddddddddddd"])
+        self.assertEqual(p.history[0]["video_id"], "aaaaaaaaaaa")
+        self.assertEqual(p.played, [("ccccccccccc",0)])
+        self.assertEqual(p.services, [])
+
+    def test_queue_selection_rejects_stale_index(self):
+        p = FakePlayback()
+        with self.assertRaises(ValueError):
+            p.play_queued(0, "ccccccccccc")
+        self.assertEqual(p.played, [])
+        self.assertEqual(p.current["video_id"], "aaaaaaaaaaa")
+
+    def test_previous_track_restores_next(self):
+        p = FakePlayback()
+        p.history.appendleft(track("zzzzzzzzzzz", 222))
+        p.previous()
+        self.assertEqual(p.current["video_id"], "zzzzzzzzzzz")
+        self.assertEqual(p.queue[0]["video_id"], "aaaaaaaaaaa")
+        self.assertEqual(p.played, [("zzzzzzzzzzz",0)])
+
+    def test_select_history_song_preserves_queue(self):
+        p = FakePlayback()
+        p.history.extend([track("xxxxxxxxyyy", 140), track("ggggggggggg",150)])
+        p.play_history(1, "ggggggggggg")
+        self.assertEqual(p.current["video_id"], "ggggggggggg")
+        self.assertEqual(p.queue[0]["video_id"], "aaaaaaaaaaa")
+        self.assertEqual(p.queue[1]["video_id"], "bbbbbbbbbbb")
+        self.assertEqual(p.history[0]["video_id"], "xxxxxxxxyyy")
+
+    def test_stop_clears_history(self):
+        p = FakePlayback()
+        p.history.append(track("zzzzzzzzzzz"))
+        p.external_stop()
+        self.assertEqual(len(p.history), 0)
         self.assertEqual(p.services, [])
 
 
