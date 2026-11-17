@@ -1,0 +1,30 @@
+name: YouTube Music Live – Offline tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'yt_audio_live/**'
+      - '.github/workflows/ytmusic-offline-tests.yml'
+  pull_request:
+    paths:
+      - 'yt_audio_live/**'
+      - '.github/workflows/ytmusic-offline-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile app modules (no external services)
+        run: python -m compileall -q yt_audio_live
+      - name: Playback regression tests (no Home Assistant connection)
+        run: python -m unittest discover -s yt_audio_live/tests -p 'test_*.py' -v
