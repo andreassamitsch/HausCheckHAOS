@@ -239,7 +239,7 @@ class Playback:
                     self.queue.append(self._minimal_track(item))
                 if not self.queue:
                     self._clear_playback("queue_finished")
-                    if reason == "next":
+                    if reason == "next" and previous is not None:
                         self._service("media_stop")
                     return self.status()
             return self._advance(reason=reason, expected_generation=old_generation)
@@ -260,8 +260,11 @@ class Playback:
         return self._advance("next")
 
     def stop(self):
+        with self.lock:
+            active = self.current is not None
         result = self._clear_playback("api_stop")
-        self._service("media_stop")
+        if active:
+            self._service("media_stop")
         return result
 
     def seek(self, position):
@@ -290,10 +293,16 @@ class Playback:
         return self.status()
 
     def pause(self):
+        with self.lock:
+            if not self.current:
+                raise ValueError("No active song to pause")
         self._service("media_pause")
         return self.status()
 
     def resume(self):
+        with self.lock:
+            if not self.current:
+                raise ValueError("No active song to resume")
         self._service("media_play")
         return self.status()
 
