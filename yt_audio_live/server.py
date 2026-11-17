@@ -163,7 +163,7 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
         args = parse_qs(parsed.query)
         if path == "/health":
-            return self.json_reply(200, {"ok": True, "version": "0.2.7",
+            return self.json_reply(200, {"ok": True, "version": "0.2.8",
                                          "player_client": CLIENT,
                                          "api_auth": True})
         stream = VIDEO_RE.fullmatch(path)
@@ -243,7 +243,9 @@ class Handler(BaseHTTPRequestHandler):
                 if body.get("video_id"):
                     vid = checked_video_id(body["video_id"])
                     track = {"video_id": vid, "title": str(body.get("title") or vid),
-                             "artist": body.get("artist") or ""}
+                             "artist": body.get("artist") or "",
+                             "thumbnail": body.get("thumbnail"),
+                             "duration_seconds": body.get("duration_seconds")}
                     selected_by_search = False
                 else:
                     results = CATALOG.search(body.get("query", ""), limit=5)
@@ -278,6 +280,10 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/external_stop":
                 # Caller already stopped the Cast target; don't restart or stop it again.
                 result = PLAYER.external_stop()
+            elif path == "/api/queue/play":
+                result = PLAYER.play_queued(body.get("index"), body.get("video_id"))
+            elif path == "/api/history/play":
+                result = PLAYER.play_history(body.get("index"), body.get("video_id"))
             elif path == "/api/queue/remove":
                 result = PLAYER.queue_remove(body.get("index"))
             elif path == "/api/queue/move":
@@ -309,6 +315,8 @@ class Handler(BaseHTTPRequestHandler):
                     result = PLAYER.set_radio(enabled, seed=seed)
             elif path in ("/api/next", "/api/skip"):
                 result = PLAYER.next()
+            elif path == "/api/previous":
+                result = PLAYER.previous()
             elif path == "/api/stop":
                 result = PLAYER.stop()
             elif path == "/api/pause":
@@ -394,6 +402,6 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    LOG.info("server_started version=0.2.7 player_client=%s player=%s",
+    LOG.info("server_started version=0.2.8 player_client=%s player=%s",
              CLIENT, PLAYER.entity_id)
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever(poll_interval=0.25)
