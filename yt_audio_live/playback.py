@@ -67,8 +67,14 @@ class Playback:
     def status(self):
         with self.lock:
             position = self.position
-            if self.current and self.position_seen and self.last_player_state == "playing":
+            updated_at = self.position_updated_at
+            # Cast may expose no media_position (or repeatedly report 0).
+            # Keep a monotonic local clock in sync with the last polling
+            # observation. Its timestamp must describe the *same instant*
+            # as the returned position, or HA's progress bar double-counts.
+            if self.current and self.last_player_state in ("playing", "starting"):
                 position += max(0.0, time.monotonic() - self.position_observed_monotonic)
+                updated_at = time.time()
             duration = (self.current or {}).get("duration_seconds")
             if isinstance(duration, (int, float)) and duration > 0:
                 position = min(float(duration), position)
@@ -83,7 +89,7 @@ class Playback:
                 "cast_state": self.last_player_state,
                 "cast_seen_playing": self.playing_seen,
                 "media_position": round(position, 1) if self.current else 0,
-                "media_position_updated_at": self.position_updated_at,
+                "media_position_updated_at": updated_at,
                 "last_error": self.last_error,
                 "player_entity": self.entity_id,
             }
@@ -187,7 +193,7 @@ class Playback:
         self.seek_offset = offset
         self.position = float(offset)
         self.position_seen = False
-        self.position_observed_monotonic = 0
+        self.position_observed_monotonic = time.monotonic()
         self.position_updated_at = time.time()
 
     def _clear_playback(self, reason="external_stop"):
@@ -487,9 +493,20 @@ class Playback:
                 )
                 self.last_player_state = "starting" if awaiting_first_audio else state
                 raw_position = attrs.get("media_position")
-                if state in ("playing", "paused") and isinstance(raw_position, (int, float)) and not isinstance(raw_position, bool):
-                    self.position = max(0.0, self.seek_offset + float(raw_position))
-                    self.position_seen = True
+                if state in ("playing", "paused"):
+                    # Advance our own clock even when Cast does not expose
+                    # a position, or repeatedly sends a stale zero. Pause
+                    # freezes the clock; seeking resets the offset first.
+                    if previous_state in ("playing", "starting"):
+                        self.position += max(0.0, now - self.position_observed_monotonic)
+                    if (isinstance(raw_position, (int, float))
+                            and not isinstance(raw_position, bool)
+                            and float(raw_position) >= 0):
+                        measured = self.seek_offset + float(raw_position)
+                        # Cast sometimes sends 0 for the entire stream. Do
+                        # not roll back a locally advancing position.
+                        self.position = max(self.position, measured)
+                        self.position_seen = self.position_seen or measured > self.seek_offset
                     self.position_observed_monotonic = now
                     self.position_updated_at = time.time()
                 if state == "playing":
@@ -508,7 +525,7 @@ class Playback:
                             # Keep this deliberately tight: stopping 20 seconds before
                             # the end must never be mistaken for finishing a song.
                             ended = self.position_seen and recent_position >= float(duration) - 4
-                            if not self.position_seen and now - self.started_at >= float(duration) + 7:
+                            if not self.position_seen and self.position >= float(duration) - 2:
                                 ended = True
                         else:
                             ended = False  # unknown duration: safer to stop than skip
