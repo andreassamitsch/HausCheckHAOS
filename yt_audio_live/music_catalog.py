@@ -36,6 +36,22 @@ def _duration(value):
         return None
 
 
+def track_thumbnail(item, vid):
+    """Use the YouTube Music artwork; fall back to a thumbnail for exact IDs."""
+    entries = item.get("thumbnails") or []
+    if isinstance(entries, dict):
+        entries = entries.get("thumbnails") or []
+    if not entries and isinstance(item.get("thumbnail"), dict):
+        entries = item["thumbnail"].get("thumbnails") or []
+    if isinstance(entries, list):
+        for entry in reversed(entries):
+            if isinstance(entry, dict):
+                url = entry.get("url")
+                if isinstance(url, str) and url.startswith("https://") and len(url) < 1024:
+                    return url
+    return "https://i.ytimg.com/vi/" + vid + "/hqdefault.jpg"
+
+
 def normalize_track(item):
     if not isinstance(item, dict):
         return None
@@ -60,6 +76,7 @@ def normalize_track(item):
         "artist": artist, "duration_seconds": duration,
         "album": (item.get("album") or {}).get("name", "") if isinstance(item.get("album"), dict)
                  else str(item.get("album") or ""),
+        "thumbnail": track_thumbnail(item, vid),
     }
 
 
