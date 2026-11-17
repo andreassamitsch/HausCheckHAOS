@@ -474,7 +474,18 @@ class Playback:
                     "/stream/" + expected + ".mp3" not in content_id
                 ):
                     action = "source_changed"
-                self.last_player_state = state
+                # A new Cast stream can briefly report idle/off before
+                # the first audio packet reaches the receiver (especially
+                # after seeking). Preserve "starting" in that short window
+                # so the native HA transport controls remain visible.
+                # Existing post-playback stop detection is left unchanged.
+                awaiting_first_audio = (
+                    previous_state == "starting"
+                    and not self.playing_seen
+                    and state in ("idle", "off", "unknown")
+                    and now - self.started_at < 25
+                )
+                self.last_player_state = "starting" if awaiting_first_audio else state
                 raw_position = attrs.get("media_position")
                 if state in ("playing", "paused") and isinstance(raw_position, (int, float)) and not isinstance(raw_position, bool):
                     self.position = max(0.0, self.seek_offset + float(raw_position))
