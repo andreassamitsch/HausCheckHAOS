@@ -25,6 +25,7 @@ class Playback:
         self.lock = threading.RLock()
         self.current = None
         self.queue = deque()
+        self.history = deque(maxlen=50)
         self.radio_enabled = False
         self.radio_prefetching = False
         self.seen = deque(maxlen=250)
@@ -75,6 +76,8 @@ class Playback:
                 "current": dict(self.current) if self.current else None,
                 "queue": [dict(x) for x in list(self.queue)[:50]],
                 "queue_length": len(self.queue),
+                "history": [dict(x) for x in self.history],
+                "history_length": len(self.history),
                 "radio_enabled": self.radio_enabled,
                 "radio_prefetching": self.radio_prefetching,
                 "cast_state": self.last_player_state,
@@ -145,6 +148,7 @@ class Playback:
             self.generation += 1
             gen = self.generation
             self.queue = deque(rest)
+            self.history.clear()
             self.current = first
             self.seen = deque([first["video_id"]], maxlen=250)
             self.radio_enabled = bool(radio)
@@ -193,6 +197,7 @@ class Playback:
             self.generation += 1
             self.current = None
             self.queue.clear()
+            self.history.clear()
             self.radio_enabled = False
             self.playing_seen = False
             self.last_player_state = "idle"
@@ -213,6 +218,8 @@ class Playback:
             old_generation = self.generation
             if self.queue:
                 first = self.queue.popleft()
+                if previous:
+                    self.history.appendleft(previous)
                 self.current = first
                 self.seen.append(first["video_id"])
                 self.generation += 1
@@ -258,6 +265,51 @@ class Playback:
 
     def next(self):
         return self._advance("next")
+
+    def previous(self):
+        """Replay the previous track, leaving the following queue intact."""
+        with self.lock:
+            if not self.current or not self.history:
+                raise ValueError("No previous song available")
+            previous = self.history.popleft()
+            self.queue.appendleft(self.current)
+            self.current = previous
+            self.generation += 1
+            generation = self.generation
+            self.started_at = time.monotonic()
+            self.playing_seen = False
+            self.last_player_state = "starting"
+            self._reset_position()
+        self._play(previous, generation)
+        self._prefetch_radio()
+        return self.status()
+
+    def play_queued(self, index, video_id):
+        """Select an existing queued song, retaining all other upcoming songs."""
+        checked_video_id(video_id)
+        if type(index) is not int:
+            raise ValueError("queue index must be an integer")
+        with self.lock:
+            if not self.current or not 0 <= index < len(self.queue):
+                raise ValueError("Requested song is no longer in the queue")
+            items = list(self.queue)
+            first = items[index]
+            if first["video_id"] != video_id:
+                raise ValueError("Queue changed; reload the media browser")
+            items.pop(index)
+            self.queue = deque(items)
+            self.history.appendleft(self.current)
+            self.current = first
+            self.seen.append(first["video_id"])
+            self.generation += 1
+            generation = self.generation
+            self.started_at = time.monotonic()
+            self.playing_seen = False
+            self.last_player_state = "starting"
+            self._reset_position()
+        self._play(first, generation)
+        self._prefetch_radio()
+        return self.status()
 
     def stop(self):
         with self.lock:
