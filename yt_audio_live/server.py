@@ -45,23 +45,29 @@ STREAM_SLOTS = threading.BoundedSemaphore(3)
 VIDEO_RE = re.compile(r"^/stream/([A-Za-z0-9_-]{11})\.mp3$")
 
 
-def sign_url(vid):
+def sign_url(vid, start=0):
     checked_video_id(vid)
+    if type(start) is not int or not 0 <= start <= 86400:
+        raise ValueError("Invalid signed stream start")
     expiry = int(time.time()) + 3600
-    payload = f"{vid}:{expiry}".encode()
-    mac = hmac.new(API_KEY.encode(), payload, hashlib.sha256).hexdigest()
-    return f"{BASE_URL}/stream/{vid}.mp3?exp={expiry}&sig={mac}"
+    # Preserve compatibility with existing zero-offset signed URLs.
+    payload = f"{vid}:{expiry}" if start == 0 else f"{vid}:{expiry}:{start}"
+    mac = hmac.new(API_KEY.encode(), payload.encode(), hashlib.sha256).hexdigest()
+    suffix = f"&start={start}" if start else ""
+    return f"{BASE_URL}/stream/{vid}.mp3?exp={expiry}&sig={mac}{suffix}"
 
 
 def validate_stream_url(vid, query):
     try:
         expiry = int((query.get("exp") or ["0"])[0])
         supplied = (query.get("sig") or [""])[0]
+        start = int((query.get("start") or ["0"])[0])
     except (ValueError, TypeError):
         return False
-    if expiry < time.time() or expiry > time.time() + 3700:
+    if not 0 <= start <= 86400 or expiry < time.time() or expiry > time.time() + 3700:
         return False
-    expected = hmac.new(API_KEY.encode(), f"{vid}:{expiry}".encode(),
+    payload = f"{vid}:{expiry}" if start == 0 else f"{vid}:{expiry}:{start}"
+    expected = hmac.new(API_KEY.encode(), payload.encode(),
                         hashlib.sha256).hexdigest()
     return hmac.compare_digest(expected, supplied)
 
@@ -89,6 +95,7 @@ def resolve_source(vid):
             raise RuntimeError("No HTTPS audio URL was returned")
         headers = info.get("http_headers", {}) or {}
         SOURCE_CACHE[vid] = {"url": url, "headers": headers,
+                             "duration": info.get("duration") if isinstance(info, dict) else None,
                              "time": time.monotonic()}
         if len(SOURCE_CACHE) > 15:
             oldest = next(iter(SOURCE_CACHE))
@@ -164,13 +171,14 @@ class Handler(BaseHTTPRequestHandler):
             vid = stream.group(1)
             if not validate_stream_url(vid, args):
                 return self.json_reply(403, {"error": "invalid stream link"})
+            start = int((args.get("start") or ["0"])[0])
             if head:
                 self.send_response(200)
                 self.send_header("Content-Type", "audio/mpeg")
                 self.send_header("Connection", "close")
                 self.end_headers()
                 return
-            return self.stream(vid)
+            return self.stream(vid, start)
         if not path.startswith("/api/"):
             return self.json_reply(404, {"error": "not found"})
         if not self.authorized():
@@ -244,6 +252,11 @@ class Handler(BaseHTTPRequestHandler):
                     track, selected_by_search = results[0], True
                 # Warm the short-lived audio URL before instructing the Cast receiver.
                 resolve_source(track["video_id"])
+                if not isinstance(track.get("duration_seconds"), int):
+                    with SOURCE_LOCK:
+                        metadata_duration = SOURCE_CACHE.get(track["video_id"], {}).get("duration")
+                    if isinstance(metadata_duration, (int, float)) and metadata_duration > 0:
+                        track["duration_seconds"] = round(metadata_duration)
                 result = PLAYER.start(track, radio=bool(body.get("radio", False)))
                 result["selected_by_search"] = selected_by_search
             elif path == "/api/queue":
@@ -260,6 +273,11 @@ class Handler(BaseHTTPRequestHandler):
                         raise ValueError("No matching song found")
                     tracks = [matches[0]]
                 result = PLAYER.enqueue(tracks)
+            elif path == "/api/seek":
+                result = PLAYER.seek(body.get("position"))
+            elif path == "/api/external_stop":
+                # Caller already stopped the Cast target; don't restart or stop it again.
+                result = PLAYER.external_stop()
             elif path == "/api/queue/remove":
                 result = PLAYER.queue_remove(body.get("index"))
             elif path == "/api/queue/move":
@@ -306,7 +324,7 @@ class Handler(BaseHTTPRequestHandler):
             LOG.error("api_post_failed path=%s error=%s", path, type(exc).__name__)
             return self.json_reply(502, {"error": "playback request failed"})
 
-    def stream(self, vid):
+    def stream(self, vid, start=0):
         if not STREAM_SLOTS.acquire(blocking=False):
             return self.json_reply(429, {"error": "too many simultaneous streams"})
         started = time.monotonic()
@@ -319,8 +337,11 @@ class Handler(BaseHTTPRequestHandler):
                 value = source_headers.get(header)
                 if isinstance(value, str) and value and "\r" not in value and "\n" not in value:
                     command.extend((switch, value))
-            command.extend([
-                "-rw_timeout", "15000000", "-i", source, "-vn", "-map", "0:a:0",
+            command.extend(["-rw_timeout", "15000000"])
+            if start:
+                # FFmpeg input-side seek, independent of Cast HTTP Range support.
+                command.extend(["-ss", str(start)])
+            command.extend(["-i", source, "-vn", "-map", "0:a:0",
                 "-c:a", "libmp3lame", "-b:a", "128k", "-f", "mp3",
                 "-flush_packets", "1", "pipe:1"])
             proc = subprocess.Popen(command, stdin=subprocess.DEVNULL,
