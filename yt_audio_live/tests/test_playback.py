@@ -172,9 +172,45 @@ class PlaybackTests(unittest.TestCase):
         p.seek(100)
         p.position_observed_monotonic = time.monotonic() - 5
         p.run_one_poll("playing")
+        # The first Cast 'playing' starts the clock. Buffering is NOT
+        # part of the track's audible playback.
+        self.assertAlmostEqual(p.status()["media_position"], 100, delta=0.2)
+        p.position_observed_monotonic = time.monotonic() - 5
+        p.run_one_poll("playing")
         self.assertGreaterEqual(p.status()["media_position"], 104.5)
         self.assertLess(p.status()["media_position"], 110)
         self.assertEqual(len(p.queue), 1)
+
+    def test_new_track_initializes_position_clock(self):
+        p = FakePlayback(pos=15)
+        p.position_observed_monotonic = 0.0
+        p.start(track("ccccccccccc", 240))
+        self.assertGreater(p.position_observed_monotonic, 0)
+        self.assertAlmostEqual(p.status()["media_position"], 0, delta=0.2)
+        self.assertEqual(p.last_player_state, "starting")
+
+    def test_cast_zero_position_keeps_advancing_over_multiple_polls(self):
+        p = FakePlayback(pos=8)
+        p.position_seen = False
+        p._cast_status = lambda: {
+            "state": "playing",
+            "attributes": {
+                "media_position": 0,
+                "media_content_id": "http://host/stream/aaaaaaaaaaa.mp3"
+            }
+        }
+        observed = []
+        import playback as module
+        from unittest.mock import patch
+        for i in range(4):
+            p.position_observed_monotonic = time.monotonic() - 4
+            with patch.object(module.time, "sleep", side_effect=[None, StopIteration]):
+                with self.assertRaises(StopIteration):
+                    p._poll()
+            observed.append(p.status()["media_position"])
+        self.assertTrue(all(later > earlier for earlier, later in
+                            zip(observed, observed[1:])))
+        self.assertGreater(observed[-1], observed[0] + 10)
 
     def test_manual_stop_early_does_not_advance(self):
         p = FakePlayback(pos=60)
