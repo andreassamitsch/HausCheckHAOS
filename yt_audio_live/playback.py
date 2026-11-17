@@ -311,6 +311,33 @@ class Playback:
         self._prefetch_radio()
         return self.status()
 
+    def play_history(self, index, video_id):
+        """Select a previous song while preserving current queue."""
+        checked_video_id(video_id)
+        if type(index) is not int:
+            raise ValueError("history index must be an integer")
+        with self.lock:
+            if not self.current or not 0 <= index < len(self.history):
+                raise ValueError("Requested song is no longer in history")
+            items = list(self.history)
+            first = items[index]
+            if first["video_id"] != video_id:
+                raise ValueError("History changed; reload the media browser")
+            items.pop(index)
+            self.history = deque(items, maxlen=50)
+            self.queue.appendleft(self.current)
+            self.current = first
+            self.seen.append(first["video_id"])
+            self.generation += 1
+            generation = self.generation
+            self.started_at = time.monotonic()
+            self.playing_seen = False
+            self.last_player_state = "starting"
+            self._reset_position()
+        self._play(first, generation)
+        self._prefetch_radio()
+        return self.status()
+
     def stop(self):
         with self.lock:
             active = self.current is not None
