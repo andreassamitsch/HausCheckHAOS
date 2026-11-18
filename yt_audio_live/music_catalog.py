@@ -113,17 +113,24 @@ class Catalog:
             raise ValueError("Query must contain 1-150 characters")
         if kind not in ("songs", "videos", "playlists"):
             raise ValueError("kind must be songs, videos or playlists")
+        term = query.strip()
         count = max(1, min(int(limit), 30))
         with self.lock:
-            raw = self.api.search(query.strip(), filter=kind, limit=count)
+            raw = self.api.search(term, filter=kind, limit=count)
         normalize = normalize_playlist if kind == "playlists" else normalize_track
         tracks = [t for r in raw if (t := normalize(r)) is not None][:count]
         if kind == "songs" and not tracks:
-            # Some guest sessions return an empty "songs" shelf but valid music videos.
+            # An empty filtered shelf can still have songs in the main search.
             with self.lock:
-                fallback = self.api.search(query.strip(), filter="videos", limit=count)
-            tracks = [t for r in fallback if (t := normalize_track(r)) is not None][:count]
-            LOG.info("song_search_fallback kind=videos count=%d", len(tracks))
+                mixed = self.api.search(term, limit=count)
+            tracks = [t for r in mixed if isinstance(r, dict) and r.get("resultType") == "song"
+                      and (t := normalize_track(r)) is not None][:count]
+            LOG.info("song_search_fallback kind=mixed_songs count=%d", len(tracks))
+            if not tracks:
+                with self.lock:
+                    videos = self.api.search(term, filter="videos", limit=count)
+                tracks = [t for r in videos if (t := normalize_track(r)) is not None][:count]
+                LOG.info("song_search_fallback kind=videos count=%d", len(tracks))
         return tracks
 
     def playlist(self, playlist_id, limit=100):

@@ -38,7 +38,7 @@ and expire after one hour. Keep credentials and tokens out of GitHub.
 The following endpoints require API authentication.
 
 GET /api/auth                         account connection status
-GET /api/search?q=...&kind=songs      song search (fallback to videos)
+GET /api/search?q=...&kind=songs      songs first, then videos if no songs are found
 GET /api/search?q=...&kind=playlists  public playlist search
 GET /api/playlist?id=...&limit=100    playlist preview
 GET /api/library                      own library playlists (requires account)
