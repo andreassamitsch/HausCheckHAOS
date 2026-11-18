@@ -21,7 +21,7 @@ class SmartYouTubeMusicMediaControlCard extends HTMLElement {
   }
 
   static getStubConfig() {
-    return {type:"custom:smart-youtube-music-media-control-card",
+    return {type:"custom:smart-youtube-music-player-card",
       entity:"media_player.youtube_music_live_youtube_music_live",name:"Ultra Slim Soundbar"};
   }
 
@@ -136,12 +136,15 @@ class SmartYouTubeMusicMediaControlCard extends HTMLElement {
     params.action="pick";
   }
 }
+if(!customElements.get("smart-youtube-music-player-card")){
+  customElements.define("smart-youtube-music-player-card",SmartYouTubeMusicMediaControlCard);
+}
 if(!customElements.get("smart-youtube-music-media-control-card")){
-  customElements.define("smart-youtube-music-media-control-card",SmartYouTubeMusicMediaControlCard);
+  customElements.define("smart-youtube-music-media-control-card",class extends SmartYouTubeMusicMediaControlCard{});
 }
 window.customCards=window.customCards||[];
-if(!window.customCards.some(item=>item.type==="smart-youtube-music-media-control-card")){
-  window.customCards.push({type:"smart-youtube-music-media-control-card",
+if(!window.customCards.some(item=>item.type==="smart-youtube-music-player-card")){
+  window.customCards.push({type:"smart-youtube-music-player-card",
     name:"YouTube Music – native Medienkarte",
     description:"Home Assistant Media Control mit automatischer Warteschlange/Suche und schließendem Popup."});
 }
