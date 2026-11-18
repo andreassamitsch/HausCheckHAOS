@@ -76,6 +76,8 @@ class SmartYouTubeMusicMediaControlCard extends HTMLElement {
   }
 
   async _observeStopControl(){
+    // Card helpers can return the element before HA has loaded its class.
+    await customElements.whenDefined(this._card.localName);
     await this._card.updateComplete;
     const root=this._card.shadowRoot;
     if(!this.isConnected || !root)return;
