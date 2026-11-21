@@ -88,3 +88,14 @@ Die Radio-App stellt via optionalem Supervisor MQTT-Service ein automatisch entd
 MQTT ist optional, die bestehende Ingress-Radio-App funktioniert auch ohne Broker. Die App spielt den Stream **niemals automatisch wieder an**, wenn ein Ausgabegerät extern stoppt oder pausiert. Wiedergabe startet nur auf eine ausdrückliche Aktion des Benutzers hin. Die Lautstärke gehört dem gewählten HA-`media_player`; die App verändert sie beim Start nicht.
 
 Die letzte Frequenz und die ausgewählte Ausgabe werden in `/data/output.json` gespeichert. Albumcover werden weiterhin direkt von YouTube Music (Fallback iTunes) als URLs übertragen und nicht lokal gespeichert.
+
+
+### Family-Dashboard-Karte installieren oder wiederherstellen
+
+Der Quellcode für die im Family Dashboard bereits eingerichtete Karte liegt unter `sdr_radio/dashboard/hauscheck-sdr-radio-card-v2.js`. Er ist im laufenden Home Assistant als `/config/www/hauscheck-sdr-radio-card-v2.js` gespeichert und über das Lovelace-Ressourcenmodul `/local/hauscheck-sdr-radio-card-v2.js` registriert.
+
+Dashboard-Kartentyp `custom:hauscheck-sdr-radio-card`, Sensor `sensor.sdr_ukw_radio_sdr_radio`. Die Karte befindet sich unter `family-dashboard/medien` unmittelbar nach YouTube Music und Toniebox, und zusätzlich in `family-dashboard/test`.
+
+Die Dropdown-Geräteauswahl wählt lediglich das nächste Ziel, ohne Audio automatisch zu starten. Nur ein Klick auf Play führt `media_player.play_media` aus. Stopp auf der Karte oder direkt am Ausgabegerät wird respektiert; das Radio startet daraufhin nicht selbst erneut. Die Lautstärke wird mit dem Home-Assistant-Dienst `media_player.volume_set` direkt am gewählten Ausgabegerät eingestellt; ein ausgeschaltetes Gerät ohne `volume_level` zeigt einen deaktivierten Regler.
+
+Das Sender-Favoritenpopup nutzt die in `/data/presets.json` gespeicherten Favoriten, ergänzt mit Senderlogos aus den zugeordneten Radioprogrammen. Weder das Dashboard noch die MQTT-Brücke schreiben MP3-/PCM-/Coverdateien auf den Host.
