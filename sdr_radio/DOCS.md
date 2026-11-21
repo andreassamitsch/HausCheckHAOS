@@ -79,3 +79,12 @@ Die Suchfunktion ist besonders von der Antenne, der Verstärkung und der lokalen
 - Empfang von RDS hängt vom ausgestrahlten Signal und der Antenne ab. Nicht jeder Sender überträgt RT+ oder überhaupt Titel-/Interpretinfos.
 - **Option `rds_enabled`**: true (Standard) mit MPX/Redsea-Verarbeitung. Bei Audioproblemen kann RDS ausgeschaltet werden; nach Neustart wird der bewährte Audiopfad aus 0.3.1 verwendet.
 - RDS/PI/Radiotext-Daten werden nicht aufgezeichnet oder auf die Festplatte geschrieben.
+
+
+## Lovelace-Family-Dashboard-Anbindung (0.5.0)
+
+Die Radio-App stellt via optionalem Supervisor MQTT-Service ein automatisch entdecktes Sensor-Entity `sensor.sdr_radio` bereit. Im Sensor stehen Frequenz, RDS-Sender, Titel, Interpret, Cover, Favoriten, der gewählte Ausgabemediaplayer und dessen Wiedergabezustand als Attribute. Alle Kommandos werden im authentifizierten Home-Assistant-Dienst `mqtt.publish` über das Topic `hauscheck/sdr_radio/command` an die App gesendet. Der direkte, nicht authentifizierte Port 8099 bleibt ausschließlich für den MP3-Audiostream. Die App bietet *keinen zusätzlichen offenen Steuerport*.
+
+MQTT ist optional, die bestehende Ingress-Radio-App funktioniert auch ohne Broker. Die App spielt den Stream **niemals automatisch wieder an**, wenn ein Ausgabegerät extern stoppt oder pausiert. Wiedergabe startet nur auf eine ausdrückliche Aktion des Benutzers hin. Die Lautstärke gehört dem gewählten HA-`media_player`; die App verändert sie beim Start nicht.
+
+Die letzte Frequenz und die ausgewählte Ausgabe werden in `/data/output.json` gespeichert. Albumcover werden weiterhin direkt von YouTube Music (Fallback iTunes) als URLs übertragen und nicht lokal gespeichert.
