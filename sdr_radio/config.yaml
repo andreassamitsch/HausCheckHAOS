@@ -1,6 +1,6 @@
 name: "SDR UKW Radio"
 description: "UKW-Radioempfang mit RTL-SDR, Livestream und Home-Assistant-Wiedergabe"
-version: "0.2.0"
+version: "0.3.0"
 slug: "sdr_radio"
 url: "https://github.com/andreassamitsch/HausCheckHAOS/tree/main/sdr_radio"
 arch:
