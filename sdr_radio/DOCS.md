@@ -15,7 +15,7 @@ Diese App stammt aus dem bereits eingebundenen Repository `HausCheckHAOS`. Im Ap
 ## Einstellungen
 
 - `device_index`: RTL-SDR-Gerätenummer (bei einem Gerät 0)
-- `gain`: `auto` oder eine vom Tuner unterstützte Verstärkung in dB
+- `gain`: Empfohlen `20.7` dB (R820T); bei schwachem Empfang `28.0` dB probieren, bei Verzerrung `14.4` dB. `auto` kann bei starken Sendern zu Übersteuerung führen.
 - `ppm`: Frequenzkorrektur
 - `stream_base_url`: Vom Abspielgerät erreichbare HTTP-URL, typischerweise `http://192.168.1.66:8099`. Nicht `localhost` verwenden.
 
@@ -36,3 +36,8 @@ Die Audio-Wiedergabe startet nie automatisch beim Installieren oder Starten der 
 - Funktion von `media_player.play_media` hängt vom Lautsprecher und seiner Integration ab.
 - Ein einzelner Dongle kann nicht gleichzeitig 433-MHz-Daten empfangen.
 - Der MP3-Stream ist unverschlüsselt und für das Heimnetz gedacht; der Server gibt keine anderen Steuer-Endpunkte am öffentlichen Stream-Port frei.
+
+
+## Empfangsqualität ab 0.1.2
+
+Die Verarbeitung wurde vom schnellen WBFM-Preset auf eine explizite 240-kHz-FM-Demodulation mit 9-Tap-FIR, `std`-Demodulator, De-Emphasis und DC-Filter umgestellt. 240 kHz wird exakt auf 48 kHz heruntergerechnet. Die MP3-Eingangsrate entspricht jetzt **48 kHz**. Für den Nooelec R820T ist als Startwert eine manuelle Verstärkung von 20,7 dB sinnvoll; je nach Signalstärke anpassen. Dieser Wechsel behebt nicht notwendigerweise externe HF-Störungen.
