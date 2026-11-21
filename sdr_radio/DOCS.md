@@ -67,3 +67,15 @@ Die bisherige FM-Demodulation inklusive De-Emphasis, FIR-Filter und Gain bleibt 
 - **Mögliche Abweichungen:** Die Online-Streams können gegenüber UKW zeitlich verzögert laufen; die angezeigten Songs können leicht vor- oder nachlaufen. Einige Radiosender liefern keine lesbaren ICY-Metadaten.
 
 Die Suchfunktion ist besonders von der Antenne, der Verstärkung und der lokalen Senderdichte abhängig. Auf dem ersten Suchlauf pausiert der USB-Empfang wegen des einzigen RTL-SDR-Sticks. Die bereits optimierte 48-kHz-FM-Audiopipeline und die Tablet-PCM-Ausgabe werden beibehalten.
+
+
+## RDS und RTR-Frequenzbuch (0.4.0)
+
+- RDS wird mit [redsea](https://github.com/windytan/redsea) aus demselben FM-Multiplexsignal des RTL-SDR-Sticks dekodiert: PS-Senderkennung, PI-Code, Radiotext, RT+ Songtitel/Interpret.
+- Nur **ein SDR-Stick**: der Multiplex wird zu redsea und danach zum Audiokonverter geleitet; MP3/PCM-Stream-Adressen bleiben unverändert.
+- Das Live-Radio bleibt offline hörbar. **Titel und Sendername aus RDS haben Vorrang**. Die Online-Radiostream-Metadaten können ersatzweise genutzt werden, wenn RDS keine verwertbaren Songinformationen liefert, und sind im UI als Online-Fallback gekennzeichnet.
+- Cover: zuerst YouTube Music (mit strenger Übereinstimmung Artist/Titel wie in Dudu7), danach iTunes. Nur Bild-URLs, keine Datei-Caches.
+- RTR: Das amtliche österreichische Frequenzbuch wird auf Abruf bzw. beim App-Start eingelesen und auf **Wies (46.72028, 15.27194)** und einen Radius von 100 km um den Ortskern gefiltert. Anzeige in der UI: nächstgelegene Senderstandorte, Programmname und MHz. Der offizielle Katalog ist keine Empfangsgarantie; SDR-Spektrumsuche liefert tatsächliche Empfangstreffer.
+- Empfang von RDS hängt vom ausgestrahlten Signal und der Antenne ab. Nicht jeder Sender überträgt RT+ oder überhaupt Titel-/Interpretinfos.
+- **Option `rds_enabled`**: true (Standard) mit MPX/Redsea-Verarbeitung. Bei Audioproblemen kann RDS ausgeschaltet werden; nach Neustart wird der bewährte Audiopfad aus 0.3.1 verwendet.
+- RDS/PI/Radiotext-Daten werden nicht aufgezeichnet oder auf die Festplatte geschrieben.
