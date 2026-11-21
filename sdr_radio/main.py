@@ -542,7 +542,12 @@ def view_status():
     else:
         data["rtr_matches"]=[]
     station=data.get("station") or {}
-    if rs.get("ps"):
+    verified = (data["rtr_matches"][0] if data["rtr_matches"] and rs.get("pi")
+                and data["rtr_matches"][0].get("pi") == rs["pi"] else None)
+    if verified:
+        data["station"]={**station,"name":verified["program"]}
+        data["station_name_source"]="RDS PI + RTR (PS: "+(rs.get("ps") or "–")+")"
+    elif rs.get("ps"):
         data["station"]={**station,"name":rs["ps"]}
         data["station_name_source"]="RDS PS"
     elif not station and data["rtr_matches"]:
