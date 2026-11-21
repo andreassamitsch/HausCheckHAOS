@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.1 – 2026-11-21
+- Sendername mit identischem RDS-PI-Code und RTR-Frequenzbuch auf vollständigen öffentlichen Programmnamen ergänzen.
+- RTR-Wies-Liste auf die 150 nächstgelegenen Senderdatensätze begrenzt (API-Größenlimit).
+- Sendername auf dem Tablet bei nachträglich erkanntem RDS automatisch aktualisieren.
+
 ## 0.4.0 – 2026-11-21
 - Echtzeit-RDS via redsea 1.3.1 aus UKW-MPX ohne zweiten SDR-Empfänger.
 - PI / PS / RadioText / RT+ Titel/Interpret als Primärquelle; Online-Fallback gekennzeichnet.
