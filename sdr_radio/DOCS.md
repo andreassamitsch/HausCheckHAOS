@@ -54,3 +54,16 @@ Die Verarbeitung wurde vom schnellen WBFM-Preset auf eine explizite 240-kHz-FM-D
 - Beim Senderwechsel auf derselben Frequenz erfolgt kein erneuter Tuner-Neustart.
 
 Die bisherige FM-Demodulation inklusive De-Emphasis, FIR-Filter und Gain bleibt unverändert. Port 8099 bietet weiterhin nur MP3. Der PCM-WebSocket ist ausschließlich über das authentifizierte Home-Assistant-Ingress erreichbar.
+
+## UKW-Radiofunktionen 0.3.0
+
+- **Frequenz +/-:** je 100 kHz schalten, mit automatischem Rücksprung von 108,0 nach 87,5 MHz.
+- **Sender +/-:** automatischer Suchlauf in die nächste Richtung. Ein `rtl_power`-Spektrumsweep ermittelt stärkere UKW-Signale; die Ergebnisse werden eine Stunde im Arbeitsspeicher gehalten. Der erste Suchlauf unterbricht den Empfang kurz, der Stream bleibt aber verbunden. Funkstörungen können gelegentlich als Sender erkannt werden.
+- **UKW-Band durchsuchen:** Liste starker Signale, durch Antippen direkt anwählbar. Es werden **Empfangsleistungen**, nicht Sendernamen erkannt.
+- **Sendername und Logo:** nach dem Einstellen einer Frequenz über das österreichische Radio-Browser-Verzeichnis suchen und den richtigen Sender zuordnen. Die Zuordnung wird als kleine JSON-Datei unter `/data/stations.json` dauerhaft gespeichert.
+- **Songinfos und Albumcover:** Titel und Künstler werden (wo verfügbar) ausschließlich aus den ICY-Metadaten des zugeordneten *Online*-Radiostreams ausgelesen. Albumcover werden anhand der erkannten Metadaten über die iTunes Search API gesucht, und nur bei plausibler Übereinstimmung gezeigt.
+- **Keine Mediendateien:** Der UKW-Audiostream bleibt aus dem USB-Dongle; auch die externen Metadatenabfragen speichern keine Streams oder Cover als Dateien.
+- **Ohne RDS:** Die App decodiert derzeit keine RDS-PS/RT/RT+-Daten aus dem UKW-Signal. Unbekannte Frequenzen benötigen deshalb eine einmalige manuelle Senderzuordnung. RDS-AF ist wegen der stationären Nutzung absichtlich nicht Teil dieser Version.
+- **Mögliche Abweichungen:** Die Online-Streams können gegenüber UKW zeitlich verzögert laufen; die angezeigten Songs können leicht vor- oder nachlaufen. Einige Radiosender liefern keine lesbaren ICY-Metadaten.
+
+Die Suchfunktion ist besonders von der Antenne, der Verstärkung und der lokalen Senderdichte abhängig. Auf dem ersten Suchlauf pausiert der USB-Empfang wegen des einzigen RTL-SDR-Sticks. Die bereits optimierte 48-kHz-FM-Audiopipeline und die Tablet-PCM-Ausgabe werden beibehalten.
