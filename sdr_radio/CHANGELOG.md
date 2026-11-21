@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.1 – 2026-11-21
+- Beim manuellen Start Ausgabegeräten 12 Sekunden zum Aufwachen geben, damit eine verzögerte Playing-State-Meldung nicht als Stopp fehlinterpretiert wird.
+- Stoppen am Ausgabegerät führt zu keinem automatischen Neubeginn der Wiedergabe; Play bleibt ausschließlich manuell.
+
 ## 0.5.0 – 2026-11-21
 - Native Dashboard-Anbindung über MQTT Discovery: Sensor für RDS-Titel, Senderlogo, Albumcover, Frequenz, Favoriten und Audiozustand.
 - Authentifizierte Kommandos via Home-Assistant-Dienst mqtt.publish (kein offener Steuerport).
