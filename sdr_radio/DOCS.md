@@ -28,7 +28,7 @@ Diese App stammt aus dem bereits eingebundenen Repository `HausCheckHAOS`. Im Ap
 3. Für einen separaten Lautsprecher das gewünschte `media_player`-Ziel wählen und **Auf Gerät abspielen** drücken.
 4. Unter **Stream-URL** findest du den URL für Geräte, die einen normalen MP3-Radiostream unterstützen.
 
-Die Audio-Wiedergabe startet nie automatisch beim Installieren oder Starten der App. Eine Senderumschaltung wirkt sich auf **alle** Zuhörer des einzigen Tuners aus; bestehende Verbindungen werden bei der Umschaltung getrennt.
+Die Audio-Wiedergabe startet nie automatisch beim Installieren oder Starten der App. Eine Senderumschaltung wirkt sich auf **alle** Zuhörer des einzigen Tuners aus. Die MP3- und PCM-Verbindungen bleiben seit 0.2.0 bestehen und übertragen während des Neuabstimmens kurz Stille.
 
 ## Einschränkungen
 
@@ -41,3 +41,16 @@ Die Audio-Wiedergabe startet nie automatisch beim Installieren oder Starten der 
 ## Empfangsqualität ab 0.1.2
 
 Die Verarbeitung wurde vom schnellen WBFM-Preset auf eine explizite 240-kHz-FM-Demodulation mit 9-Tap-FIR, `std`-Demodulator, De-Emphasis und DC-Filter umgestellt. 240 kHz wird exakt auf 48 kHz heruntergerechnet. Die MP3-Eingangsrate entspricht jetzt **48 kHz**. Für den Nooelec R820T ist als Startwert eine manuelle Verstärkung von 20,7 dB sinnvoll; je nach Signalstärke anpassen. Dieser Wechsel behebt nicht notwendigerweise externe HF-Störungen.
+
+
+## Schnelles Umschalten (ab 0.2.0)
+
+- Senderwechsel startet nur den `rtl_fm`-Prozess neu, nicht mehr den MP3-Encoder. Der Netzstream und die verbundenen Abspielgeräte bleiben durchgehend verbunden.
+- Während des Neuabstimmens generiert ein kleiner, zeitgesteuerter PCM-Puffer Stille. Verbindungen müssen nicht neu aufgebaut werden.
+- Direkt im Dashboard nutzt `Hier anhören` nach Möglichkeit 48-kHz-Mono-PCM über einen WebSocket innerhalb des authentifizierten Home-Assistant-Ingress. Der Browser-Puffer wird auf rund 120 ms begrenzt.
+- Unterstützt der Browser die Direktwiedergabe nicht, wird automatisch der bisherige MP3-Stream verwendet.
+- Die Statuszeile zeigt die gemessene Zeit vom Umschaltbefehl bis zum ersten PCM-Datenblock (`SDR xx ms`). Die tatsächliche hörbare Verzögerung umfasst zusätzlich kleine Audio-/Gerätepuffer.
+- Bei `media_player`-Ausgabe auf Soundbar oder externen Lautsprechern kann deren eigener Streaming-Puffer zusätzliche Sekunden verursachen. Home Assistant kann das nicht für jedes Gerät beeinflussen.
+- Beim Senderwechsel auf derselben Frequenz erfolgt kein erneuter Tuner-Neustart.
+
+Die bisherige FM-Demodulation inklusive De-Emphasis, FIR-Filter und Gain bleibt unverändert. Port 8099 bietet weiterhin nur MP3. Der PCM-WebSocket ist ausschließlich über das authentifizierte Home-Assistant-Ingress erreichbar.
