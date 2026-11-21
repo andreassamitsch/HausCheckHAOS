@@ -147,7 +147,8 @@ class RtrCatalog:
 
     def status(self):
         with self.lock:
-            return {"stations":list(self.data),"source":self.source,
+            return {"stations":sorted(self.data,key=lambda s:s["distance_km"])[:150],
+                    "total_stations":len(self.data),"source":self.source,
                     "updated_at":self.updated,"error":self.error,
                     "loading":self.loading,"location":"Wies, Steiermark",
                     "radius_km":MAX_DISTANCE_KM}
