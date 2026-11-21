@@ -74,6 +74,8 @@ audio{display:block;width:100%;margin:16px 0}
       <div id="songTitle" class="song-title">–</div>
       <div id="songArtist" class="song-artist">Aktuelle Titelinfos erscheinen, wenn der Sender zugeordnet wurde.</div>
       <div id="metadataHint" class="metadata-hint"></div>
+      <div id="rdsInfo" class="metadata-hint" style="margin-top:5px">RDS wird geprüft …</div>
+      <div id="rdsText" class="metadata-hint" style="margin-top:6px"></div>
     </div>
   </div>
 </section>
@@ -119,6 +121,14 @@ audio{display:block;width:100%;margin:16px 0}
 </section>
 </div>
 <section class="card">
+<h2>RTR – UKW-Frequenzen für Wies</h2>
+<p class="muted">Amtliches Frequenzbuch für Senderstandorte rund um Wies. Der Senderstandort kann entfernt liegen; tatsächlicher Empfang wird mit dem Nooelec-Stick festgestellt.</p>
+<div class="row"><button id="rtrLoad" class="primary">RTR-Senderliste anzeigen</button><button id="rtrRefresh">Daten aktualisieren</button></div>
+<p id="rtrCount" class="muted"></p>
+<div id="rtrResults" class="station-results" style="max-height:470px;overflow-y:auto"></div>
+<p class="muted">Quelle: <a href="https://www.rtr.at/medien/service/frequenzbuecher/Frequenzbuch.de.html" target="_blank" rel="noopener">RTR Frequenzbuch</a> · Entfernung ist Luftlinie vom Ortszentrum Wies</p>
+</section>
+<section class="card">
 <h2>Sendername und Logo zuordnen</h2>
 <p class="muted">Bei echtem UKW-Empfang bleiben Ton und Senderwahl unabhängig vom Internet. Die Senderlogos und Titelinfos werden aus dem passenden Onlinestream bezogen.</p>
 <div class="field"><label for="stationQuery">Sender suchen</label><input id="stationQuery" placeholder="z. B. Hitradio Ö3, Antenne Steiermark, Kronehit" maxlength="100"></div>
@@ -135,7 +145,7 @@ audio{display:block;width:100%;margin:16px 0}
 </section>
 <script>
 const $=id=>document.getElementById(id);
-const audio=$("audio");let state=null;let updating=false;let lastStationKey="";let lastSongKey="";
+const audio=$("audio");let state=null;let updating=false;let lastStationKey="";let lastSongKey="";let lastCover="";let lastRtrList=[];
 let liveAudio=null;
 function stopLocalAudio(){
   if(liveAudio){
@@ -231,6 +241,7 @@ async function refresh(force=false){
   $("diagnostics").textContent=logs.join("\n")||"Keine Fehler gemeldet.";
   renderMetadata(s);
   if(force){renderPresets(s.presets||[]);renderScan(s.scan_stations||[]);}
+  if(lastRtrList.length)renderRtr(lastRtrList,s);
 
  }catch(e){if(force)msg("Status kann nicht geladen werden: "+e.message,true);}
 }
@@ -244,7 +255,7 @@ function renderMetadata(s){
  const station=s.station||{};
  const song=s.song||null;
  const stationKey=String(s.frequency)+"/"+(station.uuid||"");
- const songKey=song?(song.artist+"/"+song.title):"";
+ const songKey=song?(song.artist+"/"+song.title+"/"+(song.source||"")):"";
  if(stationKey!==lastStationKey){
    lastStationKey=stationKey;
    $("stationName").textContent=station.name||(
@@ -258,7 +269,16 @@ function renderMetadata(s){
    $("songArtist").textContent=song?song.artist:(station.name?"Sender überträgt derzeit keinen erkennbaren Titel.":"Sender zuordnen, um Titelinfos und Cover zu erhalten.");
    setImage("cover",song&&song.cover_url);
  }
- $("metadataHint").textContent=station.name?"Metadaten: "+(song?"Online-Stream · können zeitversetzt sein":(s.metadata_error||"Warte auf Daten…")):"";
+ if((song?.cover_url||"")!==lastCover){lastCover=song?.cover_url||"";setImage("cover",lastCover);}
+ const rs=s.rds||{};
+ $("rdsInfo").textContent=s.rds_enabled?(rs.groups?("RDS: "+(rs.ps||"kein PS")+" · PI "+(rs.pi||"–")+
+    " · "+rs.groups+" Gruppen"+(rs.rtplus?" · RT+":"")):"RDS: Warte auf erste gültige Daten …"):"RDS-Dekoder deaktiviert";
+ $("rdsText").textContent=rs.radiotext?"RadioText: "+rs.radiotext:"";
+
+ $("metadataHint").textContent=station.name?
+   ("Sendername: "+(s.station_name_source||"unbekannt")+
+    " · Titel: "+(song?.source||"nicht verfügbar")+
+    (rs?.cover_source?" · Cover: "+rs.cover_source:"")):"";
 }
 function renderScan(items){
  const root=$("scanResults");root.replaceChildren();
@@ -272,6 +292,40 @@ function renderScan(items){
    list.append(b);
  }
  root.append(list);
+}
+function renderRtr(items,s){
+ const el=$("rtrResults");el.replaceChildren();
+ if(!items.length){el.textContent="RTR-Daten für Wies nicht verfügbar.";return;}
+ const known=s?.scan_stations||[];
+ const frag=document.createDocumentFragment();
+ const visible=items.filter(x=>x.distance_km<=70 || known.some(k=>Math.abs(k.frequency-x.frequency)<.06)).slice(0,160);
+ for(const item of visible){
+   const row=document.createElement("div");row.className="station-result";
+   const text=document.createElement("div");text.className="station-result-text";
+   const name=document.createElement("b");name.textContent=(item.program||"UKW-Sender")+" – "+Number(item.frequency).toFixed(1)+" MHz";
+   const sub=document.createElement("small");
+   sub.textContent=" "+(item.transmitter||item.site||"")+" · Senderstandort "+
+     Number(item.distance_km).toFixed(0)+" km entfernt"+
+     (known.some(k=>Math.abs(k.frequency-item.frequency)<.06)?" · SDR-Signal erkannt":"");
+   text.append(name,sub);
+   const button=document.createElement("button");button.textContent="Einstellen";
+   button.onclick=()=>action("api/tune",{frequency:item.frequency},"Auf "+item.frequency+" MHz abgestimmt.");
+   row.append(text,button);frag.append(row);
+ }
+ el.append(frag);
+ $("rtrCount").textContent="RTR: "+visible.length+" standortnahe Einträge (bis 70 km plus Empfangstreffer)";
+}
+async function loadRtr(refresh=false){
+ const el=$("rtrResults");
+ el.textContent="RTR-Frequenzbuch für Wies wird geladen …";
+ try{
+   const resp=await request(refresh?"api/rtr_refresh":"api/rtr",refresh?{}:undefined);
+   const status=resp.result||resp;
+   lastRtrList=status.stations||[];
+   renderRtr(lastRtrList,state);
+   if(status.error)msg("RTR: "+status.error,true);
+   else msg("RTR-Senderliste geladen.");
+ }catch(e){el.textContent="RTR-Fehler: "+e.message;}
 }
 function renderStationResults(items){
  const root=$("stationResults");root.replaceChildren();
@@ -325,6 +379,8 @@ $("findStation").onclick=async()=>{
   msg("Senderverzeichnis abgefragt.");
  }catch(e){msg(e.message,true);}finally{setBusy(false);}
 };
+$("rtrLoad").onclick=()=>loadRtr(false);
+$("rtrRefresh").onclick=()=>loadRtr(true);
 $("clearStation").onclick=()=>{
  if(!state||state.frequency===null)return msg("Bitte zuerst eine Frequenz einstellen.",true);
  action("api/station_clear",{frequency:state.frequency},"Senderzuordnung entfernt.");
