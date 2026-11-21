@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.3 – 2026-11-21
+- Nicht unterstütztes 4×-Oversampling entfernt; behebt Fehler bei 3,84 MS/s am Nooelec RTL-SDR.
+
 ## 0.1.2 – 2026-11-21
 - Audioqualität: 240-kHz-FM-Empfang mit exakter 5:1-Herunterskalierung auf 48 kHz.
 - Standard-Atan-Demodulation statt Fast-Modus; 9-Tap-FIR, De-Emphasis und DC-Filter.
