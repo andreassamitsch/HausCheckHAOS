@@ -5,6 +5,10 @@ The control interface is reachable through authenticated HA Ingress only (8098).
 The LAN port (8099) exposes solely /stream.mp3 and /health.
 """
 import json
+import base64
+import hashlib
+import socket
+import struct
 import os
 import queue
 import signal
@@ -60,167 +64,284 @@ def checked_frequency(value):
 
 
 class Receiver:
+    """One SDR tuner, a persistent MP3 encoder, and real-time PCM clients.
+
+    Changing frequency restarts only rtl_fm. The encoder and subscriber
+    connections stay alive and receive silence until the new RF signal arrives.
+    """
+
+    PCM_RATE = 48000
+    PCM_FRAME_MS = 20
+    PCM_FRAME_BYTES = PCM_RATE * 2 * PCM_FRAME_MS // 1000
+    SILENCE = b"\0" * PCM_FRAME_BYTES
+
     def __init__(self):
         self.lock = threading.RLock()
-        self.gen = 0
+        self.session_gen = 0
+        self.tuner_gen = 0
         self.radio = None
         self.encoder = None
         self.frequency = None
         self.subscribers = set()
+        self.pcm_subscribers = set()
+        self.pcm_queue = queue.Queue(maxsize=8)
         self.errors = deque(maxlen=30)
         self.last_error = ""
         self.total_audio_bytes = 0
         self.last_data_at = None
+        self.last_rf_at = None
+        self.tune_started_at = None
+        self.tune_ready_ms = None
         self.presets = load_json(PRESETS_PATH, [])
         if not isinstance(self.presets, list):
             self.presets = []
         self.presets = self.presets[:50]
 
+    def _running_locked(self):
+        return bool(self.radio and self.radio.poll() is None and
+                    self.encoder and self.encoder.poll() is None)
+
     def status(self):
         with self.lock:
-            running = bool(self.radio and self.radio.poll() is None
-                           and self.encoder and self.encoder.poll() is None)
             return {
-                "running": running,
+                "running": self._running_locked(),
                 "frequency": self.frequency,
-                "listeners": len(self.subscribers),
+                "listeners": len(self.subscribers) + len(self.pcm_subscribers),
+                "pcm_listeners": len(self.pcm_subscribers),
                 "stream_url": STREAM_BASE + "/stream.mp3",
                 "last_error": self.last_error,
                 "audio_bytes": self.total_audio_bytes,
-                "audio_fresh": bool(self.last_data_at and time.time() - self.last_data_at < 5),
+                "audio_fresh": bool(self.last_rf_at and time.monotonic() - self.last_rf_at < 2),
+                "tune_ready_ms": self.tune_ready_ms,
                 "log": list(self.errors)[-8:],
                 "presets": list(self.presets),
             }
 
-    def _log_pipe(self, proc, label, generation):
+    def _log_pipe(self, proc, label, generation, tuner=False):
         try:
             for line in iter(proc.stderr.readline, b""):
                 msg = line.decode("utf-8", errors="replace").strip()
                 if not msg:
                     continue
                 with self.lock:
-                    if generation == self.gen:
+                    if generation == (self.tuner_gen if tuner else self.session_gen):
                         self.errors.append(label + ": " + msg[:500])
-                        if any(term in msg.lower() for term in ("error", "failed", "busy", "no supported", "no device")):
+                        if any(term in msg.lower() for term in
+                               ("error", "failed", "busy", "no supported", "no device")):
                             self.last_error = msg[:500]
                 print(label + ": " + msg, flush=True)
         except (OSError, ValueError):
             pass
 
-    def _pump(self, proc, generation):
+    @staticmethod
+    def _latest(q, item):
+        try:
+            q.put_nowait(item)
+        except queue.Full:
+            try:
+                q.get_nowait()
+                q.put_nowait(item)
+            except (queue.Empty, queue.Full):
+                pass
+
+    def _mp3_pump(self, proc, generation):
         try:
             while True:
-                chunk = proc.stdout.read(4096)
+                # Smaller reads avoid accumulating 300+ ms of encoded audio
+                # before a subscriber receives the first bytes.
+                chunk = proc.stdout.read(1024)
                 if not chunk:
                     break
                 with self.lock:
-                    if generation != self.gen:
+                    if generation != self.session_gen:
                         break
                     self.total_audio_bytes += len(chunk)
-                    self.last_data_at = time.time()
+                    self.last_data_at = time.monotonic()
                     for subscriber in tuple(self.subscribers):
-                        try:
-                            subscriber.put_nowait(chunk)
-                        except queue.Full:
-                            try:
-                                subscriber.get_nowait()
-                                subscriber.put_nowait(chunk)
-                            except (queue.Empty, queue.Full):
-                                pass
+                        self._latest(subscriber, chunk)
         except (OSError, ValueError) as exc:
-            print("Audio-Pump:", exc, flush=True)
+            print("MP3-Pump:", exc, flush=True)
         finally:
             with self.lock:
-                if generation == self.gen:
-                    if not self.last_error:
-                        self.last_error = "Radiostream beendet. USB-Verbindung und Empfang prüfen."
+                if generation == self.session_gen:
+                    self.last_error = self.last_error or "MP3-Encoder wurde beendet."
                     self.errors.append(self.last_error)
 
-    def _stop_locked(self):
-        self.gen += 1
-        procs = (self.encoder, self.radio)
-        self.encoder = None
+    def _pcm_writer(self, proc, generation):
+        """Keep the encoder clocked, even while tuning, to preserve MP3 clients."""
+        next_tick = time.monotonic()
+        try:
+            while True:
+                with self.lock:
+                    if generation != self.session_gen or proc.poll() is not None:
+                        break
+                try:
+                    packet = self.pcm_queue.get(timeout=0.01)
+                except queue.Empty:
+                    packet = self.SILENCE
+                # A frame is always exactly 20ms / 1920 bytes at 48 kHz s16le.
+                if len(packet) != self.PCM_FRAME_BYTES:
+                    packet = self.SILENCE
+                try:
+                    proc.stdin.write(packet)
+                except (BrokenPipeError, OSError, ValueError):
+                    break
+                with self.lock:
+                    if generation != self.session_gen:
+                        break
+                    for subscriber in tuple(self.pcm_subscribers):
+                        self._latest(subscriber, packet)
+                next_tick += self.PCM_FRAME_MS / 1000.0
+                delta = next_tick - time.monotonic()
+                if delta > 0:
+                    time.sleep(delta)
+                elif delta < -0.1:
+                    next_tick = time.monotonic()
+        finally:
+            try:
+                proc.stdin.close()
+            except (OSError, ValueError):
+                pass
+
+    def _pcm_capture(self, proc, tuner_generation):
+        try:
+            while True:
+                chunk = proc.stdout.read(self.PCM_FRAME_BYTES)
+                if not chunk:
+                    break
+                if len(chunk) != self.PCM_FRAME_BYTES:
+                    continue
+                with self.lock:
+                    if tuner_generation != self.tuner_gen:
+                        break
+                    now = time.monotonic()
+                    self.last_rf_at = now
+                    if self.tune_ready_ms is None and self.tune_started_at is not None:
+                        self.tune_ready_ms = round((now - self.tune_started_at) * 1000)
+                self._latest(self.pcm_queue, chunk)
+        except (OSError, ValueError) as exc:
+            print("PCM-Capture:", exc, flush=True)
+        finally:
+            try:
+                proc.stdout.close()
+            except (OSError, ValueError):
+                pass
+
+    @staticmethod
+    def _terminate(proc):
+        if proc is None:
+            return
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=0.2)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=1)
+        for fd in (proc.stdout, proc.stderr):
+            if fd:
+                try:
+                    fd.close()
+                except (OSError, ValueError):
+                    pass
+
+    def _stop_tuner_locked(self):
+        self.tuner_gen += 1
+        proc = self.radio
         self.radio = None
         self.frequency = None
+        self.last_rf_at = None
+        while True:
+            try:
+                self.pcm_queue.get_nowait()
+            except queue.Empty:
+                break
+        self._terminate(proc)
+
+    def _stop_locked(self):
+        self._stop_tuner_locked()
+        self.session_gen += 1
+        proc = self.encoder
+        self.encoder = None
+        if proc is not None:
+            # Closing encoder stdin unblocks FFmpeg cleanly, if possible.
+            try:
+                if proc.stdin:
+                    proc.stdin.close()
+            except (OSError, ValueError):
+                pass
+            self._terminate(proc)
+        self.subscribers.clear()
+        self.pcm_subscribers.clear()
         self.total_audio_bytes = 0
         self.last_data_at = None
-        self.subscribers.clear()
-        for proc in procs:
-            if proc is not None and proc.poll() is None:
-                proc.terminate()
-        for proc in procs:
-            if proc is not None:
-                try:
-                    proc.wait(timeout=1)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
-                    proc.wait(timeout=2)
-                try:
-                    if proc.stdout:
-                        proc.stdout.close()
-                    if proc.stderr:
-                        proc.stderr.close()
-                except OSError:
-                    pass
+        self.tune_ready_ms = None
 
     def stop(self):
         with self.lock:
             self._stop_locked()
             self.last_error = ""
 
+    def _start_encoder_locked(self):
+        if self.encoder is not None and self.encoder.poll() is None:
+            return
+        if self.encoder is not None:
+            self._stop_locked()
+        ffmpeg = ["ffmpeg", "-hide_banner", "-nostdin", "-loglevel", "error",
+                  "-f", "s16le", "-ar", "48000", "-ac", "1", "-i", "pipe:0",
+                  "-c:a", "libmp3lame", "-b:a", "96k",
+                  "-write_xing", "0", "-flush_packets", "1",
+                  "-f", "mp3", "pipe:1"]
+        self.encoder = subprocess.Popen(ffmpeg, stdin=subprocess.PIPE,
+                                        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                        bufsize=0)
+        generation = self.session_gen
+        threading.Thread(target=self._log_pipe,
+                         args=(self.encoder, "FFmpeg", generation), daemon=True).start()
+        threading.Thread(target=self._mp3_pump,
+                         args=(self.encoder, generation), daemon=True).start()
+        threading.Thread(target=self._pcm_writer,
+                         args=(self.encoder, generation), daemon=True).start()
+
     def tune(self, value):
         freq = checked_frequency(value)
         with self.lock:
-            self._stop_locked()
-            self.errors.clear()
+            if self.frequency == freq and self._running_locked():
+                return self.status()
+            # This encoder, MP3 TCP connections and live PCM connections are
+            # intentionally NOT restarted when tuning another frequency.
+            self._start_encoder_locked()
+            self._stop_tuner_locked()
             self.last_error = ""
-            # 240 kHz -> 48 kHz is an exact 5:1 decimation.  The old
-            # WBFM preset (170 kHz -> 32 kHz) can alias strong FM
-            # multiplex components into the audible range.
-            # Do NOT use -o 4 here: it requests an unsupported 3.84 MS/s\n            # input rate in this rtl_fm build.\n            # Use the standard atan demodulator and 9-tap FIR instead
-            # of the faster, lower-quality WBFM defaults.
+            self.errors.clear()
+            self.tune_started_at = time.monotonic()
+            self.tune_ready_ms = None
             args = ["rtl_fm", "-d", str(DEVICE),
                     "-M", "fm", "-f", f"{freq:.2f}M",
                     "-s", "240k", "-A", "std",
                     "-F", "9", "-r", "48k", "-l", "0",
-                    "-E", "deemp", "-E", "dc",
-                    "-p", str(PPM)]
+                    "-E", "deemp", "-E", "dc", "-p", str(PPM)]
             if GAIN != "auto":
                 try:
                     args += ["-g", str(float(GAIN))]
                 except ValueError:
-                    raise ValueError("Ungültige Verstärkungseinstellung.") from None
-            ffmpeg = ["ffmpeg", "-hide_banner", "-nostdin", "-loglevel", "error",
-                      "-f", "s16le", "-ar", "48000", "-ac", "1", "-i", "pipe:0",
-                      "-c:a", "libmp3lame", "-b:a", "96k",
-                      "-write_xing", "0", "-f", "mp3", "pipe:1"]
+                    raise ValueError("Ungültige Verstärkung.") from None
             try:
-                self.radio = subprocess.Popen(
-                    args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                self.encoder = subprocess.Popen(
-                    ffmpeg, stdin=self.radio.stdout, stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE)
-                self.radio.stdout.close()  # FFmpeg owns the read end.
-                generation = self.gen
+                proc = subprocess.Popen(args, stdout=subprocess.PIPE,
+                                        stderr=subprocess.PIPE)
+                self.radio = proc
                 self.frequency = freq
-                for proc, label in ((self.radio, "RTL-SDR"), (self.encoder, "FFmpeg")):
-                    threading.Thread(target=self._log_pipe,
-                                     args=(proc, label, generation),
-                                     daemon=True).start()
-                threading.Thread(target=self._pump,
-                                 args=(self.encoder, generation),
+                generation = self.tuner_gen
+                threading.Thread(target=self._log_pipe,
+                                 args=(proc, "RTL-SDR", generation, True),
                                  daemon=True).start()
+                threading.Thread(target=self._pcm_capture,
+                                 args=(proc, generation), daemon=True).start()
             except OSError as exc:
-                self._stop_locked()
+                self._stop_tuner_locked()
                 self.last_error = str(exc)
                 raise RuntimeError(str(exc)) from exc
-        # Detect the common "device not found / already busy" failure early.
-        time.sleep(0.45)
-        state = self.status()
-        if not state["running"]:
-            raise RuntimeError(state["last_error"] or
-                               "Empfänger nicht verfügbar. USB-Passthrough prüfen.")
-        return state
+            return self.status()
 
     def add_preset(self, name, value):
         name = str(name).strip()[:48]
@@ -228,21 +349,21 @@ class Receiver:
             raise ValueError("Bitte einen Sendernamen angeben.")
         freq = checked_frequency(value)
         with self.lock:
+            self.presets = [x for x in self.presets
+                            if not (isinstance(x, dict) and
+                                    x.get("name", "").casefold() == name.casefold())]
             if len(self.presets) >= 50:
                 raise ValueError("Maximal 50 Favoriten.")
-            self.presets = [x for x in self.presets
-                            if not (isinstance(x, dict)
-                                    and x.get("name", "").casefold() == name.casefold())]
             self.presets.append({"name": name, "frequency": freq})
             save_json(PRESETS_PATH, self.presets)
-        return self.status()
+            return self.status()
 
     def remove_preset(self, name):
         with self.lock:
             self.presets = [x for x in self.presets
                             if not (isinstance(x, dict) and x.get("name") == name)]
             save_json(PRESETS_PATH, self.presets)
-        return self.status()
+            return self.status()
 
     def probe(self):
         with self.lock:
@@ -305,6 +426,8 @@ class Handler(BaseHTTPRequestHandler):
                                      "frequency": state["frequency"]})
         if path == "/stream.mp3":
             return self.stream()
+        if path == "/pcm" and not self.public_stream_only:
+            return self.pcm_websocket()
         if self.public_stream_only:
             return self.reply(404, {"error": "Nicht verfügbar"})
         if path in ("/", "/index.html"):
@@ -380,11 +503,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def stream(self):
         with radio.lock:
-            state = radio.status()
-            if not state["running"]:
-                return self.reply(503, {"error": state["last_error"] or "Empfang nicht aktiv"})
-            q = queue.Queue(maxsize=32)
-            generation = radio.gen
+            if not radio._running_locked():
+                return self.reply(503, {"error": radio.last_error or "Empfang nicht aktiv"})
+            q = queue.Queue(maxsize=6)
+            generation = radio.session_gen
             radio.subscribers.add(q)
         try:
             self.send_response(200)
@@ -396,10 +518,10 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             while True:
                 with radio.lock:
-                    if generation != radio.gen or not radio.status()["running"]:
+                    if generation != radio.session_gen or radio.encoder is None:
                         break
                 try:
-                    data = q.get(timeout=2)
+                    data = q.get(timeout=0.5)
                     self.wfile.write(data)
                     self.wfile.flush()
                 except queue.Empty:
@@ -409,6 +531,45 @@ class Handler(BaseHTTPRequestHandler):
         finally:
             with radio.lock:
                 radio.subscribers.discard(q)
+
+    def pcm_websocket(self):
+        """20ms PCM frames over authenticated HA Ingress, never public LAN port."""
+        key = self.headers.get("Sec-WebSocket-Key", "")
+        if self.headers.get("Upgrade", "").lower() != "websocket" or not key:
+            return self.reply(426, {"error": "WebSocket erforderlich"})
+        with radio.lock:
+            if not radio._running_locked():
+                return self.reply(503, {"error": "Empfang nicht aktiv"})
+            q = queue.Queue(maxsize=6)
+            generation = radio.session_gen
+            radio.pcm_subscribers.add(q)
+        accept = base64.b64encode(hashlib.sha1((
+            key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+        ).encode("ascii")).digest()).decode("ascii")
+        try:
+            self.send_response(101, "Switching Protocols")
+            self.send_header("Upgrade", "websocket")
+            self.send_header("Connection", "Upgrade")
+            self.send_header("Sec-WebSocket-Accept", accept)
+            self.end_headers()
+            self.connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            while True:
+                with radio.lock:
+                    if generation != radio.session_gen or radio.encoder is None:
+                        break
+                try:
+                    data = q.get(timeout=0.5)
+                except queue.Empty:
+                    continue
+                # Binary, unmasked server-to-client RFC6455 frame (1920 bytes).
+                header = b"\x82\x7e" + struct.pack("!H", len(data))
+                self.connection.sendall(header + data)
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
+        finally:
+            with radio.lock:
+                radio.pcm_subscribers.discard(q)
+
 
 
 def server(port, public):
