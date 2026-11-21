@@ -177,11 +177,11 @@ class Receiver:
             # 240 kHz -> 48 kHz is an exact 5:1 decimation.  The old
             # WBFM preset (170 kHz -> 32 kHz) can alias strong FM
             # multiplex components into the audible range.
-            # Use the standard atan demodulator and 9-tap FIR instead
+            # Do NOT use -o 4 here: it requests an unsupported 3.84 MS/s\n            # input rate in this rtl_fm build.\n            # Use the standard atan demodulator and 9-tap FIR instead
             # of the faster, lower-quality WBFM defaults.
             args = ["rtl_fm", "-d", str(DEVICE),
                     "-M", "fm", "-f", f"{freq:.2f}M",
-                    "-s", "240k", "-o", "4", "-A", "std",
+                    "-s", "240k", "-A", "std",
                     "-F", "9", "-r", "48k", "-l", "0",
                     "-E", "deemp", "-E", "dc",
                     "-p", str(PPM)]
