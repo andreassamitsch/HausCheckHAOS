@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.3.1 – 2026-11-21
+- Beim Build die Module `radio_metadata.py` und `sdr_scan.py` vollständig in das App-Image aufnehmen.
+
 ## 0.3.0 – 2026-11-21
 - Sendersuchlauf aufwärts/abwärts via `rtl_power`-Spektrum mit RAM-Cache.
 - Frequenzraster +/- 0,1 MHz und manuelle UKW-Bandsuche.
