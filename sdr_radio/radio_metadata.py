@@ -57,7 +57,7 @@ def candidate(s):
     if not icon.startswith(("http://", "https://")):
         icon = ""
     return {
-        "uuid": clean(s.get("stationuuid"), 80),
+        "uuid": clean(s.get("stationuuid") or s.get("uuid"), 80),
         "name": clean(s.get("name"), 100),
         "favicon": icon,
         "url": url,
