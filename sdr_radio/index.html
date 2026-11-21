@@ -254,7 +254,7 @@ function setImage(id,url){
 function renderMetadata(s){
  const station=s.station||{};
  const song=s.song||null;
- const stationKey=String(s.frequency)+"/"+(station.uuid||"");
+ const stationKey=String(s.frequency)+"/"+(station.uuid||"")+"/"+(station.name||"")+"/"+(station.favicon||"");
  const songKey=song?(song.artist+"/"+song.title+"/"+(song.source||"")):"";
  if(stationKey!==lastStationKey){
    lastStationKey=stationKey;
