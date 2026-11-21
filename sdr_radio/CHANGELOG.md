@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.0 – 2026-11-21
+- Native Dashboard-Anbindung über MQTT Discovery: Sensor für RDS-Titel, Senderlogo, Albumcover, Frequenz, Favoriten und Audiozustand.
+- Authentifizierte Kommandos via Home-Assistant-Dienst mqtt.publish (kein offener Steuerport).
+- Getrennte manuelle Wiedergabe-/Stopplogik für ausgewählte media_player.
+- Auswahl des Ausgabegeräts und letzte Frequenz werden als kleine JSON-Datei gespeichert.
+- Bei Stop/Pause am Ausgabegerät kein Autoplay, erneuter Start ausschließlich per explizitem Play-Befehl.
+- Gemeinsame Favoritenverwaltung mit optionaler konservativer Logo-Zuordnung.
+
 ## 0.4.1 – 2026-11-21
 - Sendername mit identischem RDS-PI-Code und RTR-Frequenzbuch auf vollständigen öffentlichen Programmnamen ergänzen.
 - RTR-Wies-Liste auf die 150 nächstgelegenen Senderdatensätze begrenzt (API-Größenlimit).
