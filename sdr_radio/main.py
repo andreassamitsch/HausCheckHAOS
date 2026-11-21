@@ -25,6 +25,7 @@ from radio_metadata import Metadata, stations_search
 from sdr_scan import scan_spectrum, find_next
 from rds_state import RDSState
 from rtr_catalog import RtrCatalog
+from mqtt_bridge import RadioMqttBridge
 
 DATA = Path("/data")
 OPTIONS_PATH = Path("/data/options.json")
@@ -563,6 +564,7 @@ def view_status():
 
 def tuned_status():
     metadata.set_frequency(radio.status()["frequency"])
+    output.update_frequency(radio.status()["frequency"])
     return view_status()
 
 
@@ -581,6 +583,170 @@ def ha_request(path, payload=None):
             return json.loads(response.read().decode("utf-8"))
     except (urllib.error.URLError, ValueError) as exc:
         raise RuntimeError("Home-Assistant-API: " + str(exc)) from exc
+
+
+class RadioOutput:
+    """Selection and manual output ownership. Never auto-resume a stopped player."""
+    def __init__(self):
+        self.lock = threading.RLock()
+        data = load_json(DATA / "output.json", {})
+        output = str(data.get("entity_id") or "media_player.ultra_slim_soundbar")
+        self.selected = output if output.startswith("media_player.") else "media_player.ultra_slim_soundbar"
+        self.active = None
+        self.last_frequency = float(data.get("last_frequency") or 99.7)
+
+    def save(self):
+        with self.lock:
+            save_json(DATA / "output.json",
+                      {"entity_id": self.selected,
+                       "last_frequency": self.last_frequency})
+
+    def select(self, entity):
+        entity = str(entity or "")
+        if not entity.startswith("media_player.") or len(entity) > 140:
+            raise ValueError("Ungültiges Ausgabegerät.")
+        with self.lock:
+            self.selected = entity
+            self.save()
+
+    def update_frequency(self, freq):
+        if freq is None:
+            return
+        with self.lock:
+            if self.last_frequency != freq:
+                self.last_frequency = float(freq)
+                self.save()
+
+    def snapshot(self):
+        with self.lock:
+            return {"selected_output": self.selected,
+                    "active_output": self.active,
+                    "last_frequency": self.last_frequency}
+
+    def output_state(self):
+        selected = self.selected
+        try:
+            player = ha_request("states/" + selected)
+            state = str(player.get("state", "unknown"))
+            volume = player.get("attributes", {}).get("volume_level")
+            media_id = str(player.get("attributes", {}).get("media_content_id") or "")
+        except (RuntimeError, KeyError, ValueError):
+            state, volume, media_id = "unavailable", None, ""
+        # A physical stop is final. There is no watchdog/resume playback.
+        with self.lock:
+            playing = state in ("playing", "buffering")
+            if self.active == selected and state in ("idle", "off", "paused", "unavailable"):
+                self.active = None
+            active = self.active == selected and playing
+        return {"output_state": state, "output_volume": volume,
+                "output_playing": active,
+                "output_media_id": media_id}
+
+    def play(self, target):
+        if target:
+            self.select(target)
+        with self.lock:
+            selected = self.selected
+            previous = self.active
+            preferred_frequency = self.last_frequency
+        state = radio.status()
+        if not state["running"]:
+            radio.tune(preferred_frequency)
+            metadata.set_frequency(preferred_frequency)
+        if previous and previous != selected:
+            try:
+                ha_request("services/media_player/media_stop", {"entity_id": previous})
+            except RuntimeError:
+                pass
+        # ONLY a human-triggered "play" command calls this service.
+        ha_request("services/media_player/play_media", {
+            "entity_id": selected,
+            "media_content_id": STREAM_BASE + "/stream.mp3",
+            "media_content_type": "music"})
+        with self.lock:
+            self.active = selected
+
+    def stop(self, target=None):
+        with self.lock:
+            entity = target or self.selected
+            active = self.active
+        if not str(entity).startswith("media_player."):
+            raise ValueError("Ungültiges Ausgabegerät.")
+        ha_request("services/media_player/media_stop", {"entity_id": entity})
+        with self.lock:
+            if entity == active:
+                self.active = None
+
+
+output = RadioOutput()
+
+
+def mqtt_radio_state():
+    result = view_status()
+    result.update(output.snapshot())
+    result.update(output.output_state())
+    # Enrich saved favorites with available station logos, without uploading media.
+    for favorite in result.get("presets", []):
+        if not isinstance(favorite, dict):
+            continue
+        try:
+            freq = float(favorite["frequency"])
+            station = metadata.station(freq)
+            favorite["logo"] = station.get("favicon") or ""
+            favorite["station_name"] = station.get("name") or favorite.get("name")
+        except (ValueError, KeyError, TypeError):
+            continue
+    return result
+
+
+def mqtt_radio_command(action, data):
+    direction = int(data.get("direction", 0))
+    if action == "tune":
+        freq = checked_frequency(data.get("frequency"))
+        radio.tune(freq)
+        metadata.set_frequency(freq)
+        output.update_frequency(freq)
+    elif action == "seek":
+        radio.band_scan(direction)
+        freq = radio.status()["frequency"]
+        metadata.set_frequency(freq)
+        output.update_frequency(freq)
+    elif action == "step":
+        radio.step(direction)
+        freq = radio.status()["frequency"]
+        metadata.set_frequency(freq)
+        output.update_frequency(freq)
+    elif action == "select_output":
+        output.select(data.get("entity_id"))
+    elif action == "play":
+        output.play(data.get("entity_id"))
+    elif action == "stop_output":
+        output.stop(data.get("entity_id"))
+    elif action == "stop_tuner":
+        output.stop()
+        radio.stop()
+        metadata.set_frequency(None)
+    elif action == "add_favorite":
+        freq = radio.status()["frequency"]
+        if freq is None:
+            raise ValueError("Bitte zuerst einen Sender einstellen.")
+        station = view_status().get("station") or {}
+        name = str(data.get("name") or station.get("name") or f"{freq:.1f} MHz").strip()
+        radio.add_preset(name, freq)
+        mapped = metadata.station(freq)
+        if not mapped.get("favicon") and name:
+            # Conservative logo lookup: only auto-associate a strongly matching
+            # Austrian directory result with the current FM channel.
+            from radio_metadata import key as normalize
+            candidates = stations_search(name)
+            expected = normalize(name)
+            exact = next((s for s in candidates if
+                          normalize(s.get("name")) in (expected, expected+"hq")
+                          and s.get("favicon")), None)
+            if exact:
+                metadata.bind(freq, exact)
+    elif action == "remove_favorite":
+        radio.remove_preset(str(data.get("name", "")))
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -793,6 +959,7 @@ def server(port, public):
 
 
 def main():
+    bridge = RadioMqttBridge(mqtt_radio_state, mqtt_radio_command)
     servers = [server(8098, False), server(8099, True)]
     for httpd in servers:
         threading.Thread(target=httpd.serve_forever, daemon=True).start()
