@@ -54,6 +54,7 @@ audio{display:block;width:100%;margin:16px 0}
 <h2>Hier anhören</h2>
 <p class="muted">Direkt am Tablet oder Smartphone im Home-Assistant-Fenster.</p>
 <audio id="audio" controls preload="none"></audio>
+<p class="muted" id="playerMode">Niedrige Latenz am Tablet – MP3 als Fallback.</p>
 <div class="row"><button id="listen" class="primary">▶ Hier anhören</button><button id="pause">⏸ Pause</button></div>
 <p class="muted" id="listeners">0 Stream-Verbindungen</p>
 </section>
@@ -82,6 +83,72 @@ audio{display:block;width:100%;margin:16px 0}
 <script>
 const $=id=>document.getElementById(id);
 const audio=$("audio");let state=null;let updating=false;
+let liveAudio=null;
+function stopLocalAudio(){
+  if(liveAudio){
+    const session=liveAudio;liveAudio=null;
+    try{session.ws.onclose=null;session.ws.onerror=null;session.ws.close();}catch(_){}
+    try{session.node.disconnect();session.node.onaudioprocess=null;}catch(_){}
+    session.ctx.close().catch(()=>{});
+  }
+  audio.pause();
+  $("audio").style.display="block";
+  $("playerMode").textContent="Niedrige Latenz am Tablet – MP3 als Fallback.";
+}
+function startMp3(){
+  stopLocalAudio();
+  audio.src="stream.mp3?t="+Date.now();
+  audio.play().catch(e=>msg("Wiedergabe: "+e.message,true));
+  $("playerMode").textContent="MP3-Modus: Der Browser kann hier mehrere Sekunden puffern.";
+}
+async function startLiveAudio(){
+  if(liveAudio)return;
+  const AudioCtx=window.AudioContext||window.webkitAudioContext;
+  if(!AudioCtx||!window.WebSocket)throw Error("WebAudio nicht unterstützt");
+  const ctx=new AudioCtx({sampleRate:48000,latencyHint:"interactive"});
+  const node=ctx.createScriptProcessor(1024,0,1);
+  let packets=[],current=null,at=0;
+  node.onaudioprocess=event=>{
+    const dst=event.outputBuffer.getChannelData(0);
+    for(let i=0;i<dst.length;i++){
+      if(!current||at>=current.length){
+        current=packets.shift()||null;at=0;
+      }
+      dst[i]=current?current[at++]/32768:0;
+    }
+  };
+  node.connect(ctx.destination);
+  const addr=new URL("pcm",location.href);
+  addr.protocol=addr.protocol==="https:"?"wss:":"ws:";
+  const ws=new WebSocket(addr);
+  ws.binaryType="arraybuffer";
+  liveAudio={ctx,node,ws};
+  ws.onmessage=event=>{
+    const chunk=new Int16Array(event.data);
+    packets.push(chunk);
+    // Hard cap at ~120 ms: stale packets never pile up after a tune.
+    if(packets.length>6)packets.splice(0,packets.length-6);
+  };
+  ws.onclose=()=>{
+    if(liveAudio&&liveAudio.ws===ws){
+      stopLocalAudio();
+      msg("Live-Audioverbindung beendet. Zum Fortsetzen erneut anhören.",true);
+    }
+  };
+  try{
+    await ctx.resume();
+    await new Promise((resolve,reject)=>{
+      if(ws.readyState===WebSocket.OPEN)return resolve();
+      ws.onopen=resolve;
+      ws.onerror=()=>reject(new Error("WebSocket-Verbindung fehlgeschlagen"));
+    });
+    $("audio").style.display="none";
+    $("playerMode").textContent="Direkt-Audio aktiv (PCM, ca. 0,1–0,2 s Puffer). Beim Senderwechsel verbunden bleiben.";
+  }catch(e){
+    stopLocalAudio();
+    throw e;
+  }
+}
 function msg(message,error=false){const box=$("message");box.textContent=message||"";box.className=message?"visible"+(error?" error":""):"";}
 async function request(path,data){
  const options=data===undefined?{}:{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)};
@@ -102,7 +169,7 @@ async function refresh(force=false){
   const s=await request("api/status");state=s;
   $("status").classList.toggle("active",s.running);
   $("statusText").textContent=s.running?(s.frequency.toFixed(2)+" MHz · aktiv"):"Empfang aus";
-  $("listeners").textContent=s.listeners+" Stream-Verbindung(en) · "+(s.audio_fresh?"Audio-Encoder aktiv":(s.running?"Warte auf Audio…":"kein Empfang"));
+  $("listeners").textContent=s.listeners+" Stream-Verbindung(en) · "+(s.audio_fresh?"Empfang aktiv":(s.running?"Empfänger startet…":"kein Empfang"))+(s.tune_ready_ms!==null?" · SDR "+s.tune_ready_ms+" ms":"");
   $("streamURL").textContent=s.stream_url;
   if(force||!document.activeElement||document.activeElement!==$("frequency")){
     if(s.frequency!==null)$("frequency").value=s.frequency.toFixed(2);
@@ -137,12 +204,13 @@ async function players(){
  }catch(e){msg("Mediaplayer konnten nicht geladen werden: "+e.message,true);}
 }
 $("start").onclick=()=>action("api/tune",{frequency:$("frequency").value},"Radiotuner gestartet.");
-$("stop").onclick=()=>{audio.pause();action("api/stop",{},"Radiotuner gestoppt.");};
+$("stop").onclick=()=>{stopLocalAudio();action("api/stop",{},"Radiotuner gestoppt.");};
 $("listen").onclick=()=>{
  if(!state||!state.running)return msg("Empfang zuerst starten.",true);
- audio.src="stream.mp3?t="+Date.now();audio.play().catch(e=>msg("Wiedergabe: "+e.message,true));
+ if(liveAudio)return msg("Direkt-Audio läuft bereits.");
+ startLiveAudio().catch(e=>{msg("Direkt-Audio nicht verfügbar: "+e.message+". Nutze MP3-Fallback.");startMp3();});
 };
-$("pause").onclick=()=>audio.pause();
+$("pause").onclick=()=>stopLocalAudio();
 $("save").onclick=()=>action("api/preset",{name:$("presetName").value,frequency:$("frequency").value},"Favorit gespeichert.");
 $("haPlay").onclick=()=>action("api/ha_play",{entity_id:$("player").value},"Wiedergabe an Home Assistant gesendet.");
 $("haStop").onclick=()=>action("api/ha_stop",{entity_id:$("player").value},"Stopp an Home Assistant gesendet.");
