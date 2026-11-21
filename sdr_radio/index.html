@@ -102,7 +102,7 @@ async function refresh(force=false){
   const s=await request("api/status");state=s;
   $("status").classList.toggle("active",s.running);
   $("statusText").textContent=s.running?(s.frequency.toFixed(2)+" MHz · aktiv"):"Empfang aus";
-  $("listeners").textContent=s.listeners+" Stream-Verbindung(en)";
+  $("listeners").textContent=s.listeners+" Stream-Verbindung(en) · "+(s.audio_fresh?"Audio-Encoder aktiv":(s.running?"Warte auf Audio…":"kein Empfang"));
   $("streamURL").textContent=s.stream_url;
   if(force||!document.activeElement||document.activeElement!==$("frequency")){
     if(s.frequency!==null)$("frequency").value=s.frequency.toFixed(2);
