@@ -23,6 +23,8 @@ from pathlib import Path
 from urllib.parse import urlsplit
 from radio_metadata import Metadata, stations_search
 from sdr_scan import scan_spectrum, find_next
+from rds_state import RDSState
+from rtr_catalog import RtrCatalog
 
 DATA = Path("/data")
 OPTIONS_PATH = Path("/data/options.json")
@@ -49,6 +51,7 @@ OPTIONS = load_json(OPTIONS_PATH, {})
 DEVICE = max(0, int(OPTIONS.get("device_index", 0)))
 PPM = int(OPTIONS.get("ppm", 0))
 GAIN = str(OPTIONS.get("gain", "auto")).strip().lower()
+RDS_ENABLED = bool(OPTIONS.get("rds_enabled", True))
 STREAM_BASE = str(OPTIONS.get("stream_base_url", "http://homeassistant.local:8099")).rstrip("/")
 PRESETS_PATH = DATA / "presets.json"
 
@@ -82,6 +85,8 @@ class Receiver:
         self.session_gen = 0
         self.tuner_gen = 0
         self.radio = None
+        self.redsea = None
+        self.pcm_converter = None
         self.encoder = None
         self.frequency = None
         self.scanning = False
@@ -113,6 +118,7 @@ class Receiver:
             return {
                 "running": self._running_locked(),
                 "frequency": self.frequency,
+                "rds_enabled": RDS_ENABLED,
                 "scanning": self.scanning,
                 "scan_stations": list(self.scan_cache),
                 "scan_duration_ms": self.scan_duration_ms,
@@ -141,6 +147,31 @@ class Receiver:
                             self.last_error = msg[:500]
                 print(label + ": " + msg, flush=True)
         except (OSError, ValueError):
+            pass
+
+    def _rds_groups(self, proc, generation, frequency):
+        # "--feed-through" prints JSON to stderr, MPX bytes to stdout.
+        try:
+            for raw in iter(proc.stderr.readline,b""):
+                with self.lock:
+                    if generation != self.tuner_gen:
+                        return
+                line = raw.decode("utf-8",errors="replace").strip()
+                if not line:
+                    continue
+                if line.startswith("{"):
+                    try:
+                        group=json.loads(line)
+                        rds.feed(group,frequency)
+                        continue
+                    except (ValueError,TypeError):
+                        pass
+                if "error" in line.lower():
+                    with self.lock:
+                        if generation==self.tuner_gen:
+                            self.errors.append("RDS: "+line[:250])
+                print("RDS:",line[:250],flush=True)
+        except (OSError,ValueError):
             pass
 
     @staticmethod
@@ -258,7 +289,11 @@ class Receiver:
     def _stop_tuner_locked(self):
         self.tuner_gen += 1
         proc = self.radio
+        rdsproc = self.redsea
+        converter = self.pcm_converter
         self.radio = None
+        self.redsea = None
+        self.pcm_converter = None
         self.frequency = None
         self.last_rf_at = None
         while True:
@@ -266,7 +301,8 @@ class Receiver:
                 self.pcm_queue.get_nowait()
             except queue.Empty:
                 break
-        self._terminate(proc)
+        for process in (proc, rdsproc, converter):
+            self._terminate(process)
 
     def _stop_locked(self):
         self._stop_tuner_locked()
@@ -328,11 +364,15 @@ class Receiver:
             self.errors.clear()
             self.tune_started_at = time.monotonic()
             self.tune_ready_ms = None
+            # RDS requires the unfiltered MPX (> 114 kHz to recover
+            # the 57-kHz subcarrier); the 48-kHz audio-only path
+            # discards RDS. Redsea uses the same SINGLE SDR dongle.
             args = ["rtl_fm", "-d", str(DEVICE),
                     "-M", "fm", "-f", f"{freq:.2f}M",
-                    "-s", "240k", "-A", "std",
-                    "-F", "9", "-r", "48k", "-l", "0",
-                    "-E", "deemp", "-E", "dc", "-p", str(PPM)]
+                    "-s", ("171k" if RDS_ENABLED else "240k"), "-A", "std",
+                    "-F", "9", "-l", "0", "-p", str(PPM)]
+            if not RDS_ENABLED:
+                args += ["-r", "48k", "-E", "deemp", "-E", "dc"]
             if GAIN != "auto":
                 try:
                     args += ["-g", str(float(GAIN))]
@@ -344,11 +384,41 @@ class Receiver:
                 self.radio = proc
                 self.frequency = freq
                 generation = self.tuner_gen
+                rds.reset(freq)
                 threading.Thread(target=self._log_pipe,
                                  args=(proc, "RTL-SDR", generation, True),
                                  daemon=True).start()
+                if RDS_ENABLED:
+                    # Redsea echoes 171-kHz MPX to stdout and emits RDS
+                    # JSON groups to stderr. PCM is resampled *after*
+                    # decoding RDS, without changing the MP3 stream URL.
+                    redsea = subprocess.Popen(
+                        ["redsea", "--input", "mpx", "-r", "171k",
+                         "--feed-through", "--output", "json"],
+                        stdin=proc.stdout, stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE)
+                    proc.stdout.close()
+                    self.redsea = redsea
+                    converter = subprocess.Popen(
+                        ["ffmpeg", "-hide_banner", "-nostdin", "-loglevel", "error",
+                         "-f", "s16le", "-ar", "171000", "-ac", "1", "-i", "pipe:0",
+                         "-af", "lowpass=f=15500,lowpass=f=3183:p=1,aresample=48000",
+                         "-f", "s16le", "-ar", "48000", "-ac", "1", "pipe:1"],
+                        stdin=redsea.stdout, stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE)
+                    redsea.stdout.close()
+                    self.pcm_converter = converter
+                    threading.Thread(target=self._rds_groups,
+                                     args=(redsea, generation, freq),
+                                     daemon=True).start()
+                    threading.Thread(target=self._log_pipe,
+                                     args=(converter, "PCM", generation, True),
+                                     daemon=True).start()
+                    capture = converter
+                else:
+                    capture = proc
                 threading.Thread(target=self._pcm_capture,
-                                 args=(proc, generation), daemon=True).start()
+                                 args=(capture, generation), daemon=True).start()
             except OSError as exc:
                 self._stop_tuner_locked()
                 self.last_error = str(exc)
@@ -456,10 +526,34 @@ class Receiver:
 
 radio = Receiver()
 metadata = Metadata()
+rds = RDSState()
+rtr = RtrCatalog()
+threading.Thread(target=rtr.refresh,daemon=True).start()
 
 def view_status():
     data = radio.status()
     data.update(metadata.status())
+    data.update(rds.status())
+    current = data["frequency"]
+    rs = data["rds"]
+    if current is not None:
+        match = rtr.match(current,rs.get("pi",""),rs.get("ps",""))
+        data["rtr_matches"]=match[:6]
+    else:
+        data["rtr_matches"]=[]
+    station=data.get("station") or {}
+    if rs.get("ps"):
+        data["station"]={**station,"name":rs["ps"]}
+        data["station_name_source"]="RDS PS"
+    elif not station and data["rtr_matches"]:
+        data["station"]={"name":data["rtr_matches"][0]["program"]}
+        data["station_name_source"]="RTR (Standortprognose)"
+    else:
+        data["station_name_source"]="manuelle Zuordnung" if station else None
+    if data.get("rds_song"):
+        data["song"]=data["rds_song"]
+    elif data.get("song"):
+        data["song"]={**data["song"],"source":"Online-Fallback (keine RDS-Titel)"}
     return data
 
 def tuned_status():
@@ -537,6 +631,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.reply(502, {"error": str(exc)})
         elif path == "/api/probe":
             self.reply(200, radio.probe())
+        elif path == "/api/rtr":
+            self.reply(200, rtr.status())
         else:
             self.reply(404, {"error": "Unbekannter Pfad"})
 
@@ -548,7 +644,7 @@ class Handler(BaseHTTPRequestHandler):
                         "/api/remove_preset", "/api/ha_play", "/api/ha_stop",
                         "/api/step", "/api/seek", "/api/scan",
                         "/api/stations_search", "/api/station_bind",
-                        "/api/station_clear"):
+                        "/api/station_clear", "/api/rtr_refresh"):
             return self.reply(404, {"error": "Unbekannter Pfad"})
         try:
             n = int(self.headers.get("Content-Length", "0"))
@@ -569,6 +665,8 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/scan":
                 radio.band_scan()
                 out = tuned_status()
+            elif path == "/api/rtr_refresh":
+                out = rtr.refresh(force=True)
             elif path == "/api/stations_search":
                 out = {"stations": stations_search(data.get("name", ""))}
             elif path == "/api/station_bind":
