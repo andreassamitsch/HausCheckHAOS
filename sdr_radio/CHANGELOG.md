@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.0 – 2026-11-21
+- Sendersuchlauf aufwärts/abwärts via `rtl_power`-Spektrum mit RAM-Cache.
+- Frequenzraster +/- 0,1 MHz und manuelle UKW-Bandsuche.
+- Senderzuordnung aus Radio-Browser mit Logo und gespeichertem Frequenz-Mapping.
+- Aktueller Song und Interpret über ICY-Metadaten des Online-Radiosenders (falls vorhanden).
+- Titelcover via iTunes Search API, ohne Bilder oder Audiodateien auf dem Host zu speichern.
+- Erweiterte Tablet-Oberfläche mit Titelcover, Senderlogo, Scan-Liste und Senderwahl.
+- RDS/AF bewusst nicht integriert; Online-Songmetadaten werden als solche gekennzeichnet.
+
 ## 0.2.0 – 2026-11-21
 - Fast-Tuning: Nur `rtl_fm` wird beim Frequenzwechsel neu gestartet, der MP3-Encoder bleibt aktiv.
 - Dauerhafte MP3-Verbindungen mit Stille während des Abstimmens statt Unterbrechung.
