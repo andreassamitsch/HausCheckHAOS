@@ -593,6 +593,7 @@ class RadioOutput:
         output = str(data.get("entity_id") or "media_player.ultra_slim_soundbar")
         self.selected = output if output.startswith("media_player.") else "media_player.ultra_slim_soundbar"
         self.active = None
+        self.last_play_at = 0.0
         self.last_frequency = float(data.get("last_frequency") or 99.7)
 
     def save(self):
@@ -636,7 +637,10 @@ class RadioOutput:
         with self.lock:
             playing = state in ("playing", "buffering")
             if self.active == selected and state in ("idle", "off", "paused", "unavailable"):
-                self.active = None
+                # Give a slow speaker time to wake after an explicit user Play.
+                # Once running, an external Stop stays stopped (never auto-play).
+                if time.monotonic() - self.last_play_at > 12:
+                    self.active = None
             active = self.active == selected and playing
         return {"output_state": state, "output_volume": volume,
                 "output_playing": active,
@@ -665,6 +669,7 @@ class RadioOutput:
             "media_content_type": "music"})
         with self.lock:
             self.active = selected
+            self.last_play_at = time.monotonic()
 
     def stop(self, target=None):
         with self.lock:
