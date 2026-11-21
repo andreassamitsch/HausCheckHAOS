@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SDR UKW Radio</title>
+<style>
+:root{color-scheme:light dark;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;--accent:#2563eb;--line:#7a879a45;--bg:#ffffff0a;--muted:#8492a6}
+*{box-sizing:border-box}body{max-width:920px;margin:0 auto;padding:24px 18px 50px;line-height:1.45}
+header{display:flex;gap:16px;align-items:center;margin-bottom:26px}header .ico{font-size:38px}h1{font-size:1.6rem;margin:0}h2{font-size:1.14rem;margin:0 0 16px}
+small,.muted{opacity:.7}p{margin:.4rem 0 1rem}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.card{padding:22px;border:1px solid var(--line);border-radius:18px;background:var(--bg);margin-bottom:18px}
+label{display:block;font-size:.91rem;font-weight:600;margin-bottom:7px}
+input,select,button{font:inherit;min-height:45px;border-radius:11px}
+input,select{width:100%;padding:10px 12px;background:transparent;border:1px solid var(--line);color:inherit}
+input[type=number]{font-size:1.9rem;font-weight:650;letter-spacing:.02em;text-align:center}
+input:focus,select:focus{outline:2px solid #628fff;outline-offset:2px}
+button{border:1px solid var(--line);padding:9px 15px;cursor:pointer;font-weight:600;background:transparent;color:inherit}
+button.primary{background:var(--accent);color:white;border-color:var(--accent)}
+button.danger{color:#ed7373;border-color:#ed737366}
+button:disabled{opacity:.45;cursor:wait}
+.row{display:flex;gap:10px;flex-wrap:wrap}.row button{flex:1}
+.status{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);padding:6px 10px;border-radius:100px;font-size:.86rem}
+.dot{width:9px;height:9px;background:#9ca3af;border-radius:100%}
+.status.active .dot{background:#2ab778;box-shadow:0 0 0 4px #2ab77822}
+.freq{display:flex;align-items:center;gap:8px}.freq input{min-width:0}.unit{opacity:.7;font-weight:600}
+audio{display:block;width:100%;margin:16px 0}
+.preset{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);gap:7px;padding:10px 0}
+.preset:last-child{border:0}.preset-name{font-weight:600}.preset small{display:block}
+.preset .actions{display:flex;gap:6px}.preset button{min-height:38px;padding:5px 12px}
+#message{margin:0 0 18px;min-height:0;padding:0}
+#message.visible{border-radius:10px;border:1px solid #cfa24666;padding:10px 13px}
+#message.error{border-color:#d55a6c;color:#e76b80}
+#diagnostics{white-space:pre-wrap;word-break:break-word;max-height:180px;overflow:auto;opacity:.75;font-size:.8rem}
+.code{font:normal .84rem ui-monospace,monospace;overflow-wrap:anywhere;border:1px solid var(--line);padding:12px;border-radius:9px;margin:8px 0}
+.field{margin-bottom:14px}
+@media(max-width:670px){.grid{grid-template-columns:1fr}body{padding:14px 12px}.card{padding:16px}header{margin-bottom:15px}}
+</style>
+</head>
+<body>
+<header><div class="ico">📻</div><div><h1>SDR UKW Radio</h1><div class="muted">Echter Funkempfang · RTL-SDR · Home Assistant</div></div></header>
+<div id="message" role="status" aria-live="polite"></div>
+<div class="grid">
+<section class="card">
+<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:15px">
+<h2 style="margin:0">UKW-Empfänger</h2><span id="status" class="status"><span class="dot"></span><span id="statusText">Bereit</span></span>
+</div>
+<label for="frequency">Frequenz</label>
+<div class="freq field"><input type="number" id="frequency" min="87.5" max="108" step=".05" value="99.00" inputmode="decimal"><span class="unit">MHz</span></div>
+<div class="row"><button id="start" class="primary">▶ Empfang starten</button><button id="stop" class="danger">■ Stoppen</button></div>
+<p class="muted" style="margin-top:15px">Nur ein Sender gleichzeitig. Bei einem Senderwechsel wechseln auch alle anderen Zuhörer.</p>
+</section>
+<section class="card">
+<h2>Hier anhören</h2>
+<p class="muted">Direkt am Tablet oder Smartphone im Home-Assistant-Fenster.</p>
+<audio id="audio" controls preload="none"></audio>
+<div class="row"><button id="listen" class="primary">▶ Hier anhören</button><button id="pause">⏸ Pause</button></div>
+<p class="muted" id="listeners">0 Stream-Verbindungen</p>
+</section>
+</div>
+<div class="grid">
+<section class="card">
+<h2>Lieblingssender</h2>
+<div class="field"><label for="presetName">Sendername</label><input id="presetName" placeholder="z. B. mein Lieblingssender" maxlength="48"></div>
+<div class="row"><button id="save">＋ Aktuelle Frequenz speichern</button></div>
+<div id="presets" style="margin-top:14px"></div>
+</section>
+<section class="card">
+<h2>Wiedergabe über Home Assistant</h2>
+<div class="field"><label for="player">Ausgabegerät</label><select id="player"><option value="">Geräte werden geladen …</option></select></div>
+<div class="row"><button id="haPlay" class="primary">▶ Auf Gerät abspielen</button><button id="haStop">■ Gerät stoppen</button></div>
+<p class="muted" style="margin-top:15px">Ob die Wiedergabe funktioniert, hängt von der Media-Player-Integration ab. Der Radiostream muss vom Gerät im Heimnetz erreichbar sein.</p>
+</section>
+</div>
+<section class="card">
+<h2>Livestream &amp; Diagnose</h2>
+<div><label>Stream-Adresse für weitere Geräte</label><div id="streamURL" class="code"></div>
+<div class="row"><button id="copy">Stream-Adresse kopieren</button><button id="probe">USB-Empfänger prüfen</button></div></div>
+<p class="muted" style="margin-top:16px">Empfang und Stream sind getrennt von der vorhandenen rtl_433-App. Voraussetzung ist ein kompatibler RTL-SDR-USB-Stick mit UKW-Antenne und USB-Passthrough zu Home Assistant.</p>
+<details><summary>Diagnoseprotokoll</summary><div id="diagnostics">Noch keine Diagnose.</div></details>
+</section>
+<script>
+const $=id=>document.getElementById(id);
+const audio=$("audio");let state=null;let updating=false;
+function msg(message,error=false){const box=$("message");box.textContent=message||"";box.className=message?"visible"+(error?" error":""):"";}
+async function request(path,data){
+ const options=data===undefined?{}:{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)};
+ const response=await fetch(path,options), value=await response.json();
+ if(!response.ok)throw new Error(value.error||"HTTP "+response.status);
+ return value;
+}
+function setBusy(b){updating=b;["start","stop","save","probe","haPlay","haStop"].forEach(id=>$(id).disabled=b);}
+async function action(path,data,notice){
+ if(updating)return;
+ setBusy(true);
+ try{await request(path,data);msg(notice||"Aktion erfolgreich.");await refresh(true);}
+ catch(e){msg(e.message,true);}
+ finally{setBusy(false);}
+}
+async function refresh(force=false){
+ try{
+  const s=await request("api/status");state=s;
+  $("status").classList.toggle("active",s.running);
+  $("statusText").textContent=s.running?(s.frequency.toFixed(2)+" MHz · aktiv"):"Empfang aus";
+  $("listeners").textContent=s.listeners+" Stream-Verbindung(en)";
+  $("streamURL").textContent=s.stream_url;
+  if(force||!document.activeElement||document.activeElement!==$("frequency")){
+    if(s.frequency!==null)$("frequency").value=s.frequency.toFixed(2);
+  }
+  const logs=[s.last_error,...(s.log||[])].filter(Boolean);
+  $("diagnostics").textContent=logs.join("\n")||"Keine Fehler gemeldet.";
+  if(force)renderPresets(s.presets||[]);
+ }catch(e){if(force)msg("Status kann nicht geladen werden: "+e.message,true);}
+}
+function renderPresets(items){
+ const root=$("presets");root.replaceChildren();
+ if(!items.length){const p=document.createElement("p");p.className="muted";p.textContent="Noch keine Favoriten gespeichert.";root.append(p);return;}
+ for(const item of items){
+  const row=document.createElement("div");row.className="preset";
+  const text=document.createElement("div");text.className="preset-name";text.textContent=item.name;
+  const freq=document.createElement("small");freq.textContent=Number(item.frequency).toFixed(2)+" MHz";text.append(freq);
+  const buttons=document.createElement("div");buttons.className="actions";
+  const play=document.createElement("button");play.textContent="▶";play.title="Sender starten";
+  play.onclick=()=>{$("frequency").value=item.frequency;action("api/tune",{frequency:item.frequency},item.name+" eingeschaltet.");};
+  const del=document.createElement("button");del.textContent="✕";del.title="Favorit löschen";
+  del.onclick=()=>action("api/remove_preset",{name:item.name},"Favorit entfernt.");
+  buttons.append(play,del);row.append(text,buttons);root.append(row);
+ }
+}
+async function players(){
+ try{
+  const items=await request("api/players");const sel=$("player");sel.replaceChildren();
+  for(const p of items){const option=document.createElement("option");option.value=p.entity_id;option.textContent=p.name;sel.append(option);}
+  const preferred=items.find(x=>x.entity_id==="media_player.ultra_slim_soundbar");
+  if(preferred)sel.value=preferred.entity_id;
+  if(!items.length){const o=document.createElement("option");o.textContent="Keine Geräte";sel.append(o);}
+ }catch(e){msg("Mediaplayer konnten nicht geladen werden: "+e.message,true);}
+}
+$("start").onclick=()=>action("api/tune",{frequency:$("frequency").value},"Radiotuner gestartet.");
+$("stop").onclick=()=>{audio.pause();action("api/stop",{},"Radiotuner gestoppt.");};
+$("listen").onclick=()=>{
+ if(!state||!state.running)return msg("Empfang zuerst starten.",true);
+ audio.src="stream.mp3?t="+Date.now();audio.play().catch(e=>msg("Wiedergabe: "+e.message,true));
+};
+$("pause").onclick=()=>audio.pause();
+$("save").onclick=()=>action("api/preset",{name:$("presetName").value,frequency:$("frequency").value},"Favorit gespeichert.");
+$("haPlay").onclick=()=>action("api/ha_play",{entity_id:$("player").value},"Wiedergabe an Home Assistant gesendet.");
+$("haStop").onclick=()=>action("api/ha_stop",{entity_id:$("player").value},"Stopp an Home Assistant gesendet.");
+$("copy").onclick=()=>navigator.clipboard.writeText($("streamURL").textContent).then(()=>msg("Stream-Adresse kopiert."),e=>msg("Kopieren fehlgeschlagen: "+e.message,true));
+$("probe").onclick=async()=>{
+ if(updating)return;setBusy(true);
+ try{const v=await request("api/probe");$("diagnostics").textContent=v.message;msg(v.ok?"RTL-SDR erkannt.":"RTL-SDR konnte nicht geprüft werden. Siehe Diagnose.",!v.ok);}
+ catch(e){msg(e.message,true);}finally{setBusy(false);}
+};
+refresh(true);players();setInterval(()=>refresh(false),4000);
+</script>
+</body>
+</html>
