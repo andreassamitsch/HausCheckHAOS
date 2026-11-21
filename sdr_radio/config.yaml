@@ -26,9 +26,11 @@ options:
   device_index: 0
   gain: "auto"
   ppm: 0
+  rds_enabled: true
   stream_base_url: "http://192.168.1.66:8099"
 schema:
   device_index: "int(0,)"
   gain: str
   ppm: "int(-150,150)"
+  rds_enabled: bool
   stream_base_url: str
