@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0 – 2026-11-21
+- Fast-Tuning: Nur `rtl_fm` wird beim Frequenzwechsel neu gestartet, der MP3-Encoder bleibt aktiv.
+- Dauerhafte MP3-Verbindungen mit Stille während des Abstimmens statt Unterbrechung.
+- Echtzeit-PCM über WebSocket im authentifizierten Ingress und WebAudio mit kurzem Browserpuffer.
+- Kleinere MP3-Ausleseblöcke, begrenzte Audio-Queues und keine künstliche 450-ms-Wartezeit.
+- Status zeigt die Abstimmzeit bis zum ersten PCM-Datenblock an.
+- Bewährte UKW-Audiofilter und 48-kHz-Demodulation unverändert.
+
 ## 0.1.3 – 2026-11-21
 - Nicht unterstütztes 4×-Oversampling entfernt; behebt Fehler bei 3,84 MS/s am Nooelec RTL-SDR.
 
