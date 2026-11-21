@@ -31,6 +31,28 @@ audio{display:block;width:100%;margin:16px 0}
 #message{margin:0 0 18px;min-height:0;padding:0}
 #message.visible{border-radius:10px;border:1px solid #cfa24666;padding:10px 13px}
 #message.error{border-color:#d55a6c;color:#e76b80}
+.radio-hero{display:flex;gap:20px;align-items:center}
+.art{height:142px;width:142px;flex:0 0 142px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#266e9a33,#7154b33b);border-radius:16px;overflow:hidden}
+.art img{width:100%;height:100%;object-fit:cover}
+#artPlaceholder{font-size:4rem;opacity:.42}
+.station-content{flex:1;min-width:0}
+.station-heading{display:flex;gap:10px;align-items:center;margin-bottom:11px}
+#stationLogo{max-width:57px;max-height:57px;object-fit:contain;border-radius:8px}
+.eyebrow{font-weight:700;letter-spacing:.11em;font-size:.67rem;opacity:.66}
+.station-title{font-size:1.14rem;font-weight:750}
+.song-title{font-size:1.55rem;font-weight:750;overflow-wrap:anywhere;line-height:1.18}
+.song-artist{font-size:1rem;opacity:.85;margin-top:4px}
+.metadata-hint{font-size:.77rem;opacity:.62;margin-top:11px}
+.tuning-grid{display:grid;grid-template-columns:1.4fr 1fr 1fr 1.4fr;gap:7px;margin-top:10px}
+.tuning-grid button{padding:5px;font-size:.88rem;min-width:0}
+.station-results,.scan-results{margin-top:10px}
+.station-result{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
+.station-result:last-child{border:0}
+.station-result img{height:37px;width:37px;object-fit:contain;border-radius:6px}
+.station-result button{min-height:37px;flex-shrink:0}
+.station-result-text{flex:1;min-width:0;overflow-wrap:anywhere}
+@media(max-width:670px){.art{height:103px;width:103px;flex-basis:103px}.radio-hero{gap:12px}
+.song-title{font-size:1.28rem}.station-title{font-size:1rem}.tuning-grid button{font-size:.75rem;padding:5px 2px}}
 #diagnostics{white-space:pre-wrap;word-break:break-word;max-height:180px;overflow:auto;opacity:.75;font-size:.8rem}
 .code{font:normal .84rem ui-monospace,monospace;overflow-wrap:anywhere;border:1px solid var(--line);padding:12px;border-radius:9px;margin:8px 0}
 .field{margin-bottom:14px}
@@ -40,6 +62,21 @@ audio{display:block;width:100%;margin:16px 0}
 <body>
 <header><div class="ico">📻</div><div><h1>SDR UKW Radio</h1><div class="muted">Echter Funkempfang · RTL-SDR · Home Assistant</div></div></header>
 <div id="message" role="status" aria-live="polite"></div>
+<section class="card station-panel">
+  <div class="radio-hero">
+    <div class="art"><img id="cover" alt="Aktuelles Titelcover" hidden><span id="artPlaceholder">♫</span></div>
+    <div class="station-content">
+      <div class="station-heading">
+        <img id="stationLogo" alt="Senderlogo" hidden>
+        <div><div class="eyebrow">UKW · LIVE</div>
+          <div id="stationName" class="station-title">Sender noch nicht zugeordnet</div></div>
+      </div>
+      <div id="songTitle" class="song-title">–</div>
+      <div id="songArtist" class="song-artist">Aktuelle Titelinfos erscheinen, wenn der Sender zugeordnet wurde.</div>
+      <div id="metadataHint" class="metadata-hint"></div>
+    </div>
+  </div>
+</section>
 <div class="grid">
 <section class="card">
 <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:15px">
@@ -48,7 +85,15 @@ audio{display:block;width:100%;margin:16px 0}
 <label for="frequency">Frequenz</label>
 <div class="freq field"><input type="number" id="frequency" min="87.5" max="108" step=".05" value="99.00" inputmode="decimal"><span class="unit">MHz</span></div>
 <div class="row"><button id="start" class="primary">▶ Empfang starten</button><button id="stop" class="danger">■ Stoppen</button></div>
-<p class="muted" style="margin-top:15px">Nur ein Sender gleichzeitig. Bei einem Senderwechsel wechseln auch alle anderen Zuhörer.</p>
+<div class="tuning-grid" role="group" aria-label="UKW-Senderwahl">
+  <button id="seekDown" title="Vorherigen empfangbaren Sender suchen">⇤ Sender</button>
+  <button id="stepDown" title="Frequenz minus 100 kHz">− 0,1</button>
+  <button id="stepUp" title="Frequenz plus 100 kHz">+ 0,1</button>
+  <button id="seekUp" title="Nächsten empfangbaren Sender suchen">Sender ⇥</button>
+</div>
+<div class="row" style="margin-top:12px"><button id="scanBand">⌁ UKW-Band durchsuchen</button></div>
+<div id="scanResults" class="scan-results"></div>
+<p class="muted" style="margin-top:15px">„Sender“ startet einen automatischen Suchlauf, +/− verstellt 0,1 MHz. Beim ersten Suchlauf wird der einzelne SDR-Empfänger kurz benötigt; der Audiostream bleibt verbunden.</p>
 </section>
 <section class="card">
 <h2>Hier anhören</h2>
@@ -74,6 +119,14 @@ audio{display:block;width:100%;margin:16px 0}
 </section>
 </div>
 <section class="card">
+<h2>Sendername und Logo zuordnen</h2>
+<p class="muted">Bei echtem UKW-Empfang bleiben Ton und Senderwahl unabhängig vom Internet. Die Senderlogos und Titelinfos werden aus dem passenden Onlinestream bezogen.</p>
+<div class="field"><label for="stationQuery">Sender suchen</label><input id="stationQuery" placeholder="z. B. Hitradio Ö3, Antenne Steiermark, Kronehit" maxlength="100"></div>
+<div class="row"><button id="findStation" class="primary">Senderverzeichnis durchsuchen</button><button id="clearStation">Zuordnung entfernen</button></div>
+<div id="stationResults" class="station-results"></div>
+<p class="muted" style="margin-top:13px">Zuordnung gilt für die aktuell eingestellte UKW-Frequenz. Songinfos stammen vom Online-Radiosender (ICY) und können gegenüber UKW etwas zeitversetzt oder nicht verfügbar sein. Keine RDS-AF-Umschaltung.</p>
+</section>
+<section class="card">
 <h2>Livestream &amp; Diagnose</h2>
 <div><label>Stream-Adresse für weitere Geräte</label><div id="streamURL" class="code"></div>
 <div class="row"><button id="copy">Stream-Adresse kopieren</button><button id="probe">USB-Empfänger prüfen</button></div></div>
@@ -82,7 +135,7 @@ audio{display:block;width:100%;margin:16px 0}
 </section>
 <script>
 const $=id=>document.getElementById(id);
-const audio=$("audio");let state=null;let updating=false;
+const audio=$("audio");let state=null;let updating=false;let lastStationKey="";let lastSongKey="";
 let liveAudio=null;
 function stopLocalAudio(){
   if(liveAudio){
@@ -156,7 +209,7 @@ async function request(path,data){
  if(!response.ok)throw new Error(value.error||"HTTP "+response.status);
  return value;
 }
-function setBusy(b){updating=b;["start","stop","save","probe","haPlay","haStop"].forEach(id=>$(id).disabled=b);}
+function setBusy(b){updating=b;["start","stop","save","probe","haPlay","haStop","stepUp","stepDown","seekUp","seekDown","scanBand","findStation","clearStation"].forEach(id=>$(id).disabled=b);}
 async function action(path,data,notice){
  if(updating)return;
  setBusy(true);
@@ -168,7 +221,7 @@ async function refresh(force=false){
  try{
   const s=await request("api/status");state=s;
   $("status").classList.toggle("active",s.running);
-  $("statusText").textContent=s.running?(s.frequency.toFixed(2)+" MHz · aktiv"):"Empfang aus";
+  $("statusText").textContent=s.scanning?"Sendersuchlauf…":(s.running?(s.frequency.toFixed(2)+" MHz · aktiv"):"Empfang aus");
   $("listeners").textContent=s.listeners+" Stream-Verbindung(en) · "+(s.audio_fresh?"Empfang aktiv":(s.running?"Empfänger startet…":"kein Empfang"))+(s.tune_ready_ms!==null?" · SDR "+s.tune_ready_ms+" ms":"");
   $("streamURL").textContent=s.stream_url;
   if(force||!document.activeElement||document.activeElement!==$("frequency")){
@@ -176,8 +229,62 @@ async function refresh(force=false){
   }
   const logs=[s.last_error,...(s.log||[])].filter(Boolean);
   $("diagnostics").textContent=logs.join("\n")||"Keine Fehler gemeldet.";
-  if(force)renderPresets(s.presets||[]);
+  renderMetadata(s);
+  if(force){renderPresets(s.presets||[]);renderScan(s.scan_stations||[]);}
+
  }catch(e){if(force)msg("Status kann nicht geladen werden: "+e.message,true);}
+}
+function setImage(id,url){
+ const img=$(id);const src=url&&/^https?:\/\//.test(url)?url:"";
+ if(src&&img.getAttribute("src")!==src)img.src=src;
+ img.hidden=!src;
+ if(id==="cover")$("artPlaceholder").hidden=!!src;
+}
+function renderMetadata(s){
+ const station=s.station||{};
+ const song=s.song||null;
+ const stationKey=String(s.frequency)+"/"+(station.uuid||"");
+ const songKey=song?(song.artist+"/"+song.title):"";
+ if(stationKey!==lastStationKey){
+   lastStationKey=stationKey;
+   $("stationName").textContent=station.name||(
+     s.frequency!==null?s.frequency.toFixed(2)+" MHz · unbekannter Sender":"Kein Radioempfang");
+   setImage("stationLogo",station.favicon);
+   if(station.name&&document.activeElement!==$("stationQuery"))$("stationQuery").value=station.name;
+ }
+ if(songKey!==lastSongKey){
+   lastSongKey=songKey;
+   $("songTitle").textContent=song?song.title:(station.name?"Keine Titelinformation":"–");
+   $("songArtist").textContent=song?song.artist:(station.name?"Sender überträgt derzeit keinen erkennbaren Titel.":"Sender zuordnen, um Titelinfos und Cover zu erhalten.");
+   setImage("cover",song&&song.cover_url);
+ }
+ $("metadataHint").textContent=station.name?"Metadaten: "+(song?"Online-Stream · können zeitversetzt sein":(s.metadata_error||"Warte auf Daten…")):"";
+}
+function renderScan(items){
+ const root=$("scanResults");root.replaceChildren();
+ if(!items.length)return;
+ const title=document.createElement("p");title.className="muted";title.textContent="Starke Signale im UKW-Band (automatisch erkannt):";root.append(title);
+ const list=document.createElement("div");list.className="row";
+ for(const item of items){
+   const b=document.createElement("button");b.textContent=Number(item.frequency).toFixed(1)+" MHz";
+   b.title="Signal "+item.signal_db+" dB, Kontrast "+item.contrast_db+" dB";
+   b.onclick=()=>action("api/tune",{frequency:item.frequency},"Auf "+b.textContent+" abgestimmt.");
+   list.append(b);
+ }
+ root.append(list);
+}
+function renderStationResults(items){
+ const root=$("stationResults");root.replaceChildren();
+ if(!items.length){root.textContent="Keine passenden österreichischen Radiosender gefunden.";return;}
+ for(const st of items){
+   const row=document.createElement("div");row.className="station-result";
+   if(st.favicon){const img=document.createElement("img");img.src=st.favicon;img.alt="";row.append(img);}
+   const label=document.createElement("div");label.className="station-result-text";label.textContent=st.name;
+   const sub=document.createElement("small");sub.textContent=st.countrycode?" · "+st.countrycode:"";label.append(sub);
+   const b=document.createElement("button");b.textContent="Zuordnen";
+   b.onclick=()=>action("api/station_bind",{frequency:state.frequency,station:st},st.name+" wurde dieser Frequenz zugeordnet.");
+   row.append(label,b);root.append(row);
+ }
 }
 function renderPresets(items){
  const root=$("presets");root.replaceChildren();
@@ -204,6 +311,24 @@ async function players(){
  }catch(e){msg("Mediaplayer konnten nicht geladen werden: "+e.message,true);}
 }
 $("start").onclick=()=>action("api/tune",{frequency:$("frequency").value},"Radiotuner gestartet.");
+$("stepUp").onclick=()=>action("api/step",{direction:1},"Frequenz um 0,1 MHz erhöht.");
+$("stepDown").onclick=()=>action("api/step",{direction:-1},"Frequenz um 0,1 MHz verringert.");
+$("seekUp").onclick=()=>action("api/seek",{direction:1},"Nächster Sender gewählt.");
+$("seekDown").onclick=()=>action("api/seek",{direction:-1},"Vorheriger Sender gewählt.");
+$("scanBand").onclick=()=>action("api/scan",{},"UKW-Suchlauf abgeschlossen.");
+$("findStation").onclick=async()=>{
+ if(updating)return;
+ setBusy(true);
+ msg("Suche Senderlogos und Metadatenquellen …");
+ try{const v=await request("api/stations_search",{name:$("stationQuery").value});
+  renderStationResults(v.result?v.result.stations:(v.stations||[]));
+  msg("Senderverzeichnis abgefragt.");
+ }catch(e){msg(e.message,true);}finally{setBusy(false);}
+};
+$("clearStation").onclick=()=>{
+ if(!state||state.frequency===null)return msg("Bitte zuerst eine Frequenz einstellen.",true);
+ action("api/station_clear",{frequency:state.frequency},"Senderzuordnung entfernt.");
+};
 $("stop").onclick=()=>{stopLocalAudio();action("api/stop",{},"Radiotuner gestoppt.");};
 $("listen").onclick=()=>{
  if(!state||!state.running)return msg("Empfang zuerst starten.",true);
