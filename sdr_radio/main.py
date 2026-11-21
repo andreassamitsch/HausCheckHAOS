@@ -21,6 +21,8 @@ from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
+from radio_metadata import Metadata, stations_search
+from sdr_scan import scan_spectrum, find_next
 
 DATA = Path("/data")
 OPTIONS_PATH = Path("/data/options.json")
@@ -82,6 +84,11 @@ class Receiver:
         self.radio = None
         self.encoder = None
         self.frequency = None
+        self.scanning = False
+        self.scan_guard = threading.Lock()
+        self.scan_cache = []
+        self.scan_time = 0.0
+        self.scan_duration_ms = None
         self.subscribers = set()
         self.pcm_subscribers = set()
         self.pcm_queue = queue.Queue(maxsize=8)
@@ -106,6 +113,9 @@ class Receiver:
             return {
                 "running": self._running_locked(),
                 "frequency": self.frequency,
+                "scanning": self.scanning,
+                "scan_stations": list(self.scan_cache),
+                "scan_duration_ms": self.scan_duration_ms,
                 "listeners": len(self.subscribers) + len(self.pcm_subscribers),
                 "pcm_listeners": len(self.pcm_subscribers),
                 "stream_url": STREAM_BASE + "/stream.mp3",
@@ -304,6 +314,8 @@ class Receiver:
                          args=(self.encoder, generation), daemon=True).start()
 
     def tune(self, value):
+        if self.scanning:
+            raise ValueError("Sendersuchlauf läuft. Bitte kurz warten.")
         freq = checked_frequency(value)
         with self.lock:
             if self.frequency == freq and self._running_locked():
@@ -342,6 +354,67 @@ class Receiver:
                 self.last_error = str(exc)
                 raise RuntimeError(str(exc)) from exc
             return self.status()
+
+    def step(self, direction):
+        """Manual tuning by one 100-kHz FM channel."""
+        if direction not in (-1, 1):
+            raise ValueError("Ungültige Richtung.")
+        with self.lock:
+            start = self.frequency if self.frequency is not None else 99.7
+        nxt = round(start * 10 + direction) / 10
+        if nxt > 108:
+            nxt = 87.5
+        elif nxt < 87.5:
+            nxt = 108.0
+        return self.tune(nxt)
+
+    def band_scan(self, direction=None):
+        """One 2-5s sweep; PCM/MP3 encoder remains running through silence.
+
+        Cached station candidates make future Seek button presses fast.
+        """
+        if not self.scan_guard.acquire(blocking=False):
+            raise ValueError("Sendersuchlauf läuft bereits.")
+        old = None
+        target = None
+        exc = None
+        try:
+            with self.lock:
+                old = self.frequency if self.frequency is not None else 99.7
+                cache_ok = bool(self.scan_cache) and time.monotonic()-self.scan_time < 3600
+                if cache_ok:
+                    stations = list(self.scan_cache)
+                else:
+                    self.scanning = True
+                    self._stop_tuner_locked()
+            if not cache_ok:
+                try:
+                    result = scan_spectrum(DEVICE, GAIN, PPM)
+                    stations = result["stations"]
+                    with self.lock:
+                        self.scan_cache = list(stations)
+                        self.scan_time = time.monotonic()
+                        self.scan_duration_ms = result["duration_ms"]
+                except Exception as err:
+                    exc = err
+            if exc is None:
+                if direction is None:
+                    target = old
+                else:
+                    target = find_next(stations, old, direction)
+                    if target is None:
+                        exc = ValueError("Keinen ausreichend starken Sender gefunden.")
+            with self.lock:
+                self.scanning = False
+            # Restore previous station on a failed scan, otherwise tune chosen.
+            self.tune(target if target is not None else old)
+            if exc is not None:
+                raise RuntimeError(str(exc))
+            return self.status()
+        finally:
+            with self.lock:
+                self.scanning = False
+            self.scan_guard.release()
 
     def add_preset(self, name, value):
         name = str(name).strip()[:48]
@@ -382,6 +455,16 @@ class Receiver:
 
 
 radio = Receiver()
+metadata = Metadata()
+
+def view_status():
+    data = radio.status()
+    data.update(metadata.status())
+    return data
+
+def tuned_status():
+    metadata.set_frequency(radio.status()["frequency"])
+    return view_status()
 
 
 def ha_request(path, payload=None):
@@ -439,7 +522,7 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
         elif path == "/api/status":
-            self.reply(200, radio.status())
+            self.reply(200, view_status())
         elif path == "/api/players":
             try:
                 devices = ha_request("states")
@@ -462,7 +545,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(405, {"error": "Nur Livestream über diesen Port"})
         path = urlsplit(self.path).path
         if path not in ("/api/tune", "/api/stop", "/api/preset",
-                        "/api/remove_preset", "/api/ha_play", "/api/ha_stop"):
+                        "/api/remove_preset", "/api/ha_play", "/api/ha_stop",
+                        "/api/step", "/api/seek", "/api/scan",
+                        "/api/stations_search", "/api/station_bind",
+                        "/api/station_clear"):
             return self.reply(404, {"error": "Unbekannter Pfad"})
         try:
             n = int(self.headers.get("Content-Length", "0"))
@@ -472,10 +558,31 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(data, dict):
                 raise ValueError("Ungültige Anfrage")
             if path == "/api/tune":
-                out = radio.tune(data.get("frequency"))
+                radio.tune(data.get("frequency"))
+                out = tuned_status()
+            elif path == "/api/step":
+                radio.step(int(data.get("direction", 0)))
+                out = tuned_status()
+            elif path == "/api/seek":
+                radio.band_scan(int(data.get("direction", 0)))
+                out = tuned_status()
+            elif path == "/api/scan":
+                radio.band_scan()
+                out = tuned_status()
+            elif path == "/api/stations_search":
+                out = {"stations": stations_search(data.get("name", ""))}
+            elif path == "/api/station_bind":
+                freq = checked_frequency(data.get("frequency"))
+                metadata.bind(freq, data.get("station") or {})
+                out = view_status()
+            elif path == "/api/station_clear":
+                freq = checked_frequency(data.get("frequency"))
+                metadata.clear(freq)
+                out = view_status()
             elif path == "/api/stop":
                 radio.stop()
-                out = radio.status()
+                metadata.set_frequency(None)
+                out = view_status()
             elif path == "/api/preset":
                 out = radio.add_preset(data.get("name", ""), data.get("frequency"))
             elif path == "/api/remove_preset":
