@@ -174,15 +174,24 @@ class Receiver:
             self._stop_locked()
             self.errors.clear()
             self.last_error = ""
-            args = ["rtl_fm", "-d", str(DEVICE), "-M", "wbfm",
-                    "-f", f"{freq:.2f}M", "-r", "32k", "-p", str(PPM)]
+            # 240 kHz -> 48 kHz is an exact 5:1 decimation.  The old
+            # WBFM preset (170 kHz -> 32 kHz) can alias strong FM
+            # multiplex components into the audible range.
+            # Use the standard atan demodulator and 9-tap FIR instead
+            # of the faster, lower-quality WBFM defaults.
+            args = ["rtl_fm", "-d", str(DEVICE),
+                    "-M", "fm", "-f", f"{freq:.2f}M",
+                    "-s", "240k", "-o", "4", "-A", "std",
+                    "-F", "9", "-r", "48k", "-l", "0",
+                    "-E", "deemp", "-E", "dc",
+                    "-p", str(PPM)]
             if GAIN != "auto":
                 try:
                     args += ["-g", str(float(GAIN))]
                 except ValueError:
                     raise ValueError("Ungültige Verstärkungseinstellung.") from None
             ffmpeg = ["ffmpeg", "-hide_banner", "-nostdin", "-loglevel", "error",
-                      "-f", "s16le", "-ar", "32000", "-ac", "1", "-i", "pipe:0",
+                      "-f", "s16le", "-ar", "48000", "-ac", "1", "-i", "pipe:0",
                       "-c:a", "libmp3lame", "-b:a", "96k",
                       "-write_xing", "0", "-f", "mp3", "pipe:1"]
             try:
