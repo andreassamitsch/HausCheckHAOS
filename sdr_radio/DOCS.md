@@ -1,0 +1,38 @@
+# SDR UKW Radio
+
+Diese experimentelle App nutzt einen USB-Stick auf Basis von RTL2832U/kompatiblem RTL-SDR zum Empfang von **UKW-Radio 87,5–108 MHz**. `rtl_433` selbst decodiert nur Funksensordaten; hier wird das Programm `rtl_fm` benutzt.
+
+## Voraussetzungen
+
+- SDR-USB-Dongle mit Empfangsbereich 87,5–108 MHz und geeigneter UKW-Antenne
+- USB-Passthrough an die Home-Assistant-OS-VM, falls HA auf Proxmox läuft
+- Nur **eine Anwendung zur selben Zeit** kann einen einzelnen RTL-SDR-Stick verwenden. Bestehendes rtl_433 daher während des Radioempfangs stoppen (es ist derzeit ohnehin gestoppt).
+
+## Installation
+
+Diese App stammt aus dem bereits eingebundenen Repository `HausCheckHAOS`. Im App-Store nach Updates suchen, SDR UKW Radio installieren und starten. Dann in der App-Oberfläche die Schaltfläche **USB-Empfänger prüfen** verwenden und eine Frequenz wählen.
+
+## Einstellungen
+
+- `device_index`: RTL-SDR-Gerätenummer (bei einem Gerät 0)
+- `gain`: `auto` oder eine vom Tuner unterstützte Verstärkung in dB
+- `ppm`: Frequenzkorrektur
+- `stream_base_url`: Vom Abspielgerät erreichbare HTTP-URL, typischerweise `http://192.168.1.66:8099`. Nicht `localhost` verwenden.
+
+**Zugriff:** Port 8099 gibt ausschließlich `/stream.mp3` und `/health` frei. Die Steuerung und Home-Assistant-Zugriffe laufen nur über den authentifizierten App-Ingress auf Port 8098. Port 8099 nicht ins Internet weiterleiten.
+
+## Bedienung
+
+1. Senderfrequenz eingeben und **Empfang starten** drücken.
+2. Lokal über **Hier anhören** abspielen. Favoriten im Webinterface speichern.
+3. Für einen separaten Lautsprecher das gewünschte `media_player`-Ziel wählen und **Auf Gerät abspielen** drücken.
+4. Unter **Stream-URL** findest du den URL für Geräte, die einen normalen MP3-Radiostream unterstützen.
+
+Die Audio-Wiedergabe startet nie automatisch beim Installieren oder Starten der App. Eine Senderumschaltung wirkt sich auf **alle** Zuhörer des einzigen Tuners aus; bestehende Verbindungen werden bei der Umschaltung getrennt.
+
+## Einschränkungen
+
+- Mono-MP3-Stream; kein RDS, kein DAB+, keine Frequenzsuche im ersten Release.
+- Funktion von `media_player.play_media` hängt vom Lautsprecher und seiner Integration ab.
+- Ein einzelner Dongle kann nicht gleichzeitig 433-MHz-Daten empfangen.
+- Der MP3-Stream ist unverschlüsselt und für das Heimnetz gedacht; der Server gibt keine anderen Steuer-Endpunkte am öffentlichen Stream-Port frei.
