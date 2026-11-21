@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0 – 2026-11-21
+- Echtzeit-RDS via redsea 1.3.1 aus UKW-MPX ohne zweiten SDR-Empfänger.
+- PI / PS / RadioText / RT+ Titel/Interpret als Primärquelle; Online-Fallback gekennzeichnet.
+- Albumcover zuerst mit YouTube Music über starke Artist-/Titelübereinstimmung, danach iTunes.
+- Amtliches RTR-Frequenzbuch mit regionaler UKW-Liste für Wies, Senderstandorten und Distanz.
+- Redsea-kompatibler MPX-Audiopfad mit 48-kHz-Ausgabe; RDS bei Bedarf abschaltbar.
+- Neue Diagnose-/Quellenanzeige in der Radio-App.
+
 ## 0.3.1 – 2026-11-21
 - Beim Build die Module `radio_metadata.py` und `sdr_scan.py` vollständig in das App-Image aufnehmen.
 
