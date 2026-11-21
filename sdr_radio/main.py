@@ -69,6 +69,8 @@ class Receiver:
         self.subscribers = set()
         self.errors = deque(maxlen=30)
         self.last_error = ""
+        self.total_audio_bytes = 0
+        self.last_data_at = None
         self.presets = load_json(PRESETS_PATH, [])
         if not isinstance(self.presets, list):
             self.presets = []
@@ -84,6 +86,8 @@ class Receiver:
                 "listeners": len(self.subscribers),
                 "stream_url": STREAM_BASE + "/stream.mp3",
                 "last_error": self.last_error,
+                "audio_bytes": self.total_audio_bytes,
+                "audio_fresh": bool(self.last_data_at and time.time() - self.last_data_at < 5),
                 "log": list(self.errors)[-8:],
                 "presets": list(self.presets),
             }
@@ -97,7 +101,7 @@ class Receiver:
                 with self.lock:
                     if generation == self.gen:
                         self.errors.append(label + ": " + msg[:500])
-                        if "usb" in msg.lower() or "device" in msg.lower():
+                        if any(term in msg.lower() for term in ("error", "failed", "busy", "no supported", "no device")):
                             self.last_error = msg[:500]
                 print(label + ": " + msg, flush=True)
         except (OSError, ValueError):
@@ -112,6 +116,8 @@ class Receiver:
                 with self.lock:
                     if generation != self.gen:
                         break
+                    self.total_audio_bytes += len(chunk)
+                    self.last_data_at = time.time()
                     for subscriber in tuple(self.subscribers):
                         try:
                             subscriber.put_nowait(chunk)
@@ -136,6 +142,8 @@ class Receiver:
         self.encoder = None
         self.radio = None
         self.frequency = None
+        self.total_audio_bytes = 0
+        self.last_data_at = None
         self.subscribers.clear()
         for proc in procs:
             if proc is not None and proc.poll() is None:
@@ -167,7 +175,7 @@ class Receiver:
             self.errors.clear()
             self.last_error = ""
             args = ["rtl_fm", "-d", str(DEVICE), "-M", "wbfm",
-                    "-f", f"{freq:.2f}M", "-p", str(PPM)]
+                    "-f", f"{freq:.2f}M", "-r", "32k", "-p", str(PPM)]
             if GAIN != "auto":
                 try:
                     args += ["-g", str(float(GAIN))]
