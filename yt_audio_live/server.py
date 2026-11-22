@@ -48,35 +48,37 @@ class AudioSourceUnavailable(RuntimeError):
 
 
 def prepare_browser_cookies():
-    """Write the already configured YTMusic browser cookies to private yt-dlp jar."""
+    """Persist private browser cookies for yt-dlp, retaining Netscape expiries."""
     target = "/data/ytmusic-yt-dlp-cookies.txt"
-    header = next((v for k, v in CATALOG.auth_headers.items()
-                   if k.lower() == "cookie"), "")
-    if not isinstance(header, str) or not header.strip():
+    jar = CATALOG.cookie_jar
+    if not jar:
+        header = next((v for k, v in CATALOG.auth_headers.items()
+                       if k.lower() == "cookie"), "")
+        if isinstance(header, str) and header.strip():
+            lines = ["# Netscape HTTP Cookie File\n"]
+            for part in header.split(";"):
+                if "=" not in part:
+                    continue
+                name, value = (x.strip() for x in part.split("=", 1))
+                if (not re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", name)
+                        or not value or len(value) > 4096
+                        or any(c in value for c in "\r\n\t")):
+                    continue
+                lines.append(f".youtube.com\tTRUE\t/\tTRUE\t0\t{name}\t{value}\n")
+            if len(lines) > 1:
+                jar = "".join(lines)
+    if not jar:
         if os.path.exists(target):
             os.remove(target)
-        return None
-    lines = ["# Netscape HTTP Cookie File\n"]
-    for part in header.split(";"):
-        if "=" not in part:
-            continue
-        name, value = (x.strip() for x in part.split("=", 1))
-        if (not re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", name)
-                or not value or len(value) > 4096
-                or any(c in value for c in "\r\n\t")):
-            continue
-        lines.append(f".youtube.com\tTRUE\t/\tTRUE\t0\t{name}\t{value}\n")
-    if len(lines) == 1:
         return None
     temporary = target + ".new"
     descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(descriptor, "w", encoding="utf-8") as cookie_file:
-        cookie_file.writelines(lines)
+        cookie_file.write(jar)
     os.chmod(temporary, 0o600)
     os.replace(temporary, target)
     LOG.info("ytmusic_browser_session_available_for_audio")
     return target
-
 
 YT_DLP_COOKIE_FILE = prepare_browser_cookies()
 VIDEO_RE = re.compile(r"^/stream/([A-Za-z0-9_-]{11})\.mp3$")
@@ -208,7 +210,7 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
         args = parse_qs(parsed.query)
         if path == "/health":
-            return self.json_reply(200, {"ok": True, "version": "0.2.14",
+            return self.json_reply(200, {"ok": True, "version": "0.2.15",
                                          "player_client": CLIENT,
                                          "api_auth": True})
         stream = VIDEO_RE.fullmatch(path)
@@ -459,6 +461,6 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    LOG.info("server_started version=0.2.14 player_client=%s player=%s",
+    LOG.info("server_started version=0.2.15 player_client=%s player=%s",
              CLIENT, PLAYER.entity_id)
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever(poll_interval=0.25)
