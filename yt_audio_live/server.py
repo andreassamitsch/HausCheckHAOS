@@ -13,6 +13,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.error import HTTPError
 from urllib.parse import parse_qs, urlsplit
 from urllib.request import Request, urlopen
+from pathlib import Path
 
 import yt_dlp
 from music_catalog import Catalog, checked_video_id, checked_playlist_id
@@ -38,7 +39,20 @@ CLIENT = str(OPTIONS.get("player_client", "visionos"))
 if CLIENT not in ("visionos", "mweb", "web_embedded", "web_safari", "tv"):
     raise SystemExit("Unsupported youtube player_client")
 
-CATALOG = Catalog(OPTIONS.get("ytmusic_auth_json", ""))
+SESSION_FILE = Path("/data/ytmusic-session-cookies.txt")
+
+
+def load_catalog():
+    """Read login session from the App's private persistent data first."""
+    if SESSION_FILE.is_file():
+        try:
+            return Catalog(SESSION_FILE.read_text(encoding="utf-8"))
+        except (ValueError, OSError, TypeError):
+            LOG.warning("stored_session_invalid")
+    return Catalog(OPTIONS.get("ytmusic_auth_json", ""))
+
+
+CATALOG = load_catalog()
 SOURCE_CACHE = {}
 SOURCE_LOCK = threading.RLock()
 STREAM_SLOTS = threading.BoundedSemaphore(3)
@@ -210,7 +224,7 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
         args = parse_qs(parsed.query)
         if path == "/health":
-            return self.json_reply(200, {"ok": True, "version": "0.2.15",
+            return self.json_reply(200, {"ok": True, "version": "0.2.16",
                                          "player_client": CLIENT,
                                          "api_auth": True})
         stream = VIDEO_RE.fullmatch(path)
@@ -237,7 +251,8 @@ class Handler(BaseHTTPRequestHandler):
                 result = PLAYER.status()
             elif path == "/api/auth":
                 result = {"ytmusic_account_connected": CATALOG.authenticated,
-                          "audio_browser_session": bool(YT_DLP_COOKIE_FILE)}
+                          "audio_browser_session": bool(YT_DLP_COOKIE_FILE),
+                          "browser_login_available": True}
             elif path == "/api/search":
                 result = {"results": CATALOG.search(
                     (args.get("q") or [""])[0],
@@ -287,7 +302,19 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             body = self.get_json()
-            if path == "/api/play":
+            if path == "/api/auth/reload":
+                # Called only by the HA Ingress session manager, with API key.
+                # A fresh catalog replaces the old one only after validation.
+                global CATALOG, YT_DLP_COOKIE_FILE
+                new_catalog = load_catalog()
+                with SOURCE_LOCK:
+                    CATALOG = new_catalog
+                    PLAYER.catalog = new_catalog
+                    SOURCE_CACHE.clear()
+                    YT_DLP_COOKIE_FILE = prepare_browser_cookies()
+                result = {"connected": CATALOG.authenticated,
+                          "audio_browser_session": bool(YT_DLP_COOKIE_FILE)}
+            elif path == "/api/play":
                 if body.get("video_id"):
                     vid = checked_video_id(body["video_id"])
                     track = {"video_id": vid, "title": str(body.get("title") or vid),
@@ -461,6 +488,6 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    LOG.info("server_started version=0.2.15 player_client=%s player=%s",
+    LOG.info("server_started version=0.2.16 player_client=%s player=%s",
              CLIENT, PLAYER.entity_id)
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever(poll_interval=0.25)
