@@ -42,6 +42,46 @@ CATALOG = Catalog(OPTIONS.get("ytmusic_auth_json", ""))
 SOURCE_CACHE = {}
 SOURCE_LOCK = threading.RLock()
 STREAM_SLOTS = threading.BoundedSemaphore(3)
+
+class AudioSourceUnavailable(RuntimeError):
+    """YouTube audio source could not be resolved."""
+
+
+def prepare_browser_cookies():
+    """Write the already configured YTMusic browser cookies to private yt-dlp jar."""
+    target = "/data/ytmusic-yt-dlp-cookies.txt"
+    auth = OPTIONS.get("ytmusic_auth_json", "")
+    try:
+        header = json.loads(auth).get("Cookie", "") if auth else ""
+    except (TypeError, ValueError, AttributeError):
+        header = ""
+    if not isinstance(header, str) or not header.strip():
+        if os.path.exists(target):
+            os.remove(target)
+        return None
+    lines = ["# Netscape HTTP Cookie File\n"]
+    for part in header.split(";"):
+        if "=" not in part:
+            continue
+        name, value = (x.strip() for x in part.split("=", 1))
+        if (not re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", name)
+                or not value or len(value) > 4096
+                or any(c in value for c in "\r\n\t")):
+            continue
+        lines.append(f".youtube.com\tTRUE\t/\tTRUE\t0\t{name}\t{value}\n")
+    if len(lines) == 1:
+        return None
+    temporary = target + ".new"
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as cookie_file:
+        cookie_file.writelines(lines)
+    os.chmod(temporary, 0o600)
+    os.replace(temporary, target)
+    LOG.info("ytmusic_browser_session_available_for_audio")
+    return target
+
+
+YT_DLP_COOKIE_FILE = prepare_browser_cookies()
 VIDEO_RE = re.compile(r"^/stream/([A-Za-z0-9_-]{11})\.mp3$")
 
 
@@ -87,9 +127,17 @@ def resolve_source(vid):
             "js_runtimes": {"node": {}},
             "extractor_args": {"youtube": {"player_client": [CLIENT]}},
         }
-        with yt_dlp.YoutubeDL(options) as downloader:
-            info = downloader.extract_info(
-                "https://www.youtube.com/watch?v=" + vid, download=False)
+        if YT_DLP_COOKIE_FILE:
+            options["cookiefile"] = YT_DLP_COOKIE_FILE
+        try:
+            with yt_dlp.YoutubeDL(options) as downloader:
+                info = downloader.extract_info(
+                    "https://www.youtube.com/watch?v=" + vid, download=False)
+        except yt_dlp.utils.DownloadError as exc:
+            raise AudioSourceUnavailable(
+                "YouTube blockiert die Audiowiedergabe. Bitte die Anmeldung "
+                "prüfen; möglicherweise ist ein PO-Token erforderlich."
+            ) from exc
         url = info.get("url") if isinstance(info, dict) else None
         if not isinstance(url, str) or not url.startswith("https://"):
             raise RuntimeError("No HTTPS audio URL was returned")
@@ -163,7 +211,7 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
         args = parse_qs(parsed.query)
         if path == "/health":
-            return self.json_reply(200, {"ok": True, "version": "0.2.12",
+            return self.json_reply(200, {"ok": True, "version": "0.2.13",
                                          "player_client": CLIENT,
                                          "api_auth": True})
         stream = VIDEO_RE.fullmatch(path)
@@ -189,7 +237,8 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/status":
                 result = PLAYER.status()
             elif path == "/api/auth":
-                result = {"ytmusic_account_connected": CATALOG.authenticated}
+                result = {"ytmusic_account_connected": CATALOG.authenticated,
+                          "audio_browser_session": bool(YT_DLP_COOKIE_FILE)}
             elif path == "/api/search":
                 result = {"results": CATALOG.search(
                     (args.get("q") or [""])[0],
@@ -328,6 +377,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.json_reply(200, result)
         except (ValueError, TypeError) as exc:
             return self.json_reply(400, {"error": str(exc)[:250]})
+        except AudioSourceUnavailable as exc:
+            LOG.warning("audio_source_blocked path=%s", path)
+            return self.json_reply(503, {"error": str(exc)})
         except Exception as exc:
             LOG.error("api_post_failed path=%s error=%s", path, type(exc).__name__)
             return self.json_reply(502, {"error": "playback request failed"})
@@ -378,6 +430,14 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.flush()
         except (BrokenPipeError, ConnectionResetError, OSError):
             LOG.info("client_closed_stream video_id=%s", vid)
+        except AudioSourceUnavailable:
+            LOG.warning("stream_audio_source_blocked video_id=%s", vid)
+            try:
+                current = (PLAYER.status().get("current") or {}).get("video_id")
+                if current == vid:
+                    PLAYER.external_stop()
+            except Exception:
+                LOG.warning("failed_to_clear_queue_after_stream_error")
         except Exception as exc:
             LOG.error("stream_error video_id=%s error=%s", vid, type(exc).__name__)
         finally:
@@ -402,6 +462,6 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    LOG.info("server_started version=0.2.12 player_client=%s player=%s",
+    LOG.info("server_started version=0.2.13 player_client=%s player=%s",
              CLIENT, PLAYER.entity_id)
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever(poll_interval=0.25)
