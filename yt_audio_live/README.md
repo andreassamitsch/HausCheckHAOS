@@ -64,6 +64,36 @@ POST /api/resume    {}
 Queries with a title automatically play the first search result. To avoid
 unwanted versions, use /api/search and then play an exact video ID.
 
+## Version 0.2.16 – Browser login directly in the Home Assistant App
+
+**No JSON, request headers, cookie file, or external cookie manager required.**
+
+The Home Assistant App now includes its own Firefox sign-in browser, streamed
+through **Home Assistant Ingress** (the sidebar/open Web UI entry).
+
+1. In Home Assistant go to **Settings → Apps → YouTube Music Live (Test)**.
+2. Open the App's **Web UI**.
+3. Sign into `https://music.youtube.com` in the real Firefox browser shown.
+4. Press **Sitzung übernehmen** in the Home Assistant App, not on Google's site.
+5. The App reads only YouTube-domain cookies from Firefox's private
+   `cookies.sqlite`, writes `/data/ytmusic-session-cookies.txt` with file mode
+   `0600`, and hot-reloads the catalog + yt-dlp cookie jar. No app restart,
+   config editing or manual export is needed.
+
+**Security:** Google credentials are entered directly into a real Firefox,
+not into a custom password form. The remote browser websocket is reachable
+only through Home Assistant's authenticated Ingress; the VNC server itself
+listens only on container loopback. The browser profile and cookies persist
+within this App's private data directory. Do not publish the App's login port
+or reuse a posted cookie. The App's Web UI has a disconnect button that
+removes the exported session; for complete logout from Google, use Google's
+account sign-out in the browser too.
+
+**Limitation:** Google can still reject some remote/new-device browser logins,
+and a valid login does not guarantee that yt-dlp can extract every track
+without a PO token. Account linkage and audio extraction remain separately
+validated.
+
 ## Version 0.2.15 – Direct YTDLnis cookies.txt import (22 November 2026)
 
 The **private** Home Assistant app option `ytmusic_auth_json` now accepts an entire
