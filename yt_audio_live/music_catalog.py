@@ -3,7 +3,7 @@ import json
 import logging
 import re
 import threading
-from ytmusicapi import YTMusic
+from ytmusicapi import YTMusic, setup
 
 LOG = logging.getLogger("yt_audio_live.catalog")
 VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
@@ -107,15 +107,26 @@ class Catalog:
     def __init__(self, auth_json=""):
         self.lock = threading.RLock()
         self.authenticated = False
+        self.auth_headers = {}
         auth = None
-        if auth_json:
+        if auth_json and auth_json.strip():
             try:
-                auth = json.loads(auth_json)
-                if not isinstance(auth, dict) or "Cookie" not in auth:
-                    raise ValueError("Expected YouTube Music browser headers JSON with Cookie")
+                try:
+                    auth = json.loads(auth_json)
+                except json.JSONDecodeError:
+                    # Accept Firefox/Chromium request headers as copied from
+                    # an authenticated music.youtube.com /browse POST request.
+                    auth = json.loads(setup(headers_raw=auth_json))
+                if not isinstance(auth, dict):
+                    raise ValueError("Browser headers must be a JSON object")
+                auth = {str(k): v for k, v in auth.items() if isinstance(v, str)}
+                cookies = next((v for k, v in auth.items() if k.lower() == "cookie"), "")
+                if not cookies:
+                    raise ValueError("Cookie header missing")
+                self.auth_headers = auth
                 self.authenticated = True
             except (ValueError, TypeError) as exc:
-                raise ValueError("Invalid ytmusic_auth_json: " + str(exc)) from exc
+                raise ValueError("Invalid YTMusic browser credentials: " + str(exc)) from exc
         self.api = YTMusic(auth=auth, language="de", location="AT")
         LOG.info("catalog_started authenticated=%s", self.authenticated)
 
