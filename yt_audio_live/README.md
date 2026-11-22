@@ -64,6 +64,43 @@ POST /api/resume    {}
 Queries with a title automatically play the first search result. To avoid
 unwanted versions, use /api/search and then play an exact video ID.
 
+## Version 0.2.15 – Direct YTDLnis cookies.txt import (22 November 2026)
+
+The **private** Home Assistant app option `ytmusic_auth_json` now accepts an entire
+YTDLnis or other Netscape `cookies.txt` export in addition to browser JSON and
+raw HTTP request headers. It generates the necessary YouTube Music auth headers
+locally from the `__Secure-3PAPISID` cookie and provides a normalized cookie
+jar to `yt-dlp`. WebView's 17-digit cookie expiry timestamps (microseconds
+since 1601) are converted to standard Unix seconds. Cookies for other Google
+domains are excluded. Credentials are never logged, written to GitHub, or
+returned by the app API.
+
+### Entering a multi-line cookie export
+
+1. Sign out of the previously exposed browser session first, then export a
+   **fresh** `cookies.txt` on your trusted device.
+2. In Home Assistant go to **Settings → Apps → YouTube Music Live (Test) →
+   Configuration**, switch to the YAML configuration editor if available,
+   and preserve all existing settings.
+3. Set only the secret option to a YAML literal block, preserving the
+   *original tabs* in each cookie line:
+
+   ```yaml
+   ytmusic_auth_json: |-
+     # Netscape HTTP Cookie File
+     .youtube.com\tTRUE\t/\tTRUE\t0\tEXAMPLE_COOKIE\tplaceholder
+   ```
+
+4. Save the private configuration and restart **only this music App**.
+5. Check account connectivity with `GET /api/auth` and playlist access with
+   `GET /api/library`, using the app's existing protected API.
+
+The example above contains **dummy data**. Never send real cookies in a chat
+or commit them to GitHub. A working browser cookie does not guarantee playback:
+YouTube may still require a PO token or deny extraction. The native HA media
+browser's **Meine Playlists** page remains a separate integration patch pending
+deployment.
+
 ## Version 0.2.14 – Easier account linking (22 November 2026)
 
 The existing private `ytmusic_auth_json` option now accepts either a compact JSON object **or raw request headers** copied from a signed-in YouTube Music `/browse` POST request. The App converts raw headers locally with `ytmusicapi.setup(headers_raw=...)`. This avoids installing Python or converting the headers manually on the user's computer.
