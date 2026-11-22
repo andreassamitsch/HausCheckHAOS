@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.2 – 2026-11-22
+- Google-Cast-Wiedergabe deklariert MP3-Radio als `audio/mpeg` und ausdrücklich `stream_type=LIVE` statt als endlichen Musik-Titel.
+- MP3-HTTP-Stream verwendet weiterhin bewusst *keinen* Content-Length-Header und trägt die Radio-Bitrate als ICY-Header.
+- Diagnostik zeichnet abgeschlossene MP3-Hörer-Sessions mit Start/Ende, Laufzeit, Datenmenge und TCP-Abbruchgrund im RAM auf.
+- Kein automatisches Wiederanlaufen nach manuellem Stopp oder nach einem Geräteabbruch.
+
 ## 0.5.1 – 2026-11-21
 - Beim manuellen Start Ausgabegeräten 12 Sekunden zum Aufwachen geben, damit eine verzögerte Playing-State-Meldung nicht als Stopp fehlinterpretiert wird.
 - Stoppen am Ausgabegerät führt zu keinem automatischen Neubeginn der Wiedergabe; Play bleibt ausschließlich manuell.
