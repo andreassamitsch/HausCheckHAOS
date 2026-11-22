@@ -5,7 +5,7 @@ import re
 import threading
 import time
 from ytmusicapi import YTMusic, setup
-from ytmusicapi.helpers import get_authorization
+from ytmusicapi.helpers import get_authorization, initialize_headers
 
 LOG = logging.getLogger("yt_audio_live.catalog")
 VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
@@ -155,14 +155,14 @@ def parse_netscape_cookies(raw):
     sapisid = selected.get("__Secure-3PAPISID")
     if not sapisid:
         raise ValueError("YouTube-Cookies enthalten kein __Secure-3PAPISID")
-    headers = {
+    headers = dict(initialize_headers())
+    headers.update({
         "Cookie": "; ".join(f"{name}={value}" for name, value in selected.items()),
-        "Content-Type": "application/json",
         "X-Goog-AuthUser": "0",
         "x-origin": "https://music.youtube.com",
         "Authorization": get_authorization(
             sapisid + " https://music.youtube.com"),
-    }
+    })
     return headers, "".join(jar)
 
 
