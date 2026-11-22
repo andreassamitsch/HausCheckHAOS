@@ -88,8 +88,19 @@ def normalize_playlist(item):
         pid = pid[2:]
     if not isinstance(pid, str) or not PLAYLIST_ID_RE.fullmatch(pid):
         return None
+    covers = item.get("thumbnails") or []
+    if isinstance(covers, dict):
+        covers = covers.get("thumbnails") or []
+    cover_url = ""
+    if isinstance(covers, list):
+        for image in reversed(covers):
+            if isinstance(image, dict) and isinstance(image.get("url"), str):
+                if image["url"].startswith("https://"):
+                    cover_url = image["url"]
+                    break
     return {"playlist_id": pid, "title": str(item.get("title") or pid),
-            "count": item.get("count") or item.get("trackCount")}
+            "count": item.get("count") or item.get("trackCount"),
+            "thumbnail": cover_url}
 
 
 class Catalog:
