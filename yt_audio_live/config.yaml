@@ -1,6 +1,6 @@
 name: "YouTube Music Live (Test)"
 slug: "yt_audio_live"
-version: "0.2.15"
+version: "0.2.16"
 description: "YouTube Music search, playback queue, playlists and radio for HA Cast"
 arch:
   - amd64
@@ -8,6 +8,11 @@ startup: services
 boot: manual
 init: false
 homeassistant_api: true
+ingress: true
+ingress_port: 8766
+ingress_entry: /
+panel_icon: mdi:account-key
+panel_title: "YouTube Music Anmeldung"
 ports:
   8765/tcp: 8765
 ports_description:
