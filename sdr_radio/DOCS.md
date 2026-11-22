@@ -99,3 +99,12 @@ Dashboard-Kartentyp `custom:hauscheck-sdr-radio-card`, Sensor `sensor.sdr_ukw_ra
 Die Dropdown-Geräteauswahl wählt lediglich das nächste Ziel, ohne Audio automatisch zu starten. Nur ein Klick auf Play führt `media_player.play_media` aus. Stopp auf der Karte oder direkt am Ausgabegerät wird respektiert; das Radio startet daraufhin nicht selbst erneut. Die Lautstärke wird mit dem Home-Assistant-Dienst `media_player.volume_set` direkt am gewählten Ausgabegerät eingestellt; ein ausgeschaltetes Gerät ohne `volume_level` zeigt einen deaktivierten Regler.
 
 Das Sender-Favoritenpopup nutzt die in `/data/presets.json` gespeicherten Favoriten, ergänzt mit Senderlogos aus den zugeordneten Radioprogrammen. Weder das Dashboard noch die MQTT-Brücke schreiben MP3-/PCM-/Coverdateien auf den Host.
+
+
+## Google-Cast-Langzeitstream (0.5.2)
+
+Die Samsung S800D wird in Home Assistant primär über die **Cast-Integration** als `media_player.ultra_slim_soundbar` gesteuert. Zwei Abbrüche am 22.11.2026 erfolgten jeweils nach ca. 29 Minuten und fünf Sekunden Wiedergabe. Die SDR-/FFmpeg-Verarbeitung lief dabei weiter; Cast ging auf `idle`.
+
+Die App sendet daher beim expliziten Benutzer-Play jetzt `media_content_type: audio/mpeg` und `extra: {stream_type: LIVE}`, um den Default Media Receiver als unbegrenztes Radio/Live-Audio statt als einzelnen begrenzten Musiktitel zu betreiben. Port 8099 sendet weiterhin unbegrenzte MP3-Daten ohne `Content-Length`. Bei einer Trennung dokumentiert `/api/status` den Zeitpunkt, die Dauer, die bis dahin übertragenen Bytes und den Verbindungsabbruchgrund in `recent_streams`. Die Historie liegt nur im RAM (16 Einträge). **Kein Autoplay/Auto-Reconnect des Lautsprechers bei Stop oder unerwartetem Idle.** Für den Effekt der neuen Cast-Deklaration ist noch ein erneuter expliziter Wiedergabestart nötig.
+
+Bei erneutem Abbruch ist zuerst in `recent_streams` zu prüfen, ob die Cast-Verbindung nach einer exakt begrenzten Datenmenge oder zeitlich begrenzten Laufzeit getrennt wurde.
