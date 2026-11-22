@@ -64,6 +64,24 @@ POST /api/resume    {}
 Queries with a title automatically play the first search result. To avoid
 unwanted versions, use /api/search and then play an exact video ID.
 
+## Version 0.2.13 – Account playlists & source protection (22 November 2026)
+
+- Personal YouTube Music playlists use the existing private `ytmusic_auth_json` App option. Browser headers are kept in Home Assistant App configuration, **never** in GitHub or dashboard JavaScript.
+- When browser session headers are configured, the App creates a private (0600) cookie jar inside its `/data` directory for yt-dlp. This may help with YouTube's new login challenge. It is **not** a guaranteed fix for PO-token requirements or IP restrictions.
+- `GET /api/auth` now distinguishes catalog login from an available browser session for audio extraction.
+- A blocked audio source reports HTTP 503 with an understandable message instead of a generic HTTP 502; an audio stream failure does not trigger another queued song.
+- Private playlist entries expose cover thumbnails. A separate Home Assistant native media-player patch is in `yt_audio_live/ha_component_patch/media_player.py`, adding **Meine Playlists** to the browser. This patch is not automatically installed by updating the App.
+
+### Account setup
+
+1. Log in on **music.youtube.com** in a browser on your own trusted computer.
+2. Follow [ytmusicapi's browser authentication guide](https://ytmusicapi.readthedocs.io/en/stable/setup/browser.html) to obtain the request headers of an authenticated `/browse` request.
+3. Configure the **private** `ytmusic_auth_json` option in Home Assistant → Settings → Apps → YouTube Music Live (Test), then restart only that App. Never paste browser cookies, JSON session credentials, or API keys into a chat, issue, repository or screenshot.
+4. Check `GET /api/auth` and `GET /api/library` locally through the authenticated API.
+5. After deploying the separate Home Assistant integration patch and restarting Home Assistant at a convenient time, the media browser displays **Meine Playlists**. Without this patch, the existing `/api/library` and `/api/playlist` endpoints still work.
+
+**Important:** Catalog sign-in is distinct from YouTube's permission to extract audio. YouTube may still require a PO token or block unattended extraction. Playing protected tracks is not guaranteed; account sessions may be logged out or blocked by YouTube.
+
 ## Optional YouTube Music sign-in
 
 Unregistered catalog searches, playlists and radio work without a login.
