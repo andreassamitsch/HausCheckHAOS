@@ -3,7 +3,9 @@ import json
 import logging
 import re
 import threading
+import time
 from ytmusicapi import YTMusic, setup
+from ytmusicapi.helpers import get_authorization
 
 LOG = logging.getLogger("yt_audio_live.catalog")
 VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
@@ -103,20 +105,84 @@ def normalize_playlist(item):
             "thumbnail": cover_url}
 
 
+
+def parse_netscape_cookies(raw):
+    """Convert a local YTDLnis/Netscape export into YTMusic headers and yt-dlp jar.
+
+    Some Android WebViews use microseconds since 1601 for expiries, rather
+    than Unix seconds; normalize those values without persisting credentials
+    anywhere except the Home Assistant app private data directory.
+    """
+    jar = ["# Netscape HTTP Cookie File\n"]
+    selected = {}
+    for line in raw.splitlines():
+        if not line or (line.startswith("#") and not line.startswith("#HttpOnly_")):
+            continue
+        if line.startswith("#HttpOnly_"):
+            line = line[len("#HttpOnly_"):]
+        fields = line.split("\t")
+        if len(fields) != 7:
+            continue
+        domain, subdomains, path, secure, expiry, name, value = fields
+        if domain.lstrip(".").lower() not in ("youtube.com", "music.youtube.com"):
+            continue
+        if subdomains not in ("TRUE", "FALSE") or secure not in ("TRUE", "FALSE"):
+            continue
+        if not path.startswith("/") or len(path) > 512:
+            continue
+        if not re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", name):
+            continue
+        if not value or len(value) > 4096 or any(ch in value for ch in "\r\n\t"):
+            continue
+        try:
+            expiration = int(expiry)
+        except ValueError:
+            continue
+        if expiration >= 10**15:
+            # Chromium/WebView: microseconds since 1601-01-01 UTC.
+            expiration = expiration // 1_000_000 - 11_644_473_600
+        elif expiration >= 10**12:
+            # Some exporters use Unix milliseconds.
+            expiration //= 1000
+        if expiration < 0 or expiration > 4_102_444_800:
+            continue
+        if expiration and expiration <= int(time.time()):
+            continue
+        jar.append("\t".join((domain, subdomains, path, secure,
+                              str(expiration), name, value)) + "\n")
+        # Prefer the most recent YouTube-domain cookie for duplicate names.
+        selected[name] = value
+    sapisid = selected.get("__Secure-3PAPISID")
+    if not sapisid:
+        raise ValueError("YouTube-Cookies enthalten kein __Secure-3PAPISID")
+    headers = {
+        "Cookie": "; ".join(f"{name}={value}" for name, value in selected.items()),
+        "Content-Type": "application/json",
+        "X-Goog-AuthUser": "0",
+        "x-origin": "https://music.youtube.com",
+        "Authorization": get_authorization(
+            sapisid + " https://music.youtube.com"),
+    }
+    return headers, "".join(jar)
+
+
 class Catalog:
     def __init__(self, auth_json=""):
         self.lock = threading.RLock()
         self.authenticated = False
         self.auth_headers = {}
+        self.cookie_jar = None
         auth = None
         if auth_json and auth_json.strip():
             try:
-                try:
-                    auth = json.loads(auth_json)
-                except json.JSONDecodeError:
-                    # Accept Firefox/Chromium request headers as copied from
-                    # an authenticated music.youtube.com /browse POST request.
-                    auth = json.loads(setup(headers_raw=auth_json))
+                if auth_json.lstrip().startswith(("# Netscape HTTP Cookie File", "# HTTP Cookie File")):
+                    auth, self.cookie_jar = parse_netscape_cookies(auth_json)
+                else:
+                    try:
+                        auth = json.loads(auth_json)
+                    except json.JSONDecodeError:
+                        # Also accept raw /browse request headers.
+                        auth = json.loads(setup(headers_raw=auth_json))
                 if not isinstance(auth, dict):
                     raise ValueError("Browser headers must be a JSON object")
                 auth = {str(k): v for k, v in auth.items() if isinstance(v, str)}
