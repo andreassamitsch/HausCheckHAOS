@@ -50,11 +50,8 @@ class AudioSourceUnavailable(RuntimeError):
 def prepare_browser_cookies():
     """Write the already configured YTMusic browser cookies to private yt-dlp jar."""
     target = "/data/ytmusic-yt-dlp-cookies.txt"
-    auth = OPTIONS.get("ytmusic_auth_json", "")
-    try:
-        header = json.loads(auth).get("Cookie", "") if auth else ""
-    except (TypeError, ValueError, AttributeError):
-        header = ""
+    header = next((v for k, v in CATALOG.auth_headers.items()
+                   if k.lower() == "cookie"), "")
     if not isinstance(header, str) or not header.strip():
         if os.path.exists(target):
             os.remove(target)
@@ -211,7 +208,7 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
         args = parse_qs(parsed.query)
         if path == "/health":
-            return self.json_reply(200, {"ok": True, "version": "0.2.13",
+            return self.json_reply(200, {"ok": True, "version": "0.2.14",
                                          "player_client": CLIENT,
                                          "api_auth": True})
         stream = VIDEO_RE.fullmatch(path)
@@ -462,6 +459,6 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    LOG.info("server_started version=0.2.13 player_client=%s player=%s",
+    LOG.info("server_started version=0.2.14 player_client=%s player=%s",
              CLIENT, PLAYER.entity_id)
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever(poll_interval=0.25)
