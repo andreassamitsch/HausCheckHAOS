@@ -8,6 +8,7 @@ import asyncio
 import json
 import logging
 import os
+import socket
 import sqlite3
 import threading
 import time
@@ -182,8 +183,18 @@ def save_browser_session():
     return {"connected": True, "playlists_verified": verified}
 
 
+def browser_ready():
+    try:
+        with socket.create_connection(("127.0.0.1", 5900), timeout=0.8):
+            return True
+    except OSError:
+        return False
+
+
 async def session_status(request):
     return web.json_response({"connected": SESSION.exists(),
+                              "browser_ready": await asyncio.to_thread(browser_ready),
+                              "browser_profile_initialized": (PROFILE / "cookies.sqlite").is_file(),
                               "playlists_verified": False})
 
 
