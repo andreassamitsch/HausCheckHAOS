@@ -97,6 +97,7 @@ class Receiver:
         self.scan_duration_ms = None
         self.subscribers = set()
         self.pcm_subscribers = set()
+        self.stream_history = deque(maxlen=16)
         self.pcm_queue = queue.Queue(maxsize=8)
         self.errors = deque(maxlen=30)
         self.last_error = ""
@@ -124,6 +125,7 @@ class Receiver:
                 "scan_stations": list(self.scan_cache),
                 "scan_duration_ms": self.scan_duration_ms,
                 "listeners": len(self.subscribers) + len(self.pcm_subscribers),
+                "recent_streams": list(self.stream_history)[-6:],
                 "pcm_listeners": len(self.pcm_subscribers),
                 "stream_url": STREAM_BASE + "/stream.mp3",
                 "last_error": self.last_error,
@@ -666,7 +668,10 @@ class RadioOutput:
         ha_request("services/media_player/play_media", {
             "entity_id": selected,
             "media_content_id": STREAM_BASE + "/stream.mp3",
-            "media_content_type": "music"})
+            # Google Cast must treat endless FM audio as LIVE rather than
+            # a finite buffered music track. No automatic replay is added.
+            "media_content_type": "audio/mpeg",
+            "extra": {"stream_type": "LIVE"}})
         with self.lock:
             self.active = selected
             self.last_play_at = time.monotonic()
@@ -883,19 +888,32 @@ class Handler(BaseHTTPRequestHandler):
             pass
 
     def stream(self):
+        """Plain, indefinite MP3 HTTP stream for native Google Cast LIVE playback.
+
+        No Content-Length and no chunked framing: a live stream has no known
+        endpoint. Capture completed client sessions for diagnosing dropouts.
+        """
         with radio.lock:
             if not radio._running_locked():
                 return self.reply(503, {"error": radio.last_error or "Empfang nicht aktiv"})
             q = queue.Queue(maxsize=6)
             generation = radio.session_gen
             radio.subscribers.add(q)
+        started = time.monotonic()
+        sent_bytes = 0
+        reason = "encoder/stopped"
+        peer = self.client_address[0] if self.client_address else "unknown"
         try:
+            self.connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            self.connection.settimeout(10.0)
             self.send_response(200)
             self.send_header("Content-Type", "audio/mpeg")
-            self.send_header("Cache-Control", "no-store, no-cache")
+            self.send_header("Cache-Control", "no-store, no-cache, no-transform")
             self.send_header("Pragma", "no-cache")
             self.send_header("Connection", "close")
             self.send_header("icy-name", "SDR UKW Radio")
+            self.send_header("icy-br", "96")
+            # Intentionally NO Content-Length (indefinite live stream).
             self.end_headers()
             while True:
                 with radio.lock:
@@ -905,13 +923,27 @@ class Handler(BaseHTTPRequestHandler):
                     data = q.get(timeout=0.5)
                     self.wfile.write(data)
                     self.wfile.flush()
+                    sent_bytes += len(data)
                 except queue.Empty:
                     continue
-        except (BrokenPipeError, ConnectionResetError, OSError):
-            pass
+            reason = "tuner/encoder stopped"
+        except (BrokenPipeError, ConnectionResetError) as exc:
+            reason = type(exc).__name__
+        except (OSError, TimeoutError) as exc:
+            reason = type(exc).__name__ + ": " + str(exc)[:95]
         finally:
+            elapsed = round(time.monotonic() - started, 2)
+            record = {
+                "time": time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime()),
+                "peer": peer,
+                "seconds": elapsed,
+                "bytes": sent_bytes,
+                "reason": reason,
+            }
             with radio.lock:
                 radio.subscribers.discard(q)
+                radio.stream_history.append(record)
+            print("MP3-Stream beendet: " + json.dumps(record, ensure_ascii=False), flush=True)
 
     def pcm_websocket(self):
         """20ms PCM frames over authenticated HA Ingress, never public LAN port."""
