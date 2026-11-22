@@ -64,6 +64,12 @@ POST /api/resume    {}
 Queries with a title automatically play the first search result. To avoid
 unwanted versions, use /api/search and then play an exact video ID.
 
+## Version 0.2.14 – Easier account linking (22 November 2026)
+
+The existing private `ytmusic_auth_json` option now accepts either a compact JSON object **or raw request headers** copied from a signed-in YouTube Music `/browse` POST request. The App converts raw headers locally with `ytmusicapi.setup(headers_raw=...)`. This avoids installing Python or converting the headers manually on the user's computer.
+
+See [ytmusicapi's browser guide](https://ytmusicapi.readthedocs.io/en/stable/setup/browser.html). Prefer Firefox (Network → find an authenticated `/browse` POST → Copy Request Headers). Paste the copied text only in Home Assistant's private App option, never in a chat or GitHub.
+
 ## Version 0.2.13 – Account playlists & source protection (22 November 2026)
 
 - Personal YouTube Music playlists use the existing private `ytmusic_auth_json` App option. Browser headers are kept in Home Assistant App configuration, **never** in GitHub or dashboard JavaScript.
