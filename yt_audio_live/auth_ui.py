@@ -25,6 +25,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 
 PROFILE = Path("/data/ytmusic_auth_browser")
 SESSION = Path("/data/ytmusic-session-cookies.txt")
+SESSION_STATUS = Path("/data/ytmusic-session-status.json")
 OPTIONS = json.loads(Path("/data/options.json").read_text(encoding="utf-8"))
 API_KEY = OPTIONS.get("api_key", "")
 NOVNC = Path("/usr/share/novnc")
@@ -206,7 +207,7 @@ async function call(url,body){
 async function status(){
  try{
   const d=await call("api/session");
-  msg(d.connected?"YouTube-Music-Sitzung gespeichert – "+(d.playlists_verified?"Playlists bestätigt":"Playlists noch nicht geprüft"):
+  msg(d.connected?"YouTube-Music-Sitzung gespeichert – "+(d.playlists_verified?"Playlists bestätigt"+(Number.isInteger(d.playlist_count)?" ("+d.playlist_count+")":""):"Playlists noch nicht geprüft"):
   "Noch keine gespeicherte Sitzung. Bitte im Browser anmelden.");
  }catch(e){msg("Status: "+e.message);}
 }
@@ -214,7 +215,7 @@ save.onclick=async()=>{
  save.disabled=true;hideKeyboard();msg("YouTube-Cookies werden aus dem Browser übernommen …");
  try{
   const d=await call("api/session/save",{});
-  msg(d.playlists_verified?"Angemeldet! Meine Playlists sind erreichbar.":
+  msg(d.playlists_verified?"Angemeldet! "+(Number.isInteger(d.playlist_count)?d.playlist_count+" persönliche Playlists erreichbar.":"Meine Playlists sind erreichbar."):
   "Cookies gespeichert. Die Playlist-Abfrage konnte noch nicht bestätigt werden.");
  }catch(e){msg("Anmeldung nicht abgeschlossen: "+e.message);}
  finally{save.disabled=false;}
@@ -333,9 +334,11 @@ def save_browser_session():
     # A live library check distinguishes a copied login cookie from
     # a working signed-in YouTube Music session.
     verified = False
+    playlist_count = None
     try:
-        candidate.library_playlists(limit=1)
-        verified = True
+        playlists = candidate.library_playlists(limit=100)
+        verified = isinstance(playlists, list)
+        playlist_count = len(playlists) if verified else None
     except Exception:
         LOG.warning("session_library_check_not_confirmed")
     temp = SESSION.with_suffix(".tmp")
@@ -345,7 +348,15 @@ def save_browser_session():
     os.replace(temp, SESSION)
     os.chmod(SESSION, 0o600)
     reload_music_server()
-    return {"connected": True, "playlists_verified": verified}
+    status = {"connected": True, "playlists_verified": verified,
+              "playlist_count": playlist_count}
+    temporary_status = SESSION_STATUS.with_suffix(".tmp")
+    with open(temporary_status, "w", encoding="utf-8") as handle:
+        os.chmod(temporary_status, 0o600)
+        json.dump(status, handle)
+    os.replace(temporary_status, SESSION_STATUS)
+    os.chmod(SESSION_STATUS, 0o600)
+    return status
 
 
 def browser_ready():
@@ -357,10 +368,20 @@ def browser_ready():
 
 
 async def session_status(request):
-    return web.json_response({"connected": SESSION.exists(),
-                              "browser_ready": await asyncio.to_thread(browser_ready),
-                              "browser_profile_initialized": (PROFILE / "cookies.sqlite").is_file(),
-                              "playlists_verified": False})
+    connected = SESSION.exists()
+    status = {}
+    if connected and SESSION_STATUS.is_file():
+        try:
+            status = json.loads(SESSION_STATUS.read_text(encoding="utf-8"))
+        except (OSError, ValueError, TypeError):
+            LOG.warning("session_status_cache_unreadable")
+    return web.json_response({
+        "connected": connected,
+        "browser_ready": await asyncio.to_thread(browser_ready),
+        "browser_profile_initialized": (PROFILE / "cookies.sqlite").is_file(),
+        "playlists_verified": bool(connected and status.get("playlists_verified")),
+        "playlist_count": status.get("playlist_count") if connected else None,
+    })
 
 
 async def session_save(request):
@@ -386,6 +407,8 @@ async def session_save(request):
 async def session_logout(request):
     if SESSION.exists():
         SESSION.unlink()
+    if SESSION_STATUS.exists():
+        SESSION_STATUS.unlink()
     try:
         await asyncio.to_thread(reload_music_server)
     except Exception as exc:
