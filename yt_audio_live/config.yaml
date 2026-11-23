@@ -1,6 +1,6 @@
 name: "YouTube Music Live (Test)"
 slug: "yt_audio_live"
-version: "0.2.33"
+version: "0.2.34"
 description: "YouTube Music search, playback queue, playlists and radio for HA Cast"
 arch:
   - amd64
@@ -20,14 +20,14 @@ ports_description:
   8765/tcp: "Local LAN music server. Do not forward this port from the internet."
 options:
   video_id: "tba_zo_8ye4"
-  player_client: "visionos"
+  player_client: "web_music"
   player_entity: "media_player.ultra_slim_soundbar"
   stream_base_url: "http://192.168.1.66:8765"
   api_key: ""
   ytmusic_auth_json: ""
 schema:
   video_id: str
-  player_client: list(visionos|mweb|web_embedded|web_safari|tv)
+  player_client: list(web_music|auto|mweb|web_embedded|web_safari|tv|visionos)
   player_entity: str
   stream_base_url: str
   api_key: password
