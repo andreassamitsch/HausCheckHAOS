@@ -1,5 +1,36 @@
 # YouTube Music Live for Home Assistant OS
 
+## Release 0.2.39 – Default-on Automatic Continuation (23 November 2026)
+
+- **Automatisch fortsetzen** is a separate, default-enabled and persistently
+  saved playback preference, shared across the Home Assistant MQTT card and
+  the phone-only web player.
+- The Family Dashboard card shows **∞ Auto: An / Auto: Aus**. The queue popup
+  displays its status too. The resource is
+  `/local/hauscheck-ytmusic-card-v1.js?v=6`.
+- When the last item in the current playlist/queue finishes naturally, the
+  playback manager fetches unseen related tracks from the authenticated
+  YTMusic watch/radio recommendations and appends them for continuous listening.
+  It can continue after the newly added tracks are exhausted as well.
+  **Shuffle** applies to queued items; **Repeat One/All** takes precedence
+  over automatic recommendations.
+- Manually stopping, receiver turning off, or switching audio sources must
+  never trigger a new Cast playback. Recommendations are fetched without
+  playing audio; the player verifies its generation token, the current setting
+  and the receiver's idle state after an asynchronous lookup before advancing.
+  The off toggle remains in effect after addon restarts.
+- The phone web player uses the same saved preference but only automatically
+  continues in its local HTML audio element, never on a HA speaker.
+- Read-only checks: enabled by default, setting off/on round-trip through
+  the protected API, persisted after restart, matching MQTT sensor, 3 search
+  results and a successful related-track metadata query. No soundbar or TV
+  playback command was used.
+
+**Limitation:** Natural-end transitioning has intentionally *not* been
+live-played during quiet hours; it should be checked later when playback is
+safe to test. YouTube may sometimes return no additional recommendations,
+in which case playback ends rather than looping indefinitely.
+
 ## Release 0.2.37 – Playlist browsing and queue UX fix (23 November 2026)
 
 - Fixed playlist search results opening without showing their track sublist.
