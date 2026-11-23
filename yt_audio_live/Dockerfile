@@ -16,12 +16,12 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
     && rm -rf /var/lib/apt/lists/* \
     && pip install --no-cache-dir --disable-pip-version-check \
        'yt-dlp[default,deno]' 'bgutil-ytdlp-pot-provider==2.0.2' \
-       'ytmusicapi>=1.12.4,<2' 'aiohttp>=3.9,<4'
+       'ytmusicapi>=1.12.4,<2' 'aiohttp>=3.9,<4' 'paho-mqtt>=2,<3'
 COPY --from=token-provider-build /usr/local/bin/node /usr/local/bin/node
 COPY --from=token-provider-build /opt/bgutil/server /opt/bgutil/server
 
 WORKDIR /app
-COPY server.py music_catalog.py playback.py auth_ui.py mobile_preview.py run.sh /app/
+COPY server.py music_catalog.py playback.py auth_ui.py mobile_preview.py yt_mqtt.py run.sh /app/
 RUN chmod +x /app/run.sh
 EXPOSE 8765 8766
 CMD ["/app/run.sh"]
