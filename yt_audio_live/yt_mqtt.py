@@ -36,7 +36,7 @@ class MusicMqttBridge:
         self.wake = threading.Event()
         self.info = {
             "search_query": "", "search_kind": "songs", "search_results": [],
-            "playlists": [], "list_title": "", "list_tracks": [],
+            "playlists": [], "list_playlist_id": "", "list_title": "", "list_tracks": [],
             "last_error": "", "last_action": "", "last_command_at": 0
         }
         threading.Thread(target=self._run, daemon=True, name="ytmusic-mqtt").start()
@@ -110,7 +110,7 @@ class MusicMqttBridge:
         if action=="load_playlist":
             pid=str(cmd.get("playlist_id") or "")
             data=catalog.playlist(pid,limit=100)
-            self._set(list_title=data["title"],list_tracks=data["tracks"][:55],
+            self._set(list_playlist_id=pid,list_title=data["title"],list_tracks=data["tracks"][:55],
                       last_action=action,last_error="")
             return
         if action=="radio_preview":
@@ -147,6 +147,29 @@ class MusicMqttBridge:
                 self.player.start(track,rest=recommended,radio=True)
             else:
                 self.player.start(track,radio=False)
+        elif action=="start_playlist_track":
+            # Starting a song inside a playlist must continue with that playlist,
+            # rather than turning it into a one-song playback session.
+            # The index is advisory and verified against the video ID so stale
+            # dashboard results cannot start a different track.
+            self._prepare_output(cmd)
+            pid=str(cmd.get("playlist_id") or "")
+            vid=cmd.get("video_id")
+            if not isinstance(vid,str) or not re.fullmatch(r"[A-Za-z0-9_-]{11}",vid):
+                raise ValueError("Ungültiger Titel")
+            tracks=catalog.playlist(pid,limit=200)["tracks"]
+            index=cmd.get("index")
+            if type(index) is not int or not 0<=index<len(tracks) or tracks[index]["video_id"]!=vid:
+                index=next((i for i,track in enumerate(tracks)
+                            if track["video_id"]==vid),-1)
+            if index<0:
+                raise ValueError("Dieser Titel ist nicht mehr in der Playlist")
+            # The chosen track stays first even with shuffle active. Playback.start
+            # shuffles only the remaining tracks when Shuffle is enabled.
+            current=tracks[index]
+            rest=tracks[index+1:]
+            self.resolve_source(current["video_id"])
+            self.player.start(current,rest=rest,radio=False)
         elif action=="start_playlist":
             self._prepare_output(cmd)
             data=catalog.playlist(str(cmd.get("playlist_id") or ""),limit=200)
@@ -251,6 +274,7 @@ class MusicMqttBridge:
           "search_query":info["search_query"],"search_kind":info["search_kind"],
           "search_results":info["search_results"][:20],
           "playlists":info["playlists"][:65],
+          "list_playlist_id":info["list_playlist_id"],
           "list_title":info["list_title"],"list_tracks":info["list_tracks"][:40],
           "last_error":info["last_error"],
           "last_action":info["last_action"],
