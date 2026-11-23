@@ -565,6 +565,6 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    LOG.info("server_started version=0.2.34 player_client=%s player=%s",
+    LOG.info("server_started version=0.2.35 player_client=%s player=%s",
              CLIENT, PLAYER.entity_id)
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever(poll_interval=0.25)
