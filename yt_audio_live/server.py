@@ -179,6 +179,8 @@ def resolve_source(vid):
         # visionos client. yt-dlp handles cookie compatibility itself.
         strategies = [("mweb", ["mweb"]),
                       ("auto", None),
+                      ("web_music", ["web_music"]),
+                      ("tv", ["tv"]),
                       ("web_safari", ["web_safari"]),
                       ("web_embedded", ["web_embedded"])]
         if CLIENT not in ("auto", "visionos", "web_safari", "web_embedded"):
