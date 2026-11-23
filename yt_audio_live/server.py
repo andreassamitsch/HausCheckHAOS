@@ -196,6 +196,20 @@ def resolve_source(vid):
                 if not isinstance(url, str) or not url.startswith("https://"):
                     raise RuntimeError("Extractor returned no HTTPS audio source")
                 headers = info.get("http_headers", {}) or {}
+                # A URL can exist yet return HTTP 403. Test the first 1 KiB
+                # before caching, selecting it or initiating any Cast session.
+                safe_headers = {k: v for k, v in headers.items()
+                                if isinstance(v, str) and "\r" not in v and "\n" not in v}
+                safe_headers["Range"] = "bytes=0-1023"
+                try:
+                    with urlopen(Request(url, headers=safe_headers), timeout=15) as check:
+                        sniff = check.read(1024)
+                        if check.status not in (200, 206) or not sniff:
+                            raise RuntimeError("Audio server returned no bytes")
+                except HTTPError as http_error:
+                    LOG.warning("audio_url_rejected video_id=%s strategy=%s http=%d",
+                                vid, label, http_error.code)
+                    raise
                 SOURCE_CACHE[vid] = {
                     "url": url, "headers": headers,
                     "duration": info.get("duration"),
@@ -209,7 +223,7 @@ def resolve_source(vid):
                          vid, label, info.get("format_id"),
                          (time.monotonic()-started)*1000)
                 return url, headers
-            except (yt_dlp.utils.DownloadError, RuntimeError,
+            except (yt_dlp.utils.DownloadError, RuntimeError, HTTPError,
                     yt_dlp.utils.ExtractorError) as exc:
                 last_error = exc
                 LOG.warning("source_strategy_unavailable video_id=%s strategy=%s type=%s",
