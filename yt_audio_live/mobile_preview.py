@@ -1,0 +1,389 @@
+"""Mobile YouTube Music preview over authenticated Home Assistant Ingress.
+
+Read-only metadata and audio probes never call HA media services. Browser
+preview is streamed to the requesting phone only; remote players require a
+separate explicit UI consent and double confirmation.
+"""
+import asyncio
+import hashlib
+import hmac
+import json
+import logging
+import os
+import re
+import time
+from pathlib import Path
+from urllib.parse import quote
+
+from aiohttp import ClientSession, ClientTimeout, web
+
+LOG = logging.getLogger("yt_audio_live.mobile")
+OPTS = json.loads(Path("/data/options.json").read_text(encoding="utf-8"))
+API_KEY = OPTS["api_key"]
+BASE_URL = str(OPTS["stream_base_url"]).rstrip("/")
+SUPERVISOR_TOKEN = os.environ.get("SUPERVISOR_TOKEN", "")
+VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
+TRACKS_VERIFIED = {}
+PLAY_MEDIA = 131072
+
+PAGE = """<!doctype html>
+<html lang="de"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>YouTube Music · Sicherer Handy-Test</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,Arial,sans-serif}
+*{box-sizing:border-box}
+body{background:#0d1929;color:#f8fafc;margin:0}
+header{padding:17px 16px 13px;background:linear-gradient(130deg,#0c82ac,#114469)}
+h1{margin:0 0 6px;font-size:21px}
+.subtitle{font-size:13px;opacity:.9;margin:0}
+main{max-width:790px;margin:auto;padding:14px}
+.panel{background:#16273b;border:1px solid #30455b;border-radius:15px;padding:14px;margin-bottom:14px}
+h2{font-size:16px;margin:0 0 12px}
+label{display:block;font-size:13px;font-weight:650;margin:7px 0}
+button,select,input{font:inherit;min-height:44px;border-radius:9px}
+button{border:0;padding:10px 14px;font-weight:650;background:#008fc1;color:#fff;cursor:pointer}
+button:disabled{opacity:.42;cursor:default}
+button.secondary{background:#344961}
+select,input[type=text]{border:1px solid #64758b;background:#0b1d31;color:white;padding:9px;width:100%}
+input[type=checkbox]{width:20px;height:20px;min-height:auto;accent-color:#00a8e7}
+.safeline{display:flex;align-items:flex-start;gap:10px;font-size:13px;margin-top:9px;line-height:1.4}
+.grid{display:flex;gap:8px}
+.grid>*{flex:1;min-width:0}
+#results{max-height:42vh;overflow:auto}
+.track{display:flex;gap:10px;align-items:center;width:100%;text-align:left;background:#21364c;margin:5px 0;padding:7px}
+.track img{height:49px;width:49px;object-fit:cover;border-radius:6px}
+.track span{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis}
+.track strong{font-size:14px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.track small{font-size:12px;opacity:.75;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.track[aria-pressed=true]{outline:2px solid #4fd2ff}
+.coverrow{display:flex;gap:12px;align-items:center}
+#cover{height:90px;width:90px;object-fit:cover;border-radius:12px;background:#28445d}
+#song{font-size:17px;font-weight:750;overflow-wrap:anywhere}
+#artist{font-size:13px;color:#c6d8e8;margin:5px 0}
+#message{font-size:13px;white-space:pre-wrap;line-height:1.45;min-height:20px;margin:9px 0}
+audio{width:100%;margin:10px 0 2px}
+.note{font-size:12px;color:#c1d3e3;line-height:1.4;margin-top:9px}
+#remoteGate{display:none}
+a{color:#a8e5ff}
+@media(max-width:450px){main{padding:10px}.panel{padding:11px}.grid{gap:6px}.grid button{padding:10px 7px;font-size:13px}}
+</style></head>
+<body>
+<header><h1>🎵 YouTube Music Live</h1>
+<p class="subtitle">Handy-Test · sichere Wiedergabe mit Geräteauswahl</p></header>
+<main>
+<section class="panel">
+<h2>Ausgabegerät</h2>
+<label for="output">Wo soll Musik abgespielt werden?</label>
+<select id="output"><option value="phone">📱 Dieses Handy (Standard)</option></select>
+<div id="remoteGate" class="safeline">
+ <input id="remoteConsent" type="checkbox">
+ <label for="remoteConsent">Ich möchte die Wiedergabe auf diesem Lautsprecher im Haus ausdrücklich freigeben.</label>
+</div>
+<p class="note">Ein Gerätewechsel startet keine Wiedergabe. Die Soundbar wird niemals automatisch ausgewählt oder angesteuert.</p>
+</section>
+<section class="panel">
+<h2>Musik auswählen</h2>
+<label for="library">Meine Playlists</label>
+<select id="library"><option value="">Playlist auswählen …</option></select>
+<label for="search">Oder einen Titel suchen</label>
+<div class="grid"><input id="search" type="text" placeholder="Künstler oder Titel" autocomplete="off">
+<button id="searchBtn">Suchen</button></div>
+<div id="results" aria-label="Titel"></div>
+</section>
+<section class="panel">
+<h2>Ausgewählter Titel</h2>
+<div class="coverrow"><img id="cover" alt="" src="" style="visibility:hidden">
+<div><div id="song">Noch kein Titel ausgewählt</div><div id="artist">–</div></div></div>
+<p id="message" role="status" aria-live="polite">Bereit. Bisher wurde nichts abgespielt.</p>
+<div class="grid">
+<button id="probe" class="secondary" disabled>Audioquelle prüfen</button>
+<button id="play" disabled>▶ Abspielen</button>
+</div>
+<audio id="audio" controls preload="none" hidden></audio>
+<p class="note">„Audioquelle prüfen“ überträgt höchstens einen kleinen Datenblock und startet keinen Lautsprecher.
+Nur „Abspielen“ kann Ton ausgeben – auf dem ausdrücklich ausgewählten Gerät.</p>
+</section>
+<p class="note"><a href="./">Zurück zur Google-Anmeldung</a></p>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+let selected=null,verified=false,outputs=new Map(),playingRemote="";
+const audio=$("audio"),out=$("output"),msg=s=>$("message").textContent=s;
+async function api(path,body){
+ const headers={"Content-Type":"application/json"};
+ if(body)headers["X-HausCheck-Intent"]="explicit-remote-playback";
+ const r=await fetch("api/mobile/"+path,{credentials:"same-origin",cache:"no-store",
+  method:body?"POST":"GET",headers,...(body?{body:JSON.stringify(body)}:{})});
+ const d=await r.json();
+ if(!r.ok)throw Error(d.error||"HTTP "+r.status);
+ return d;
+}
+function resetOutput(){
+ audio.pause();audio.removeAttribute("src");audio.load();audio.hidden=true;
+ verified=false;$("play").disabled=true;$("remoteConsent").checked=false;
+ $("remoteGate").style.display=out.value==="phone"?"none":"flex";
+ $("play").textContent=out.value==="phone"?"▶ Auf diesem Handy abspielen":"▶ Auf ausgewähltem Gerät abspielen";
+ msg(selected?"Ausgabe geändert. Zuerst Audioquelle erneut prüfen.":"Ausgabegerät ausgewählt. Noch keine Wiedergabe.");
+}
+out.onchange=resetOutput;
+function choose(t){
+ if(!t?.video_id || !/^[A-Za-z0-9_-]{11}$/.test(t.video_id))return;
+ selected=t;resetOutput();$("probe").disabled=false;
+ $("song").textContent=t.title||"Unbekannter Titel";$("artist").textContent=t.artist||"";
+ $("cover").style.visibility="visible";
+ $("cover").src=(typeof t.thumbnail==="string"&&t.thumbnail.startsWith("https://"))?t.thumbnail:"";
+ msg("Titel ausgewählt. Keine Wiedergabe gestartet.");
+ document.querySelectorAll(".track").forEach(e=>e.setAttribute("aria-pressed",String(e.dataset.id===t.video_id)));
+}
+function listTracks(items){
+ const wrap=$("results");wrap.replaceChildren();
+ if(!items.length){wrap.textContent="Keine abspielbaren Titel gefunden.";return;}
+ for(const t of items.slice(0,100)){
+  if(!t.video_id)continue;
+  const button=document.createElement("button");button.className="track";
+  button.type="button";button.dataset.id=t.video_id;
+  const img=document.createElement("img");img.alt="";img.loading="lazy";
+  if(typeof t.thumbnail==="string" && t.thumbnail.startsWith("https://"))img.src=t.thumbnail;
+  const span=document.createElement("span"),title=document.createElement("strong"),artist=document.createElement("small");
+  title.textContent=t.title||t.video_id;artist.textContent=t.artist||"";
+  span.append(title,artist);button.append(img,span);
+  button.onclick=()=>choose(t);wrap.append(button);
+ }
+}
+$("searchBtn").onclick=async()=>{
+ const q=$("search").value.trim();if(!q)return;
+ msg("Suche …");
+ try{const d=await api("search?q="+encodeURIComponent(q));listTracks(d.results||[]);
+ msg((d.results||[]).length+" Titel gefunden.");}
+ catch(e){msg("Suche fehlgeschlagen: "+e.message)}
+};
+$("search").onkeydown=e=>{if(e.key==="Enter")$("searchBtn").click()};
+$("library").onchange=async()=>{
+ const id=$("library").value;if(!id)return;
+ msg("Playlist wird geladen …");
+ try{const d=await api("playlist?id="+encodeURIComponent(id));
+ listTracks(d.tracks||[]);msg((d.tracks||[]).length+" Titel in "+d.title+".");}
+ catch(e){msg("Playlist konnte nicht geladen werden: "+e.message)}
+};
+$("probe").onclick=async()=>{
+ if(!selected)return;
+ $("probe").disabled=true;$("play").disabled=true;verified=false;
+ msg("Prüfe Audioquelle, ohne etwas abzuspielen …");
+ try{
+  const d=await api("probe?video_id="+encodeURIComponent(selected.video_id));
+  if(!d.ok)throw Error(d.reason||"Audioquelle nicht erreichbar");
+  verified=true;$("play").disabled=false;
+  msg("Audioquelle verfügbar. Jetzt kannst du ausdrücklich die Wiedergabe starten.");
+ }catch(e){msg("Audioquelle nicht verfügbar: "+e.message)}
+ finally{$("probe").disabled=false}
+};
+$("play").onclick=async()=>{
+ if(!selected||!verified)return;
+ const id=selected.video_id;
+ if(out.value==="phone"){
+  audio.hidden=false;
+  audio.src="api/mobile/audio/"+encodeURIComponent(id);
+  // Called synchronously in the actual button gesture, not in a background task.
+  msg("Starte Wiedergabe ausschließlich auf diesem Handy …");
+  try{await audio.play();}catch(e){msg("Handy konnte nicht starten: "+e.message);}
+  return;
+ }
+ if(!$("remoteConsent").checked){msg("Bitte zuerst den Lautsprecher ausdrücklich freigeben.");return;}
+ const name=outputs.get(out.value)||out.value;
+ if(!window.confirm("ACHTUNG: Jetzt Musik auf „"+name+"“ IM HAUS abspielen?"))return;
+ try{
+  const data=await api("remote",{video_id:id,entity_id:out.value,
+   confirmed_remote:true});
+  playingRemote=data.entity_id;
+  msg("Wiedergabe auf „"+name+"“ ausdrücklich gestartet. Die Lautstärke wurde nicht verändert.");
+ }catch(e){msg("Lautsprecher konnte nicht starten: "+e.message)}
+};
+audio.addEventListener("error",()=>msg("Der Audiostream konnte am Handy nicht abgespielt werden."));
+audio.addEventListener("ended",()=>msg("Titel beendet. Keine automatische weitere Wiedergabe."));
+(async()=>{
+ try{
+  const devices=await api("outputs");
+  for(const p of devices.outputs||[]){
+   outputs.set(p.entity_id,p.name);
+   const op=document.createElement("option");op.value=p.entity_id;op.textContent="🔊 "+p.name;
+   out.append(op);
+  }
+  // Always default to the current browser – NEVER inherit HA soundbar.
+  out.value="phone";
+  const lib=await api("library");
+  for(const p of (lib.playlists||[])){
+   const op=document.createElement("option");op.value=p.playlist_id;op.textContent=p.title;
+   $("library").append(op);
+  }
+  msg("Angemeldet. "+(lib.playlists||[]).length+" Playlists verfügbar. Noch keine Wiedergabe.");
+ }catch(e){msg("Initialisierung: "+e.message)}
+})();
+</script></body></html>"""
+
+
+def safe_video_id(value):
+    if not isinstance(value, str) or not VIDEO_ID.fullmatch(value):
+        raise web.HTTPBadRequest(text="invalid video id")
+    return value
+
+
+async def media_api(path, method="GET", data=None):
+    """Call the private music API without exposing API credentials to browser."""
+    url="http://127.0.0.1:8765"+path
+    headers={"X-API-Key": API_KEY, "Content-Type":"application/json"}
+    async with ClientSession(timeout=ClientTimeout(total=45)) as session:
+        async with session.request(method,url,headers=headers,json=data) as response:
+            result=await response.json(content_type=None)
+            if response.status>=400:
+                raise ValueError(result.get("error","Audioanbieter nicht verfügbar"))
+            return result
+
+
+async def outputs(request):
+    if not SUPERVISOR_TOKEN:
+        return web.json_response({"outputs":[]})
+    headers={"Authorization":"Bearer "+SUPERVISOR_TOKEN}
+    async with ClientSession(timeout=ClientTimeout(total=12)) as session:
+        async with session.get("http://supervisor/core/api/states",headers=headers) as response:
+            states=await response.json(content_type=None)
+    candidates=[]
+    for st in states if isinstance(states,list) else []:
+        eid=str(st.get("entity_id") or "")
+        attrs=st.get("attributes") or {}
+        name=str(attrs.get("friendly_name") or eid)
+        if not eid.startswith("media_player.") or st.get("state") in ("unknown","unavailable"):
+            continue
+        if not (int(attrs.get("supported_features") or 0)&PLAY_MEDIA):
+            continue
+        if re.search(r"youtube_music_live|kreativ_tonie|toniebox|this_device|uberall",eid,re.I):
+            continue
+        if name.strip().lower() in ("android","this device","überall"):
+            continue
+        candidates.append({"entity_id":eid,"name":name,
+                           "volume":attrs.get("volume_level"),"state":st.get("state")})
+    dedup={}
+    for p in candidates:
+        group=re.sub(r"_\d+$","",p["entity_id"])
+        score=(20 if p["entity_id"]==group else 0)+(2 if p["state"]=="playing" else 0)+(1 if p["volume"] is not None else 0)
+        if group not in dedup or score>dedup[group][0]:
+            dedup[group]=(score,p)
+    result=[v[1] for v in dedup.values()]
+    result.sort(key=lambda p:p["name"].lower())
+    return web.json_response({"outputs":[{"entity_id":p["entity_id"],"name":p["name"]} for p in result]})
+
+
+async def library(request):
+    data=await media_api("/api/library?limit=100")
+    return web.json_response({"playlists":data.get("playlists",[])})
+
+
+async def playlist(request):
+    pid=request.query.get("id","")
+    if not re.fullmatch(r"[A-Za-z0-9_-]{3,200}",pid):
+        raise web.HTTPBadRequest(text="invalid playlist")
+    data=await media_api("/api/playlist?id="+quote(pid)+"&limit=100")
+    return web.json_response(data)
+
+
+async def search(request):
+    q=request.query.get("q","").strip()
+    if not (1<=len(q)<=150):
+        raise web.HTTPBadRequest(text="invalid search")
+    data=await media_api("/api/search?q="+quote(q)+"&kind=songs&limit=25")
+    return web.json_response({"results":data.get("results",[])})
+
+
+async def probe(request):
+    vid=safe_video_id(request.query.get("video_id"))
+    try:
+        data=await media_api("/api/probe?video_id="+vid)
+        ok=data.get("http_status") in (200,206) and int(data.get("bytes_received") or 0)>0
+        if ok:
+            TRACKS_VERIFIED[vid]=time.monotonic()
+        return web.json_response({"ok":ok,"reason":None if ok else
+           "YouTube liefert HTTP "+str(data.get("http_status"))})
+    except Exception:
+        return web.json_response({"ok":False,
+                "reason":"Die Audioquelle konnte nicht abgerufen werden."})
+
+
+def signed_url(vid):
+    expiry=int(time.time())+3600
+    signature=hmac.new(API_KEY.encode(),f"{vid}:{expiry}".encode(),hashlib.sha256).hexdigest()
+    return f"{BASE_URL}/stream/{vid}.mp3?exp={expiry}&sig={signature}"
+
+
+async def audio(request):
+    vid=safe_video_id(request.match_info.get("vid"))
+    # Only a recently probed source may be streamed through the phone UI.
+    if time.monotonic()-TRACKS_VERIFIED.get(vid,0)>300:
+        return web.json_response({"error":"Audioquelle zuerst prüfen."},status=409)
+    expiry=int(time.time())+90
+    signature=hmac.new(API_KEY.encode(),f"{vid}:{expiry}".encode(),hashlib.sha256).hexdigest()
+    upstream=f"http://127.0.0.1:8765/stream/{vid}.mp3?exp={expiry}&sig={signature}"
+    client=ClientSession(timeout=ClientTimeout(total=None,connect=25,sock_read=35))
+    try:
+        async with client.get(upstream) as response:
+            if response.status!=200:
+                return web.json_response({"error":"Audioquelle nicht abrufbar"},status=502)
+            streamed=web.StreamResponse(status=200,headers={
+              "Content-Type":"audio/mpeg","Cache-Control":"no-store",
+              "X-Content-Type-Options":"nosniff"})
+            await streamed.prepare(request)
+            try:
+                async for chunk in response.content.iter_chunked(16384):
+                    await streamed.write(chunk)
+                await streamed.write_eof()
+            except (ConnectionResetError, asyncio.CancelledError):
+                LOG.info("phone_preview_disconnected")
+            return streamed
+    except (OSError, asyncio.TimeoutError):
+        LOG.warning("phone_audio_proxy_failed")
+        return web.json_response({"error":"Audioübertragung fehlgeschlagen"},status=502)
+    finally:
+        await client.close()
+
+
+async def remote(request):
+    """Explicit remote playback only; never called by status/metadata/selection."""
+    if request.headers.get("X-HausCheck-Intent")!="explicit-remote-playback":
+        return web.json_response({"error":"Ausdrückliche Bestätigung fehlt"},status=403)
+    if request.content_type!="application/json":
+        return web.json_response({"error":"Ungültige Anfrage"},status=415)
+    body=await request.json()
+    vid=safe_video_id(body.get("video_id"))
+    eid=body.get("entity_id")
+    if body.get("confirmed_remote") is not True or not isinstance(eid,str):
+        return web.json_response({"error":"Freigabe fehlt"},status=403)
+    if time.monotonic()-TRACKS_VERIFIED.get(vid,0)>300:
+        return web.json_response({"error":"Audioquelle zuerst prüfen"},status=409)
+    all_devices=await outputs(request)
+    # Avoid relying on HTTP response internals: verify against current HA state list
+    info=json.loads(all_devices.text)
+    allowed={p["entity_id"] for p in info.get("outputs",[])}
+    if eid not in allowed or eid=="media_player.youtube_music_live_youtube_music_live":
+        return web.json_response({"error":"Kein unterstützter Lautsprecher"},status=400)
+    payload={"entity_id":eid,"media_content_id":signed_url(vid),
+             "media_content_type":"audio/mpeg"}
+    headers={"Authorization":"Bearer "+SUPERVISOR_TOKEN,
+             "Content-Type":"application/json"}
+    async with ClientSession(timeout=ClientTimeout(total=18)) as client:
+        async with client.post("http://supervisor/core/api/services/media_player/play_media",
+                               headers=headers,json=payload) as response:
+            if response.status>=400:
+                return web.json_response({"error":"Ausgabegerät hat Wiedergabe abgelehnt"},status=502)
+    LOG.info("explicit_remote_preview_requested entity_id=%s",eid)
+    return web.json_response({"entity_id":eid,"started":True})
+
+
+def routes(app):
+    app.router.add_get("/player",lambda r:web.Response(text=PAGE,content_type="text/html",
+                          headers={"Cache-Control":"no-store"}))
+    app.router.add_get("/api/mobile/outputs",outputs)
+    app.router.add_get("/api/mobile/library",library)
+    app.router.add_get("/api/mobile/playlist",playlist)
+    app.router.add_get("/api/mobile/search",search)
+    app.router.add_get("/api/mobile/probe",probe)
+    app.router.add_get("/api/mobile/audio/{vid}",audio)
+    app.router.add_post("/api/mobile/remote",remote)
