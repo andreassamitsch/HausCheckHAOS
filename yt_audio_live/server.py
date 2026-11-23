@@ -151,7 +151,8 @@ def resolve_source(vid):
             base["cookiefile"] = YT_DLP_COOKIE_FILE
         # Automatic player selection is preferred over the historical forced
         # visionos client. yt-dlp handles cookie compatibility itself.
-        strategies = [("auto", None),
+        strategies = [("mweb", ["mweb"]),
+                      ("auto", None),
                       ("web_safari", ["web_safari"]),
                       ("web_embedded", ["web_embedded"])]
         if CLIENT not in ("auto", "visionos", "web_safari", "web_embedded"):
