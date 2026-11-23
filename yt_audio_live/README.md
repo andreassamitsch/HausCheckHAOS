@@ -1,5 +1,32 @@
 # YouTube Music Live for Home Assistant OS
 
+## Release 0.2.37 – Playlist browsing and queue UX fix (23 November 2026)
+
+- Fixed playlist search results opening without showing their track sublist.
+  The popup now renders a nested playlist detail regardless of whether
+  it was opened from **Meine Listen** or from the **Suche** tab. It uses the
+  returned `list_playlist_id` to avoid displaying stale playlist results.
+  Search controls are hidden while viewing a sublist, and **Zurück**
+  returns to the originating tab.
+- Starting an individual song **inside a playlist** now uses the new
+  `start_playlist_track` action, sending the verified playlist ID, video ID
+  and index. The bridge retrieves the full playlist, starts only the chosen
+  song, and places the subsequent tracks (up to the 200-song playlist
+  fetch limit) in the queue. Shuffle, when enabled, affects subsequent
+  tracks only; radio start remains a separate action.
+- Removed the redundant system `window.confirm()` popup for remote
+  playback. The user must still explicitly pick an available audio
+  output from the card; selecting an output or browsing/searching
+  never starts music. The deliberate **Play** tap confirms the action.
+- Updated Home Assistant card resource
+  `/local/hauscheck-ytmusic-card-v1.js?v=5`.
+- Verified with a no-service-call frontend simulation: selecting a
+  searched playlist displays its tracks and tapping the second item
+  prepares a `start_playlist_track` command with correct index.
+  Read-only provider checks returned 25 featured playlists for
+  "christmas" and 120 tracks in a selected playlist. No sound output
+  or playback command was triggered; both TV and Soundbar were off.
+
 ## Current release 0.2.36 – On-demand Google login and low RAM (23 November 2026)
 
 The Home Assistant music server, signed-in YouTube Music catalog, playlist
