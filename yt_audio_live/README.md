@@ -64,6 +64,21 @@ POST /api/resume    {}
 Queries with a title automatically play the first search result. To avoid
 unwanted versions, use /api/search and then play an exact video ID.
 
+## Version 0.2.20 – Firefox SQLite lock-safe sign-in (23 November 2026)
+
+- Fixed `database is locked` when saving a Google login from the embedded Firefox browser.
+- The App first attempts a normal read of Firefox's `cookies.sqlite`; when Firefox
+  holds exclusive locks it creates a temporary, private copy of the DB with its
+  SQLite WAL and SHM sidecars, reads it, and removes the snapshot automatically.
+  Firefox does not have to exit and the user does not need to sign in again.
+- Confirmed on this Home Assistant installation: authenticated session captured
+  without manual cookie export, music API `/api/auth` recognizes the user, and
+  `/api/library` retrieves 31 private playlists.
+- Account access is **not** the same as successful audio extraction. A non-audible
+  `/api/probe` of a public track and one library track still failed with
+  `Requested format is not available` on the configured `visionos` yt-dlp
+  client. Playback needs a separate provider/client compatibility fix.
+
 ## Version 0.2.19 – Mobile Firefox login (23 November 2026)
 
 - A visible **⌨ Tastatur öffnen** button enables the native Android keyboard while the Google input field retains focus in the remote browser.
