@@ -64,6 +64,15 @@ POST /api/resume    {}
 Queries with a title automatically play the first search result. To avoid
 unwanted versions, use /api/search and then play an exact video ID.
 
+## Version 0.2.19 – Mobile Firefox login (23 November 2026)
+
+- A visible **⌨ Tastatur öffnen** button enables the native Android keyboard while the Google input field retains focus in the remote browser.
+- Implements noVNC's supported touch-input handling with a local textarea, keyboard events and IME input fallback. Only the RFB websocket forwards typed keys to the private Firefox; there is no credential submission to the App API.
+- **Enter**, **Tab** and **Backspace** buttons for reliable mobile navigation.
+- Switch between **Einpassen** (scaled screen) and **100 %** (scroll/pan the virtual display) when the form is too small.
+- Virtual display changed from 1280×800 to 680×900; Firefox starts in kiosk mode with larger UI for a portrait phone.
+- Login workflow, stored session and streaming backend remain unchanged. Validated the App's /health endpoint, Ingress page, browser readiness and all noVNC input modules; mobile keystrokes still require a real-device test.
+
 ## Version 0.2.16 – Browser login directly in the Home Assistant App
 
 **No JSON, request headers, cookie file, or external cookie manager required.**
