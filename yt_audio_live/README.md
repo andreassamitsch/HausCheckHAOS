@@ -64,6 +64,35 @@ POST /api/resume    {}
 Queries with a title automatically play the first search result. To avoid
 unwanted versions, use /api/search and then play an exact video ID.
 
+## Version 0.2.33 – Liked Songs, radio, playlists, shuffle/repeat and output card (23 November 2026)
+
+- Google-account playlist **Mag ich – Lieblingssongs** exposed as `LM` (via
+  `ytmusicapi.get_liked_songs`) in both the app and MQTT dashboard.
+- Search supports songs, public playlists, suggested radio seeds, featured
+  playlists and community playlists; song radio uses YTMusic's related-tracks
+  API. Personal library browsing remains available.
+- New Home Assistant dashboard card: `custom:hauscheck-ytmusic-card`,
+  served from `/local/hauscheck-ytmusic-card-v1.js?v=4`, now on the
+  `family-dashboard/medien` view. The previous main media-control card
+  is replaced; test view has a duplicate preview.
+- MQTT status entity `sensor.youtube_music_live_youtube_music_live`
+  (unique id `hauscheck_ytmusic_live_hub`) and authenticated HA MQTT
+  commands hide account credentials and API keys from the dashboard.
+- Transport, queue, Radio, Shuffle, Repeat (off/one/all), and actual
+  supported media-player output dropdown. Output selection does not play.
+  When the player is not yet selected, no household speaker is defaulted
+  on the new card. Explicit user confirmation is required to start
+  playback on any household device. Volume is never changed automatically.
+- The separate mobile app Web UI can still play only on the phone by
+  default. It now offers Liked Songs, song/public-playlist/radio searches
+  and phone-local shuffle/repeat; the dashboard's `phone` option directs
+  the user to that Web UI and does not automatically stream to phone.
+- Release 0.2.33 fixes a repeat-all queue-cycle duplication.
+- Verified read-only: playlist LM (100 songs), radio seed and public
+  playlist searches, shuffle/repeat state transitions then reset off,
+  mobile/tablet dashboard screenshots, and both Soundbar/TV **off**.
+  No remote playback command was sent in this development session.
+
 ## Version 0.2.29 – Safe mobile preview with selectable output (23 November 2026)
 
 The Home Assistant App Web UI now links to **🎧 Musik am Handy testen**. The
