@@ -27,7 +27,7 @@ class MusicFamilyCard extends HTMLElement{
 ".hero{min-height:100px}.art{width:100px;height:100px;flex:0 0 100px;background:#ffffff26;border-radius:12px;overflow:hidden;display:grid;place-items:center}.art img{width:100%;height:100%;object-fit:cover}.art ha-icon{--mdc-icon-size:48px}",
 ".meta{flex:1;min-width:0}.song{font-weight:750;font-size:20px;line-height:1.2;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}.artist{font-size:13px;opacity:.85;margin-top:7px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
 ".controls{justify-content:center;gap:13px;margin:12px 0 5px}.controls .ib{width:48px;height:48px}.controls .primary{height:58px;width:58px;border-radius:50%;background:#ffffff2d;border:1px solid #ffffff55}.controls .primary ha-icon{--mdc-icon-size:32px}",
-".extras{justify-content:center;gap:9px;margin:0 0 13px}.extras .ib{width:45px;height:38px}.line{border:0;border-top:1px solid #ffffff50;margin:12px 0}",
+".extras{justify-content:center;gap:7px;margin:0 0 13px;flex-wrap:wrap}.extras .ib{width:45px;height:38px}.autocontinue{min-height:38px;border:1px solid #ffffff66;border-radius:10px;background:#ffffff13;color:white;display:flex;align-items:center;gap:4px;padding:5px 9px;font-size:12px;font-weight:700}.autocontinue ha-icon{--mdc-icon-size:20px}.autocontinue.on{background:#ffffff30;color:#caffed}.line{border:0;border-top:1px solid #ffffff50;margin:12px 0}",
 ".row{gap:9px}.row span{font-size:12px;white-space:nowrap;display:flex;align-items:center;gap:4px}.output{width:100%;flex:1;min-width:0;min-height:43px;border:1px solid #ffffff70;background:#075474;color:white;border-radius:10px;padding:8px;font-size:13px}.output option{background:#19527a}",
 ".vol{gap:4px;margin-top:8px}.vol .ib{width:34px;height:35px}.vol .ib ha-icon{--mdc-icon-size:20px}.vol input{flex:1;min-width:0;accent-color:white}.pct{width:42px;text-align:right;font-size:12px}",
 ".foot{justify-content:space-between;gap:6px;font-size:11px;margin-top:11px;opacity:.83}.foot span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.note{font-size:12px;min-height:13px;margin-top:7px;color:#ffe6a4}",
@@ -53,7 +53,11 @@ class MusicFamilyCard extends HTMLElement{
   const ctrl=E("div","controls"),prev=B("skip-previous","Zurück"),stop=B("stop","Stopp"),play=B("magnify","Abspielen oder Musik auswählen"),next=B("skip-next","Weiter");
   play.classList.add("primary");ctrl.append(prev,stop,play,next);card.append(ctrl);
   const extras=E("div","extras"),shuffle=B("shuffle","Zufallswiedergabe umschalten"),repeat=B("repeat","Wiederholen"),radio=B("radio","Radio");
-  extras.append(shuffle,repeat,radio);card.append(extras);card.append(E("hr","line"));
+  const auto=E("button","autocontinue","");auto.type="button";auto.id="autoContinue";
+  auto.title="Automatisch fortsetzen – ähnliche Titel nach Ende der Warteschlange";
+  auto.setAttribute("aria-label","Automatisch fortsetzen umschalten");
+  auto.append(I("infinity"),E("span",null,"Auto: An"));
+  extras.append(shuffle,repeat,radio,auto);card.append(extras);card.append(E("hr","line"));
   const row=E("div","row"),lab=E("span");lab.append(I("speaker"),"Ausgabe");
   const select=E("select","output");select.id="output";select.setAttribute("aria-label","Audio-Ausgabegerät");
   row.append(lab,select);card.append(row);
@@ -85,6 +89,7 @@ class MusicFamilyCard extends HTMLElement{
   shuffle.onclick=()=>this._cmd({action:"shuffle",enabled:!this._a().shuffle_enabled});
   repeat.onclick=()=>{const cur=this._a().repeat_mode||"off";this._cmd({action:"repeat",mode:cur==="off"?"all":cur==="all"?"one":"off"});};
   radio.onclick=()=>{if(this._a().current)this._cmd({action:"radio_toggle",enabled:!this._a().radio_enabled});else{this._tab="search";this._kind="radios";this._open();}};
+  auto.onclick=()=>this._cmd({action:"auto_continue",enabled:this._a().auto_continue_enabled===false});
   select.onchange=e=>this._select(e.target.value);
   range.onpointerdown=()=>this._drag=true;range.oninput=()=>{this._drag=true;pct.textContent=range.value+" %";};
   range.onchange=async()=>{await this._volume(Number(range.value));this._drag=false;};
@@ -173,6 +178,11 @@ class MusicFamilyCard extends HTMLElement{
   buttons[0].disabled=!track;buttons[1].disabled=!track;buttons[3].disabled=!track;
   const icons=this.shadowRoot.querySelector(".extras").querySelectorAll("button");
   icons[0].classList.toggle("on",!!a.shuffle_enabled);icons[1].classList.toggle("on",a.repeat_mode!=="off");icons[2].classList.toggle("on",!!a.radio_enabled);
+  const auto=this._q("autoContinue"),autoEnabled=a.auto_continue_enabled!==false;
+  auto.classList.toggle("on",autoEnabled);
+  auto.querySelector("span").textContent="Auto: "+(autoEnabled?"An":"Aus");
+  auto.setAttribute("aria-pressed",String(autoEnabled));
+  auto.title="Automatisch fortsetzen: "+(autoEnabled?"Ein":"Aus")+" – ähnliche Titel nach Warteschlangenende";
   icons[1].querySelector("ha-icon").setAttribute("icon","mdi:"+(a.repeat_mode==="one"?"repeat-once":"repeat"));
   icons[1].title="Wiederholen: "+(a.repeat_mode==="one"?"ein Titel":a.repeat_mode==="all"?"alle":"aus");
   this._q("qcount").textContent=(a.queue_length||0)+" Folgetitel";
@@ -254,7 +264,7 @@ class MusicFamilyCard extends HTMLElement{
     }
    }
   }else{
-   const items=a.queue||[];this._q("caption").textContent="Warteschlange · "+(a.queue_length||0)+" Titel";
+   const items=a.queue||[];this._q("caption").textContent="Warteschlange · "+(a.queue_length||0)+" Titel · Automatisch fortsetzen: "+(a.auto_continue_enabled===false?"Aus":"An");
    if(a.current){const row=this._item(a.current.title,"▶ "+(a.current.artist||"Jetzt"),a.current.thumbnail).row;r.append(row);}
    items.forEach((t,i)=>{
     const fn=()=>{if(!this._canPlay())return;this._cmd({action:"queue_play",index:i,video_id:t.video_id});this._q("dlg").close();};
