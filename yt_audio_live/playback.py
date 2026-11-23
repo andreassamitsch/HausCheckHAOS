@@ -5,6 +5,7 @@ import os
 import random
 import threading
 import time
+from pathlib import Path
 from collections import deque
 from urllib.request import Request, urlopen
 
@@ -13,6 +14,7 @@ from music_catalog import checked_video_id
 LOG = logging.getLogger("yt_audio_live.playback")
 SUPERVISOR_TOKEN = os.environ.get("SUPERVISOR_TOKEN", "")
 HA_API = "http://supervisor/core/api"
+AUTOCONTINUE_FILE = Path("/data/ytmusic-playback-preferences.json")
 
 
 class Playback:
@@ -27,6 +29,9 @@ class Playback:
         self.queue = deque()
         self.history = deque(maxlen=50)
         self.radio_enabled = False
+        # Distinct from explicit Radio mode: use suggestions only after the
+        # existing playlist/queue has naturally reached its end.
+        self.auto_continue_enabled = self._load_auto_continue_preference()
         self.shuffle_enabled = False
         self.repeat_mode = "off"  # off | all | one
         self.radio_prefetching = False
@@ -43,6 +48,39 @@ class Playback:
         self.position_updated_at = time.time()
         self._poller = threading.Thread(target=self._poll, name="cast-monitor", daemon=True)
         self._poller.start()
+
+    @staticmethod
+    def _load_auto_continue_preference():
+        """Default ON for first install, preserve an explicit user choice."""
+        try:
+            value = json.loads(AUTOCONTINUE_FILE.read_text(encoding="utf-8"))
+            return value.get("auto_continue_enabled") is not False
+        except FileNotFoundError:
+            return True
+        except (OSError, ValueError, TypeError, AttributeError) as exc:
+            LOG.warning("auto_continue_preference_read_failed type=%s",
+                        type(exc).__name__)
+            return True
+
+    def set_auto_continue(self, enabled):
+        if type(enabled) is not bool:
+            raise ValueError("auto_continue_enabled must be boolean")
+        with self.lock:
+            self.auto_continue_enabled = enabled
+            # Persist without resetting the current queue or triggering Cast.
+            try:
+                AUTOCONTINUE_FILE.parent.mkdir(parents=True, exist_ok=True)
+                tmp = AUTOCONTINUE_FILE.with_suffix(".tmp")
+                with open(tmp, "w", encoding="utf-8") as file:
+                    os.chmod(tmp, 0o600)
+                    json.dump({"auto_continue_enabled": enabled}, file)
+                os.replace(tmp, AUTOCONTINUE_FILE)
+                os.chmod(AUTOCONTINUE_FILE, 0o600)
+            except OSError as exc:
+                LOG.warning("auto_continue_preference_save_failed type=%s",
+                            type(exc).__name__)
+            LOG.info("auto_continue_setting enabled=%s autoplay_started=0", enabled)
+        return self.status()
 
     def _request(self, path, data=None):
         if not SUPERVISOR_TOKEN:
@@ -89,6 +127,7 @@ class Playback:
                 "history": [dict(x) for x in self.history],
                 "history_length": len(self.history),
                 "radio_enabled": self.radio_enabled,
+                "auto_continue_enabled": self.auto_continue_enabled,
                 "shuffle_enabled": self.shuffle_enabled,
                 "repeat_mode": self.repeat_mode,
                 "radio_prefetching": self.radio_prefetching,
@@ -295,7 +334,12 @@ class Playback:
             else:
                 first = None
                 gen = None
-                seed = previous["video_id"] if previous and self.radio_enabled else None
+                # Never restart after a manual stop: stop/external_stop clears
+                # current and increments generation. This path is reached only
+                # from a natural song end or an explicit "next" click.
+                seed = (previous["video_id"] if previous
+                        and (self.radio_enabled or self.auto_continue_enabled)
+                        and reason in ("ended", "next") else None)
         if repeat_track is not None:
             self._play(repeat_track, generation)
             return self.status()
@@ -304,11 +348,18 @@ class Playback:
             if seed:
                 try:
                     recommendations = self._unseen(self.catalog.radio(seed, limit=25))
+                    LOG.info("queue_autocontinue_requested mode=%s suggestions=%d",
+                             "radio" if self.radio_enabled else "automatic",
+                             len(recommendations))
                 except Exception as exc:
-                    LOG.warning("radio_fallback_failed error=%s", type(exc).__name__)
+                    LOG.warning("queue_autocontinue_failed error=%s", type(exc).__name__)
             with self.lock:
                 if old_generation != self.generation:
                     return self.status()
+                # A user might disable Autoplay or stop while the provider
+                # request is in flight; never resurrect playback afterward.
+                if not self.radio_enabled and not self.auto_continue_enabled:
+                    recommendations = []
                 for item in recommendations[:max(0, 70 - len(self.queue))]:
                     self.queue.append(self._minimal_track(item))
                 if not self.queue:
