@@ -310,11 +310,21 @@ async def probe(request):
             try:
                 async with ClientSession(timeout=ClientTimeout(total=40)) as client:
                     async with client.get(url) as stream:
-                        first=await stream.content.read(4096)
-                        ok=stream.status==200 and len(first)>=256
+                        received=0
+                        # FFmpeg sends a 45-byte MP3 header before any frames.
+                        # StreamReader.read(n) may return fewer than n bytes.
+                        # Wait for actual frames, then close the connection
+                        # without sending anything to a physical speaker.
+                        while received<2048:
+                            chunk=await asyncio.wait_for(
+                                stream.content.read(4096),timeout=18)
+                            if not chunk:
+                                break
+                            received+=len(chunk)
+                        ok=stream.status==200 and received>=2048
                         if not ok:
                             LOG.warning("phone_preview_pipeline_failed status=%s bytes=%s",
-                                        stream.status,len(first))
+                                        stream.status,received)
             except (OSError, asyncio.TimeoutError) as exc:
                 LOG.warning("phone_preview_pipeline_error type=%s",type(exc).__name__)
                 ok=False
