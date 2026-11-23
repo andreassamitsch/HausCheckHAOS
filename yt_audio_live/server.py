@@ -427,6 +427,9 @@ class Handler(BaseHTTPRequestHandler):
                         raise ValueError("No matching song found")
                     tracks = [matches[0]]
                 result = PLAYER.enqueue(tracks)
+            elif path == "/api/auto_continue":
+                # Settings only; never opens an audio source or calls Cast.
+                result = PLAYER.set_auto_continue(body.get("enabled"))
             elif path == "/api/seek":
                 result = PLAYER.seek(body.get("position"))
             elif path == "/api/external_stop":
