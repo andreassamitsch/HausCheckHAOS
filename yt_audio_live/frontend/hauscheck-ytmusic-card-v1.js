@@ -19,7 +19,7 @@ class MusicFamilyCard extends HTMLElement{
   if(this._ready)return;this._ready=true;
   const style=E("style");
   style.textContent=[
-":host{display:block;min-width:0}*{box-sizing:border-box}button,select,input{font:inherit}button{cursor:pointer;touch-action:manipulation}button:disabled{opacity:.3;cursor:default}",
+":host{display:block;min-width:0}*{box-sizing:border-box}[hidden]{display:none!important}button,select,input{font:inherit}button{cursor:pointer;touch-action:manipulation}button:disabled{opacity:.3;cursor:default}",
 "ha-card{display:block;overflow:hidden;border-radius:19px;background:linear-gradient(130deg,#028eab,#086b98 64%,#15527b);color:#fff;border:1px solid #ffffff25;padding:15px}",
 ".head,.hero,.row,.controls,.extras,.vol,.foot,.modalhead,.tabs,.searchline,.item{display:flex;align-items:center;gap:10px}",
 ".head{margin-bottom:13px}.brand{font-size:17px;font-weight:750;flex:1}.pill{font-size:11px;border:1px solid #ffffff68;border-radius:7px;padding:4px 7px;font-weight:700}",
@@ -129,17 +129,22 @@ class MusicFamilyCard extends HTMLElement{
   else this._msg="Ausgabe wählen.";
   this._q("note").textContent=this._msg;this._drawVolume();
  }
- _confirm(){
-  if(!this._selected){this._msg="Zuerst Ausgabegerät wählen.";this._q("note").textContent=this._msg;return false;}
+ _canPlay(){
+  // Selecting a real output and tapping Play is sufficient explicit intent.
+  // No surprise confirmation modal, no implicit speaker fallback.
+  if(!this._selected){this._msg="Zuerst das Ausgabegerät auswählen.";this._q("note").textContent=this._msg;return false;}
   if(this._selected==="phone"){
-   this._msg="Für Handy-Wiedergabe: Home Assistant → Einstellungen → Apps → YouTube Music Live → Weboberfläche → Musik am Handy testen.";
+   this._msg="Handy-Wiedergabe über Home Assistant → Apps → YouTube Music Live → Weboberfläche → Musik am Handy testen.";
    this._q("note").textContent=this._msg;return false;
   }
-  const name=this._h?.states?.[this._selected]?.attributes?.friendly_name||this._selected;
-  return window.confirm("Jetzt wirklich auf „"+name+"“ Musik starten? Das Gerät könnte zuhause sein.");
+  const p=this._h?.states?.[this._selected];
+  if(!p||["unavailable","unknown"].includes(p.state)||!(Number(p.attributes?.supported_features||0)&PLAY_MEDIA)){
+   this._msg="Das gewählte Ausgabegerät ist nicht verfügbar.";this._q("note").textContent=this._msg;return false;
+  }
+  return true;
  }
  _start(action,fields){
-  if(!this._confirm())return;
+  if(!this._canPlay())return;
   this._cmd({action,...fields,confirmed:true,entity_id:this._selected});
   this._q("dlg").close();
  }
@@ -187,8 +192,11 @@ class MusicFamilyCard extends HTMLElement{
   return {row,desc};
  }
  _load(pid,title){
-  this._listPid=pid;this._listRequested=Date.now()/1000;
+  if(!pid){this._msg="Diese Playlist kann nicht geöffnet werden.";this._q("note").textContent=this._msg;return;}
+  this._listPid=pid;this._listRequested=Date.now()/1000;this._modalKey="";
   this._q("caption").textContent="Lade "+title+" …";this._q("results").replaceChildren();this._q("actions").replaceChildren();
+  this._modal(true);
+  // Metadata only: opening a playlist NEVER starts playback.
   this._cmd({action:"load_playlist",playlist_id:pid});
  }
  _tracks(items,title,pid){
@@ -199,8 +207,8 @@ class MusicFamilyCard extends HTMLElement{
    const back=E("button","act","‹ Zurück");back.onclick=()=>{this._listPid="";this._modalKey="";this._modal(true);};
    actions.append(start,back);
   }
-  for(const t of items){
-   const play=()=>this._start("start_track",{video_id:t.video_id}),rad=()=>this._start("start_radio",{video_id:t.video_id});
+  for(const [index,t] of items.entries()){
+   const play=()=>this._start("start_playlist_track",{playlist_id:pid,video_id:t.video_id,index}),rad=()=>this._start("start_radio",{video_id:t.video_id});
    const {row,desc}=this._item(t.title,t.artist,t.thumbnail,[["play","Abspielen",play],["radio","Radio starten",rad],["playlist-plus","Hinzufügen",()=>this._cmd({action:"enqueue",video_id:t.video_id})]]);
    desc.onclick=play;this._q("results").append(row);
   }
@@ -208,16 +216,24 @@ class MusicFamilyCard extends HTMLElement{
  _modal(force){
   if(!this._h)return;const a=this._a(),r=this._q("results"),ac=this._q("actions");
   for(const b of this.shadowRoot.querySelectorAll(".tabs button"))b.classList.toggle("on",b.dataset.tab===this._tab);
-  this._q("searchline").hidden=this._tab!=="search";
+  this._q("searchline").hidden=this._tab!=="search"||!!this._listPid;
   if(this._tab==="search"){if(force)this._q("search").value=this._query;this._q("kind").value=this._kind;}
-  const stamp=[this._tab,a.last_command_at,a.queue_length,this._listPid,a.list_title,a.search_query,a.search_kind].join("|");
+  const stamp=[this._tab,a.last_command_at,a.queue_length,this._listPid,a.list_playlist_id,a.list_title,a.search_query,a.search_kind].join("|");
   if(!force&&stamp===this._modalKey)return;this._modalKey=stamp;
   r.replaceChildren();ac.replaceChildren();
+  // A detail view belongs to either Meine Listen OR search results.
+  // Never rerender the search matches over an opened playlist.
+  if(this._listPid){
+    if(a.list_playlist_id!==this._listPid || Number(a.last_command_at)<this._listRequested){
+      this._q("caption").textContent=a.last_error&&a.last_action==="load_playlist"
+        ?"Playlist konnte nicht geladen werden: "+a.last_error
+        :"Playlist wird geladen …";
+      return;
+    }
+    this._tracks(a.list_tracks||[],a.list_title||"Playlist",this._listPid);
+    return;
+  }
   if(this._tab==="library"){
-   if(this._listPid){
-    if(a.last_action!=="load_playlist"||Number(a.last_command_at)<this._listRequested){this._q("caption").textContent="Playlist wird geladen …";return;}
-    this._tracks(a.list_tracks||[],a.list_title||"Playlist",this._listPid);return;
-   }
    this._q("caption").textContent="Meine Playlists · "+(a.playlists||[]).length+" (mit „Mag ich“)";
    for(const p of a.playlists||[]){
     const load=()=>this._load(p.playlist_id,p.title);
@@ -241,7 +257,7 @@ class MusicFamilyCard extends HTMLElement{
    const items=a.queue||[];this._q("caption").textContent="Warteschlange · "+(a.queue_length||0)+" Titel";
    if(a.current){const row=this._item(a.current.title,"▶ "+(a.current.artist||"Jetzt"),a.current.thumbnail).row;r.append(row);}
    items.forEach((t,i)=>{
-    const fn=()=>{if(!this._confirm())return;this._cmd({action:"queue_play",index:i,video_id:t.video_id});this._q("dlg").close();};
+    const fn=()=>{if(!this._canPlay())return;this._cmd({action:"queue_play",index:i,video_id:t.video_id});this._q("dlg").close();};
     const {row,desc}=this._item(t.title,t.artist,t.thumbnail,[["play","Jetzt spielen",fn]]);desc.onclick=fn;r.append(row);
    });
   }
