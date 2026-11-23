@@ -10,6 +10,7 @@ from ytmusicapi.helpers import get_authorization, initialize_headers
 LOG = logging.getLogger("yt_audio_live.catalog")
 VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
 PLAYLIST_ID_RE = re.compile(r"^[A-Za-z0-9_-]{3,200}$")
+LIKED_PLAYLIST = "LM"
 
 
 def checked_video_id(value):
@@ -19,7 +20,7 @@ def checked_video_id(value):
 
 
 def checked_playlist_id(value):
-    if not isinstance(value, str) or not PLAYLIST_ID_RE.fullmatch(value):
+    if value != LIKED_PLAYLIST and (not isinstance(value, str) or not PLAYLIST_ID_RE.fullmatch(value)):
         raise ValueError("Invalid playlist_id")
     return value
 
@@ -199,13 +200,16 @@ class Catalog:
     def search(self, query, kind="songs", limit=10):
         if not isinstance(query, str) or not (1 <= len(query.strip()) <= 150):
             raise ValueError("Query must contain 1-150 characters")
-        if kind not in ("songs", "videos", "playlists"):
-            raise ValueError("kind must be songs, videos or playlists")
+        if kind not in ("songs", "videos", "playlists",
+                        "featured_playlists", "community_playlists", "radios"):
+            raise ValueError("kind must be songs, videos, playlists or radios")
         term = query.strip()
         count = max(1, min(int(limit), 30))
         with self.lock:
-            raw = self.api.search(term, filter=kind, limit=count)
-        normalize = normalize_playlist if kind == "playlists" else normalize_track
+            search_kind = "songs" if kind == "radios" else kind
+            raw = self.api.search(term, filter=search_kind, limit=count)
+        normalize = (normalize_playlist if "playlist" in kind
+                     else normalize_track)
         tracks = [t for r in raw if (t := normalize(r)) is not None][:count]
         if kind == "songs" and not tracks:
             # An empty filtered shelf can still have songs in the main search.
@@ -223,18 +227,28 @@ class Catalog:
 
     def playlist(self, playlist_id, limit=100):
         checked_playlist_id(playlist_id)
+        if playlist_id == LIKED_PLAYLIST and not self.authenticated:
+            raise ValueError("YouTube Music account not linked")
         with self.lock:
-            raw = self.api.get_playlist(playlist_id, limit=max(1, min(int(limit), 200)))
+            if playlist_id == LIKED_PLAYLIST:
+                raw = self.api.get_liked_songs(limit=max(1, min(int(limit), 500)))
+            else:
+                raw = self.api.get_playlist(playlist_id, limit=max(1, min(int(limit), 500)))
         tracks = [t for r in raw.get("tracks", []) if (t := normalize_track(r)) is not None]
-        return {"playlist_id": playlist_id, "title": str(raw.get("title") or playlist_id),
-                "tracks": tracks[:max(1, min(int(limit), 200))]}
+        return {"playlist_id": playlist_id,
+                "title": ("Mag ich – Lieblingssongs" if playlist_id == LIKED_PLAYLIST
+                          else str(raw.get("title") or playlist_id)),
+                "tracks": tracks[:max(1, min(int(limit), 500))]}
 
     def library_playlists(self, limit=30):
         if not self.authenticated:
             raise ValueError("YouTube Music account not linked; public playlists work without login")
         with self.lock:
             raw = self.api.get_library_playlists(limit=max(1, min(int(limit), 100)))
-        return [p for r in raw if (p := normalize_playlist(r)) is not None]
+        playlists = [p for r in raw if (p := normalize_playlist(r)) is not None]
+        return ([{"playlist_id": LIKED_PLAYLIST, "title": "Mag ich – Lieblingssongs",
+                  "count": None, "thumbnail": "", "liked": True}]
+                + [p for p in playlists if p["playlist_id"] != LIKED_PLAYLIST])
 
     def radio(self, video_id, limit=25):
         checked_video_id(video_id)
