@@ -1,5 +1,28 @@
 # YouTube Music Live for Home Assistant OS
 
+## Current release 0.2.36 – On-demand Google login and low RAM (23 November 2026)
+
+The Home Assistant music server, signed-in YouTube Music catalog, playlist
+cache and playback queue stay available when Firefox is closed. The App
+starts **without** Firefox, Xvfb or VNC. On the Ingress Web UI, click
+**Anmeldebrowser starten** only when the account needs reauthentication.
+After **Sitzung übernehmen** all browser processes are shut down automatically.
+You can also click **Browser beenden** or let the idle watchdog stop them
+after 8 minutes of no keyboard/touch input. Stopping the browser does not
+delete stored cookies or sign out the music catalog.
+
+Measured on this Home Assistant installation: 648 MiB before optimization,
+190 MiB after fresh start and 147 MiB after on-demand browser stop
+(instantaneous measurements). When explicitly started, the login browser
+temporarily raised App memory to ~666 MiB. Automatic audio source detection
+now prefers the signed-in **web_music** client, falling back to other clients.
+
+No speaker playback is triggered by starting or stopping the login browser.
+
+**Historical note:** The November 13 visionos observations below describe
+the original unauthenticated prototype, not the current preferred player.
+
+
 Local music playback for a Samsung Ultra Slim Soundbar via Home Assistant
 Google Cast. This app intentionally separates the YouTube Music catalog
 (ytmusicapi) from audio-stream extraction (yt-dlp + FFmpeg).
@@ -23,7 +46,7 @@ Google Cast. This app intentionally separates the YouTube Music catalog
 Home Assistant Settings -> Apps -> YouTube Music Live (Test).
 
 App options:
-- player_client: visionos
+- player_client: web_music
 - player_entity: media_player.ultra_slim_soundbar
 - stream_base_url: http://192.168.1.66:8765
 - api_key: a secret random 32+ character key (already set on the test install)
