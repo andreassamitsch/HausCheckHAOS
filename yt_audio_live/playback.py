@@ -267,6 +267,7 @@ class Playback:
                 repeat_track=previous
             else:
                 repeat_track=None
+            wrapped = False
             if repeat_track is None and not self.queue and previous and self.repeat_mode=="all":
                 # history is stored newest-first; reverse to original order.
                 cycle = list(reversed(self.history)) + [previous]
@@ -274,13 +275,14 @@ class Playback:
                     random.SystemRandom().shuffle(cycle)
                 self.queue.extend(cycle)
                 self.history.clear()
+                wrapped = True
             if repeat_track is not None:
                 first=None
                 gen=None
                 seed=None
             elif self.queue:
                 first = self.queue.popleft()
-                if previous:
+                if previous and not wrapped:
                     self.history.appendleft(previous)
                 self.current = first
                 self.seen.append(first["video_id"])
