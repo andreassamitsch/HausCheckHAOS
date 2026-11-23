@@ -7,7 +7,7 @@ export HOME=/data
 mkdir -p /data/ytmusic_auth_browser
 chmod 700 /data/ytmusic_auth_browser
 
-Xvfb :99 -screen 0 1280x800x24 -nolisten tcp -ac >/dev/null 2>&1 &
+Xvfb :99 -screen 0 680x900x24 -nolisten tcp -ac >/dev/null 2>&1 &
 sleep 1
 
 # Firefox runs as a genuine local browser; login credentials remain in Google.
@@ -18,8 +18,9 @@ user_pref("browser.shell.checkDefaultBrowser", false);
 user_pref("browser.startup.homepage", "https://music.youtube.com");
 user_pref("browser.newtabpage.enabled", false);
 user_pref("browser.aboutConfig.showWarning", false);
+user_pref("layout.css.devPixelsPerPx", "1.30");
 PREFS
-firefox-esr --no-remote --profile /data/ytmusic_auth_browser "https://music.youtube.com" \
+firefox-esr --no-remote --kiosk --profile /data/ytmusic_auth_browser "https://music.youtube.com" \
   >/dev/null 2>&1 &
 
 # VNC binds to loopback only. It is reachable outside the container
