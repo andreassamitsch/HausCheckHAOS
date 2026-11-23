@@ -61,6 +61,30 @@ class AudioSourceUnavailable(RuntimeError):
     """YouTube audio source could not be resolved."""
 
 
+class ExtractionDiagnostics:
+    """Safe yt-dlp diagnostics: never log audio URLs, cookies or token values."""
+
+    def debug(self, message):
+        message = str(message)
+        if "PO Token Providers:" in message:
+            LOG.info("pot_provider_plugin_discovered")
+        elif "Generating a" in message and "PO Token" in message:
+            LOG.info("pot_generation_requested")
+        elif "Generated a" in message and "PO Token" in message:
+            LOG.info("pot_generation_completed")
+
+    def info(self, message):
+        self.debug(message)
+
+    def warning(self, message):
+        if "PO Token" in str(message) or "po_token" in str(message):
+            LOG.warning("youtube_pot_warning")
+
+    def error(self, message):
+        LOG.warning("youtube_extraction_error")
+
+
+
 def prepare_browser_cookies():
     """Persist private browser cookies for yt-dlp, retaining Netscape expiries."""
     target = "/data/ytmusic-yt-dlp-cookies.txt"
@@ -146,6 +170,8 @@ def resolve_source(vid):
             "retries": 1, "extractor_retries": 1,
             "js_runtimes": {"deno": {}, "node": {}},
             "ignore_no_formats_error": False,
+            "verbose": True,
+            "logger": ExtractionDiagnostics(),
         }
         if YT_DLP_COOKIE_FILE:
             base["cookiefile"] = YT_DLP_COOKIE_FILE
@@ -309,9 +335,13 @@ class Handler(BaseHTTPRequestHandler):
                         status = response.status
                 except HTTPError as exc:
                     status, received = exc.code, 0
-                result = {"video_id": vid, "http_status": status,
-                          "bytes_received": received,
-                          "elapsed_ms": int((time.monotonic()-started)*1000)}
+                result = {
+                    "video_id": vid, "http_status": status,
+                    "bytes_received": received,
+                    "po_token_in_url": "pot" in parse_qs(urlsplit(url).query),
+                    "source_strategy": SOURCE_CACHE.get(vid, {}).get("strategy"),
+                    "elapsed_ms": int((time.monotonic()-started)*1000),
+                }
             else:
                 return self.json_reply(404, {"error": "unknown API endpoint"})
             return self.json_reply(200, result)
