@@ -64,6 +64,19 @@ POST /api/resume    {}
 Queries with a title automatically play the first search result. To avoid
 unwanted versions, use /api/search and then play an exact video ID.
 
+## Version 0.2.21 – Persistent playlist verification (23 November 2026)
+
+- Persist the verified account and number of private playlists in the App's
+  protected `/data/ytmusic-session-status.json` file (permissions `0600`).
+- The Ingress **Status prüfen** page now preserves its accurate status across
+  page reloads and music App updates; logout clears the status file.
+- Live validation on this Home Assistant installation: saved Google session,
+  **31 private playlists**, HTTP 200 for `/api/session/save`,
+  `/api/session`, and `/api/library`.
+- Separate outstanding playback issue: non-audible yt-dlp source probes on
+  both a public track and a private library track return
+  `Requested format is not available` with the configured `visionos` client.
+
 ## Version 0.2.20 – Firefox SQLite lock-safe sign-in (23 November 2026)
 
 - Fixed `database is locked` when saving a Google login from the embedded Firefox browser.
