@@ -101,6 +101,7 @@ a{color:#a8e5ff}
 <button id="repeat" class="secondary">🔁 Repeat: Aus</button>
 <button id="radio" class="secondary" disabled>📻 Radio</button>
 </div>
+<div class="grid" style="margin-top:7px"><button id="autoContinue" class="secondary" aria-pressed="true">∞ Automatisch fortsetzen: An</button></div>
 <div id="results" aria-label="Titel"></div>
 </section>
 <section class="panel">
@@ -122,6 +123,7 @@ Nur „Abspielen“ kann Ton ausgeben – auf dem ausdrücklich ausgewählten Ge
 const $=id=>document.getElementById(id);
 let selected=null,verified=false,outputs=new Map(),playingRemote="";
 let trackQueue=[],shuffle=false,repeatMode="off",radioMode=false;
+let autoContinue=true,playedInCycle=new Set();
 const audio=$("audio"),out=$("output"),msg=s=>$("message").textContent=s;
 async function api(path,body){
  const headers={"Content-Type":"application/json"};
@@ -142,7 +144,8 @@ function resetOutput(){
 out.onchange=resetOutput;
 function choose(t){
  if(!t?.video_id || !/^[A-Za-z0-9_-]{11}$/.test(t.video_id))return;
- selected=t;resetOutput();$("probe").disabled=false;$("radio").disabled=false;
+ selected=t;playedInCycle.add(t.video_id);
+ resetOutput();$("probe").disabled=false;$("radio").disabled=false;
  $("song").textContent=t.title||"Unbekannter Titel";$("artist").textContent=t.artist||"";
  $("cover").style.visibility="visible";
  $("cover").src=(typeof t.thumbnail==="string"&&t.thumbnail.startsWith("https://"))?t.thumbnail:"";
@@ -152,6 +155,7 @@ function choose(t){
 function listTracks(items,kind="songs"){
  const wrap=$("results");wrap.replaceChildren();
  trackQueue=kind.includes("playlist")?[]:items.filter(t=>t?.video_id);
+ playedInCycle.clear();
  radioMode=kind==="radios";
  if(!items.length){wrap.textContent="Keine abspielbaren Titel gefunden.";return;}
  for(const t of items.slice(0,100)){
@@ -196,6 +200,27 @@ $("shuffle").onclick=()=>{
 $("repeat").onclick=()=>{
  repeatMode=repeatMode==="off"?"all":repeatMode==="all"?"one":"off";
  $("repeat").textContent="🔁 Repeat: "+(repeatMode==="off"?"Aus":repeatMode==="one"?"Titel":"Alle");
+};
+function showAutoContinue(){
+ $("autoContinue").textContent="∞ Automatisch fortsetzen: "+(autoContinue?"An":"Aus");
+ $("autoContinue").setAttribute("aria-pressed",String(autoContinue));
+}
+async function refreshAutoContinue(){
+ try{
+  const d=await api("settings");
+  autoContinue=d.auto_continue_enabled!==false;
+  showAutoContinue();
+ }catch(_){}
+}
+$("autoContinue").onclick=async()=>{
+ const button=$("autoContinue");button.disabled=true;
+ try{
+  const d=await api("settings",{enabled:!autoContinue});
+  autoContinue=d.auto_continue_enabled!==false;
+  showAutoContinue();
+  msg("Automatisch fortsetzen: "+(autoContinue?"Ein":"Aus")+". Keine Wiedergabe gestartet.");
+ }catch(e){msg("Einstellung konnte nicht gespeichert werden: "+e.message);}
+ finally{button.disabled=false;}
 };
 $("radio").onclick=async()=>{
  if(!selected)return;
@@ -242,13 +267,18 @@ $("play").onclick=async()=>{
 };
 audio.addEventListener("error",()=>msg("Der Audiostream konnte am Handy nicht abgespielt werden."));
 async function advancePhone(){
- // Automatic continuation is NEVER permitted for HA speakers/TVs.
+ // Automatic follow-up ONLY for a user-started phone audio session.
+ // There is NO call to /api/mobile/remote or media_player.play_media here.
  if(out.value!=="phone" || !selected)return;
  let next=null;
  if(repeatMode==="one")next=selected;
  else if(trackQueue.length){
   if(shuffle){
-   const choices=trackQueue.filter(t=>t.video_id!==selected.video_id);
+   let choices=trackQueue.filter(t=>!playedInCycle.has(t.video_id));
+   if(!choices.length&&repeatMode==="all"){
+    playedInCycle.clear();
+    choices=trackQueue;
+   }
    if(choices.length)next=choices[Math.floor(Math.random()*choices.length)];
   }else{
    const idx=trackQueue.findIndex(t=>t.video_id===selected.video_id);
@@ -256,21 +286,21 @@ async function advancePhone(){
    if(!next&&repeatMode==="all")next=trackQueue[0];
   }
  }
- if(!next&&radioMode){
+ if(!next&&repeatMode==="off"&&(radioMode||autoContinue)){
   try{
    const d=await api("radio?video_id="+encodeURIComponent(selected.video_id));
-   const known=new Set(trackQueue.map(t=>t.video_id));
+   const known=new Set(trackQueue.map(t=>t.video_id));known.add(selected.video_id);
    const more=(d.tracks||[]).filter(t=>t?.video_id&&!known.has(t.video_id));
    trackQueue.push(...more);
    next=more[0]||null;
-  }catch(e){msg("Radio-Folgetitel konnten nicht geladen werden.");}
+  }catch(e){msg("Ähnliche Titel konnten nicht geladen werden.");}
  }
- if(!next){msg("Wiedergabe beendet.");return;}
+ if(!next){msg("Wiedergabe beendet. Automatisch fortsetzen: "+(autoContinue?"An":"Aus"));return;}
  try{
   const check=await api("probe?video_id="+encodeURIComponent(next.video_id));
   if(!check.ok)throw Error(check.reason||"Audio nicht verfügbar");
-  // Preserve queue and radio mode; do not invoke choose(), which resets audio.
-  selected=next;verified=true;
+  if(out.value!=="phone"||!selected)return;
+  selected=next;playedInCycle.add(next.video_id);verified=true;
   $("song").textContent=next.title||"Titel";$("artist").textContent=next.artist||"";
   $("cover").src=next.thumbnail||"";$("cover").style.visibility="visible";
   audio.hidden=false;audio.src="api/mobile/audio/"+encodeURIComponent(next.video_id);
@@ -288,6 +318,7 @@ audio.addEventListener("ended",()=>{void advancePhone();});
   }
   // Always default to the current browser – NEVER inherit HA soundbar.
   out.value="phone";
+  await refreshAutoContinue();
   const lib=await api("library");
   for(const p of (lib.playlists||[])){
    const op=document.createElement("option");op.value=p.playlist_id;op.textContent=p.title;
@@ -296,6 +327,7 @@ audio.addEventListener("ended",()=>{void advancePhone();});
   msg("Angemeldet. "+(lib.playlists||[]).length+" Playlists verfügbar. Noch keine Wiedergabe.");
  }catch(e){msg("Initialisierung: "+e.message)}
 })();
+setInterval(()=>{if(document.visibilityState==="visible")void refreshAutoContinue();},12000);
 </script></body></html>"""
 
 
@@ -379,6 +411,21 @@ async def radio(request):
     vid=safe_video_id(request.query.get("video_id"))
     data=await media_api("/api/recommendations?video_id="+vid+"&limit=30")
     return web.json_response({"tracks":data.get("tracks",[])})
+
+
+async def settings_get(request):
+    status=await media_api("/api/status")
+    return web.json_response({"auto_continue_enabled":status.get("auto_continue_enabled",True)})
+
+
+async def settings_post(request):
+    if request.content_type!="application/json":
+        return web.json_response({"error":"Ungültige Anfrage"},status=415)
+    body=await request.json()
+    if type(body.get("enabled")) is not bool:
+        return web.json_response({"error":"An oder Aus erforderlich"},status=400)
+    status=await media_api("/api/auto_continue","POST",{"enabled":body["enabled"]})
+    return web.json_response({"auto_continue_enabled":status["auto_continue_enabled"]})
 
 
 async def probe(request):
@@ -522,6 +569,8 @@ def routes(app):
     app.router.add_get("/api/mobile/playlist",playlist)
     app.router.add_get("/api/mobile/search",search)
     app.router.add_get("/api/mobile/radio",radio)
+    app.router.add_get("/api/mobile/settings",settings_get)
+    app.router.add_post("/api/mobile/settings",settings_post)
     app.router.add_get("/api/mobile/probe",probe)
     app.router.add_get("/api/mobile/audio/{vid}",audio)
     app.router.add_post("/api/mobile/remote",remote)
