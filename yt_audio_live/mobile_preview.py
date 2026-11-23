@@ -281,9 +281,9 @@ async def library(request):
 
 async def playlist(request):
     pid=request.query.get("id","")
-    if not re.fullmatch(r"[A-Za-z0-9_-]{3,200}",pid):
+    if pid!="LM" and not re.fullmatch(r"[A-Za-z0-9_-]{3,200}",pid):
         raise web.HTTPBadRequest(text="invalid playlist")
-    data=await media_api("/api/playlist?id="+quote(pid)+"&limit=100")
+    data=await media_api("/api/playlist?id="+quote(pid)+"&limit=200")
     return web.json_response(data)
 
 
@@ -291,8 +291,18 @@ async def search(request):
     q=request.query.get("q","").strip()
     if not (1<=len(q)<=150):
         raise web.HTTPBadRequest(text="invalid search")
-    data=await media_api("/api/search?q="+quote(q)+"&kind=songs&limit=25")
-    return web.json_response({"results":data.get("results",[])})
+    kind=request.query.get("kind","songs")
+    if kind not in ("songs","videos","playlists","radios",
+                    "featured_playlists","community_playlists"):
+        return web.json_response({"error":"Ungültige Kategorie"},status=400)
+    data=await media_api("/api/search?q="+quote(q)+"&kind="+kind+"&limit=25")
+    return web.json_response({"results":data.get("results",[]),"kind":kind})
+
+
+async def radio(request):
+    vid=safe_video_id(request.query.get("video_id"))
+    data=await media_api("/api/recommendations?video_id="+vid+"&limit=30")
+    return web.json_response({"tracks":data.get("tracks",[])})
 
 
 async def probe(request):
@@ -435,6 +445,7 @@ def routes(app):
     app.router.add_get("/api/mobile/library",library)
     app.router.add_get("/api/mobile/playlist",playlist)
     app.router.add_get("/api/mobile/search",search)
+    app.router.add_get("/api/mobile/radio",radio)
     app.router.add_get("/api/mobile/probe",probe)
     app.router.add_get("/api/mobile/audio/{vid}",audio)
     app.router.add_post("/api/mobile/remote",remote)
