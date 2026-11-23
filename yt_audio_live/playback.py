@@ -27,6 +27,8 @@ class Playback:
         self.queue = deque()
         self.history = deque(maxlen=50)
         self.radio_enabled = False
+        self.shuffle_enabled = False
+        self.repeat_mode = "off"  # off | all | one
         self.radio_prefetching = False
         self.seen = deque(maxlen=250)
         self.started_at = 0
@@ -87,6 +89,8 @@ class Playback:
                 "history": [dict(x) for x in self.history],
                 "history_length": len(self.history),
                 "radio_enabled": self.radio_enabled,
+                "shuffle_enabled": self.shuffle_enabled,
+                "repeat_mode": self.repeat_mode,
                 "radio_prefetching": self.radio_prefetching,
                 "cast_state": self.last_player_state,
                 "cast_seen_playing": self.playing_seen,
@@ -149,10 +153,39 @@ class Playback:
             self.queue.clear()
             return self.status()
 
+    def set_output(self, entity_id):
+        """Select a sink without sending play/stop/volume commands to any device."""
+        if not isinstance(entity_id, str) or not entity_id.startswith("media_player."):
+            raise ValueError("Invalid media_player")
+        with self.lock:
+            if self.current is not None:
+                raise ValueError("Stop current playback before changing output")
+            self.entity_id = entity_id
+        LOG.info("output_selected entity_id=%s autoplay=0", entity_id)
+        return self.status()
+
+    def set_shuffle(self, enabled):
+        with self.lock:
+            self.shuffle_enabled = bool(enabled)
+            if self.shuffle_enabled and len(self.queue)>1:
+                songs = list(self.queue)
+                random.SystemRandom().shuffle(songs)
+                self.queue = deque(songs)
+        return self.status()
+
+    def set_repeat(self, mode):
+        if mode not in ("off", "one", "all"):
+            raise ValueError("repeat must be off, one or all")
+        with self.lock:
+            self.repeat_mode = mode
+        return self.status()
+
     def start(self, track, rest=(), radio=False):
         first = self._minimal_track(track)
         rest = [self._minimal_track(t) for t in rest][:199]
         with self.lock:
+            if self.shuffle_enabled and len(rest)>1:
+                random.SystemRandom().shuffle(rest)
             self.generation += 1
             gen = self.generation
             self.queue = deque(rest)
@@ -224,7 +257,28 @@ class Playback:
                 return self.status()
             previous = self.current
             old_generation = self.generation
-            if self.queue:
+            if reason=="ended" and previous and self.repeat_mode=="one":
+                self.generation += 1
+                generation=self.generation
+                self.started_at=time.monotonic()
+                self.playing_seen=False
+                self.last_player_state="starting"
+                self._reset_position()
+                repeat_track=previous
+            else:
+                repeat_track=None
+            if repeat_track is None and not self.queue and previous and self.repeat_mode=="all":
+                # history is stored newest-first; reverse to original order.
+                cycle = list(reversed(self.history)) + [previous]
+                if self.shuffle_enabled and len(cycle)>1:
+                    random.SystemRandom().shuffle(cycle)
+                self.queue.extend(cycle)
+                self.history.clear()
+            if repeat_track is not None:
+                first=None
+                gen=None
+                seed=None
+            elif self.queue:
                 first = self.queue.popleft()
                 if previous:
                     self.history.appendleft(previous)
@@ -240,6 +294,9 @@ class Playback:
                 first = None
                 gen = None
                 seed = previous["video_id"] if previous and self.radio_enabled else None
+        if repeat_track is not None:
+            self._play(repeat_track, generation)
+            return self.status()
         if first is None:
             recommendations = []
             if seed:
