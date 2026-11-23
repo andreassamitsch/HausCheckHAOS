@@ -19,6 +19,7 @@ from urllib.error import URLError
 from urllib.request import Request, urlopen
 
 from aiohttp import WSMsgType, web
+from login_browser import BROWSER
 
 LOG = logging.getLogger("yt_audio_live.auth")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -65,12 +66,19 @@ small{color:#cbd5e1;font-size:12px;line-height:1.4}
  .toolbar button{min-height:42px;padding:7px 8px;font-size:13px}
  #screen{min-height:350px;max-height:78dvh}
 }
+[hidden]{display:none!important}
 </style></head>
 <body><header><h1>🎵 YouTube Music – Konto verbinden</h1>
-<p>Bei Google anmelden, danach unten „Sitzung übernehmen“ wählen.</p>
-<p class="long">Der Browser läuft geschützt in Home Assistant. Kein Cookie-Export nötig.</p>
+<p>Google-Anmeldebrowser nur bei Bedarf starten und anschließend die Sitzung übernehmen.</p>
+<p class="long">Die gespeicherte Anmeldung bleibt auch bei ausgeschaltetem Browser aktiv.</p>
 <p><a href="./player" style="color:#b8edff;font-weight:700">🎧 Musik am Handy testen · Ausgabegerät auswählen</a></p></header>
 <main>
+<div class="actions" style="display:flex;gap:8px;flex-wrap:wrap;margin:7px 0">
+<button id="startBrowser" type="button">🌐 Anmeldebrowser starten</button>
+<button class="secondary" id="stopBrowser" type="button" disabled>Browser beenden</button>
+</div>
+<div id="state" role="status" aria-live="polite">Prüfe gespeicherte Anmeldung …</div>
+<div id="loginPane" hidden>
 <div class="toolbar" aria-label="Handy-Browsersteuerung">
   <button id="keyboardbtn" type="button">⌨ Tastatur öffnen</button>
   <button class="secondary" id="enterbtn" type="button">↵ Enter</button>
@@ -78,17 +86,19 @@ small{color:#cbd5e1;font-size:12px;line-height:1.4}
   <button class="secondary" id="backbtn" type="button">⌫</button>
   <button class="secondary" id="zoombtn" type="button">🔎 100 %</button>
 </div>
-<div id="state" role="status" aria-live="polite">Anmeldebrowser wird verbunden …</div>
 <div id="screen" aria-label="Interaktiver Google-Anmeldebrowser"></div>
+</div>
 <textarea id="keyboardinput" autocomplete="off" autocapitalize="none"
  autocorrect="off" spellcheck="false" enterkeyhint="done" tabindex="-1"
  aria-label="Android-Tastatur für den Anmeldebrowser"></textarea>
 <div class="bottom-actions">
-<button id="save" type="button">Sitzung übernehmen</button>
+<button id="save" type="button" disabled>Sitzung übernehmen</button>
 <button class="secondary" id="check" type="button">Status prüfen</button>
 <button class="secondary" id="disconnect" type="button">Verbindung trennen</button>
 </div>
-<p><small>Bedienung: Erst im Google-Feld tippen, dann oben „⌨ Tastatur öffnen“ wählen.
+<p><small>Der Browser wird erst beim Klick auf „Starten“ geladen und nach
+dem Speichern oder 8 Minuten Inaktivität automatisch beendet.
+Bedienung: Erst im Google-Feld tippen, dann oben „⌨ Tastatur öffnen“ wählen.
 Bei zu kleinen Feldern mit „🔎 100 %“ vergrößern und den Ausschnitt verschieben.
 Anmeldedaten bleiben in der Google-Browsersitzung; die App überträgt nur die
 Tastatureingaben an den eigenen Browser.</small></p>
@@ -103,7 +113,7 @@ const get=id=>document.getElementById(id);
 const state=get("state"),save=get("save"),input=get("keyboardinput");
 const keyboardbtn=get("keyboardbtn"),zoombtn=get("zoombtn");
 const msg=s=>{state.textContent=s;};
-let rfb=null,connected=false,zoomed=false;
+let rfb=null,connected=false,zoomed=false,stopping=false;
 const BASE_LEN=72;
 let previous="";
 function resetMobileInput(){
@@ -183,20 +193,32 @@ zoombtn.onclick=()=>{
   rfb.dragViewport=zoomed;
   zoombtn.textContent=zoomed?"🔎 Einpassen":"🔎 100 %";
 };
-try{
+function closeViewer(){
+ stopping=true;connected=false;hideKeyboard();
+ if(rfb){try{rfb.disconnect();}catch(_){}rfb=null;}
+ get("loginPane").hidden=true;
+ get("save").disabled=true;
+ get("stopBrowser").disabled=true;
+ get("startBrowser").disabled=false;
+}
+function connectViewer(){
+ stopping=false;get("loginPane").hidden=false;
+ get("stopBrowser").disabled=false;get("save").disabled=false;
+ try{
+  if(rfb){try{rfb.disconnect();}catch(_){}rfb=null;}
   const ws=new URL("websockify",window.location.href);
   ws.protocol=location.protocol==="https:"?"wss:":"ws:";
   rfb=new RFB(get("screen"),ws.href);
-  rfb.scaleViewport=true;
-  rfb.resizeSession=false;
-  rfb.viewOnly=false;
+  rfb.scaleViewport=true;rfb.resizeSession=false;rfb.viewOnly=false;
   rfb.addEventListener("connect",()=>{
     connected=true;msg("Browser verbunden. Google-Feld antippen, dann ⌨ öffnen.");
   });
   rfb.addEventListener("disconnect",()=>{
-    connected=false;hideKeyboard();msg("Browser getrennt. Anmeldeseite neu öffnen.");
+    connected=false;hideKeyboard();
+    if(!stopping)msg("Anmeldebrowser wurde beendet. Bei Bedarf erneut starten.");
   });
-}catch(e){msg("Browser konnte nicht geöffnet werden: "+e.message);}
+ }catch(e){closeViewer();msg("Browser konnte nicht geöffnet werden: "+e.message);}
+}
 async function call(url,body){
  const response=await fetch(url,{method:body?"POST":"GET",
   credentials:"same-origin",headers:{"Content-Type":"application/json"},
@@ -208,18 +230,34 @@ async function call(url,body){
 async function status(){
  try{
   const d=await call("api/session");
-  msg(d.connected?"YouTube-Music-Sitzung gespeichert – "+(d.playlists_verified?"Playlists bestätigt"+(Number.isInteger(d.playlist_count)?" ("+d.playlist_count+")":""):"Playlists noch nicht geprüft"):
-  "Noch keine gespeicherte Sitzung. Bitte im Browser anmelden.");
+  const saved=d.connected
+   ?"Angemeldet · "+(d.playlists_verified?(Number.isInteger(d.playlist_count)?d.playlist_count+" Playlists":"Playlists geprüft"):"Playlist-Zugriff noch nicht bestätigt")
+   :"Noch keine gespeicherte Sitzung";
+  msg(saved+(d.browser_running?" · Browser läuft":" · Browser ausgeschaltet"));
+  if(!d.browser_running && !get("loginPane").hidden)closeViewer();
+  get("stopBrowser").disabled=!d.browser_running;
+  get("startBrowser").textContent=d.browser_running?"🌐 Mit Browser verbinden":"🌐 Anmeldebrowser starten";
  }catch(e){msg("Status: "+e.message);}
 }
+get("startBrowser").onclick=async()=>{
+ const button=get("startBrowser");button.disabled=true;msg("Anmeldebrowser wird gestartet …");
+ try{await call("api/browser/start",{});connectViewer();}
+ catch(e){closeViewer();msg("Browserstart fehlgeschlagen: "+e.message);}
+ finally{button.disabled=false;}
+};
+get("stopBrowser").onclick=async()=>{
+ try{await call("api/browser/stop",{});closeViewer();await status();}
+ catch(e){msg("Browser konnte nicht beendet werden: "+e.message);}
+};
 save.onclick=async()=>{
  save.disabled=true;hideKeyboard();msg("YouTube-Cookies werden aus dem Browser übernommen …");
  try{
   const d=await call("api/session/save",{});
-  msg(d.playlists_verified?"Angemeldet! "+(Number.isInteger(d.playlist_count)?d.playlist_count+" persönliche Playlists erreichbar.":"Meine Playlists sind erreichbar."):
-  "Cookies gespeichert. Die Playlist-Abfrage konnte noch nicht bestätigt werden.");
+  closeViewer();
+  msg((d.playlists_verified?"Angemeldet · "+(Number.isInteger(d.playlist_count)?d.playlist_count+" Playlists. ":""):"")+
+      "Sitzung gespeichert – Browser zum RAM-Sparen beendet.");
  }catch(e){msg("Anmeldung nicht abgeschlossen: "+e.message);}
- finally{save.disabled=false;}
+ finally{save.disabled=get("loginPane").hidden;}
 };
 get("check").onclick=status;
 get("disconnect").onclick=async()=>{
