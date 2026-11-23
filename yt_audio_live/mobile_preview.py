@@ -301,9 +301,27 @@ async def probe(request):
         data=await media_api("/api/probe?video_id="+vid)
         ok=data.get("http_status") in (200,206) and int(data.get("bytes_received") or 0)>0
         if ok:
+            # Exercise the real ffmpeg -> MP3 streaming pipeline without
+            # handing an audio URL to any media_player or browser <audio>.
+            expiry=int(time.time())+90
+            signature=hmac.new(API_KEY.encode(),f"{vid}:{expiry}".encode(),
+                               hashlib.sha256).hexdigest()
+            url=f"http://127.0.0.1:8765/stream/{vid}.mp3?exp={expiry}&sig={signature}"
+            try:
+                async with ClientSession(timeout=ClientTimeout(total=40)) as client:
+                    async with client.get(url) as stream:
+                        first=await stream.content.read(4096)
+                        ok=stream.status==200 and len(first)>=256
+                        if not ok:
+                            LOG.warning("phone_preview_pipeline_failed status=%s bytes=%s",
+                                        stream.status,len(first))
+            except (OSError, asyncio.TimeoutError) as exc:
+                LOG.warning("phone_preview_pipeline_error type=%s",type(exc).__name__)
+                ok=False
+        if ok:
             TRACKS_VERIFIED[vid]=time.monotonic()
         return web.json_response({"ok":ok,"reason":None if ok else
-           "YouTube liefert HTTP "+str(data.get("http_status"))})
+           "Audiostream konnte nicht vollständig vorbereitet werden."})
     except Exception:
         return web.json_response({"ok":False,
                 "reason":"Die Audioquelle konnte nicht abgerufen werden."})
