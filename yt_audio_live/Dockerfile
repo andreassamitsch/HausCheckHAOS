@@ -7,7 +7,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
         fonts-dejavu-core dbus-x11 \
     && rm -rf /var/lib/apt/lists/* \
     && pip install --no-cache-dir --disable-pip-version-check \
-        'yt-dlp[default]' 'ytmusicapi>=1.12.4,<2' 'aiohttp>=3.9,<4'
+        'yt-dlp[default,deno]' 'ytmusicapi>=1.12.4,<2' 'aiohttp>=3.9,<4'
 
 WORKDIR /app
 COPY server.py music_catalog.py playback.py auth_ui.py run.sh /app/
