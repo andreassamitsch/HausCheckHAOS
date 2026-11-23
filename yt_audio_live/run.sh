@@ -28,5 +28,12 @@ firefox-esr --no-remote --kiosk --profile /data/ytmusic_auth_browser "https://mu
 x11vnc -display :99 -rfbport 5900 -localhost -forever -shared -nopw -quiet \
   >/dev/null 2>&1 &
 
+# Automatic video-bound proof-of-origin tokens; private to this container.
+# Never publish port 4416. The provider is required only for YouTube extraction.
+(
+  cd /opt/bgutil/server
+  exec /usr/local/bin/node build/main.js --host 127.0.0.1 --port 4416
+) >/dev/null 2>&1 &
+
 python -u /app/auth_ui.py &
 exec python -u /app/server.py
