@@ -239,6 +239,9 @@ def resolve_source(vid):
 PLAYER = Playback(CATALOG, sign_url, str(OPTIONS.get(
     "player_entity", "media_player.ultra_slim_soundbar")))
 
+from yt_mqtt import MusicMqttBridge
+MUSIC_BRIDGE = MusicMqttBridge(lambda: CATALOG, PLAYER, resolve_source)
+
 
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
@@ -445,7 +448,7 @@ class Handler(BaseHTTPRequestHandler):
                 tracks = playlist["tracks"]
                 if not tracks:
                     raise ValueError("Playlist contains no playable songs")
-                if body.get("shuffle"):
+                if body.get("shuffle") or PLAYER.shuffle_enabled:
                     import random
                     random.SystemRandom().shuffle(tracks)
                 resolve_source(tracks[0]["video_id"])
