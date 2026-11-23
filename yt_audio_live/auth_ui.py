@@ -12,6 +12,8 @@ import socket
 import sqlite3
 import threading
 import time
+import shutil
+import tempfile
 from pathlib import Path
 from urllib.error import URLError
 from urllib.request import Request, urlopen
@@ -227,20 +229,66 @@ setTimeout(status,1500);
 </script></body></html>"""
 
 
-def firefox_cookies():
-    """Read only YouTube-domain cookies from the real browser's SQLite store."""
-    cookie_db = PROFILE / "cookies.sqlite"
-    if not cookie_db.is_file():
-        raise ValueError("Noch keine Browser-Cookies gefunden. Bitte zuerst anmelden.")
-    conn = sqlite3.connect(f"file:{cookie_db}?mode=ro", uri=True, timeout=4)
+def _query_youtube_cookies(cookie_db, timeout=0.5):
+    """Query only YouTube cookie rows. The values never leave this process."""
+    conn = sqlite3.connect(f"file:{cookie_db}?mode=ro", uri=True, timeout=timeout)
     try:
-        rows = conn.execute(
+        return conn.execute(
             "SELECT host, path, isSecure, expiry, name, value "
             "FROM moz_cookies WHERE host = 'youtube.com' "
             "OR host = 'music.youtube.com' OR host LIKE '%.youtube.com'"
         ).fetchall()
     finally:
         conn.close()
+
+
+def _snapshot_youtube_cookies(cookie_db):
+    """Read from a *private* disposable copy when Firefox holds SQLite locks.
+
+    Firefox may keep cookies.sqlite in exclusive WAL mode. A regular read-only
+    connection against its live DB then fails with 'database is locked'.
+    Copy the main DB with its WAL and SHM sidecars to a private directory,
+    query that snapshot, and securely dispose of it. Never edit Firefox's DB.
+    A concurrent WAL checkpoint can invalidate a copy; retry in that case.
+    """
+    last_error = None
+    for attempt in range(6):
+        with tempfile.TemporaryDirectory(prefix=".ytmusic-cookie-snapshot-",
+                                         dir="/data") as folder:
+            snapshot = Path(folder) / "cookies.sqlite"
+            try:
+                shutil.copyfile(cookie_db, snapshot)
+                os.chmod(snapshot, 0o600)
+                for suffix in ("-wal", "-shm"):
+                    sidecar = Path(str(cookie_db) + suffix)
+                    if sidecar.exists():
+                        copied = Path(str(snapshot) + suffix)
+                        shutil.copyfile(sidecar, copied)
+                        os.chmod(copied, 0o600)
+                rows = _query_youtube_cookies(snapshot)
+                LOG.info("browser_cookies_read_via_private_snapshot")
+                return rows
+            except (sqlite3.Error, OSError) as exc:
+                last_error = exc
+        # Retry: Firefox may have checkpointed its WAL during the copy.
+        time.sleep(0.15 * (attempt + 1))
+    raise sqlite3.OperationalError(
+        "Firefox-Cookies konnten nicht sicher gelesen werden. "
+        "Bitte die Sitzung erneut übernehmen."
+    ) from last_error
+
+
+def firefox_cookies():
+    """Read YouTube cookies without modifying or closing the Firefox session."""
+    cookie_db = PROFILE / "cookies.sqlite"
+    if not cookie_db.is_file():
+        raise ValueError("Noch keine Browser-Cookies gefunden. Bitte zuerst anmelden.")
+    try:
+        rows = _query_youtube_cookies(cookie_db)
+    except sqlite3.OperationalError as exc:
+        if "locked" not in str(exc).lower() and "busy" not in str(exc).lower():
+            raise
+        rows = _snapshot_youtube_cookies(cookie_db)
     now = int(time.time())
     lines = ["# Netscape HTTP Cookie File\n"]
     has_auth = False
