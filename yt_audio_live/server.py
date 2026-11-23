@@ -126,45 +126,71 @@ def validate_stream_url(vid, query):
 
 
 def resolve_source(vid):
+    """Resolve audio without ever calling a Home Assistant media player.
+
+    yt-dlp decides its currently supported clients by default. A forced
+    visionos client sometimes exposes no direct audio formats, particularly
+    when a browser account is linked. Try browser-capable fallbacks only if
+    automatic selection cannot resolve an HTTPS audio source.
+    """
     checked_video_id(vid)
     with SOURCE_LOCK:
         entry = SOURCE_CACHE.get(vid)
         if entry and time.monotonic() - entry["time"] < 85:
             return entry["url"], entry["headers"]
         started = time.monotonic()
-        options = {
-            "quiet": True, "no_warnings": True, "noplaylist": True,
+        base = {
+            "quiet": True, "no_warnings": False, "noplaylist": True,
             "format": "bestaudio/best",
-            "skip_download": True, "socket_timeout": 12,
+            "skip_download": True, "socket_timeout": 15,
             "retries": 1, "extractor_retries": 1,
-            "js_runtimes": {"node": {}},
-            "extractor_args": {"youtube": {"player_client": [CLIENT]}},
+            "js_runtimes": {"deno": {}, "node": {}},
+            "ignore_no_formats_error": False,
         }
         if YT_DLP_COOKIE_FILE:
-            options["cookiefile"] = YT_DLP_COOKIE_FILE
-        try:
-            with yt_dlp.YoutubeDL(options) as downloader:
-                info = downloader.extract_info(
-                    "https://www.youtube.com/watch?v=" + vid, download=False)
-        except yt_dlp.utils.DownloadError as exc:
-            raise AudioSourceUnavailable(
-                "YouTube blockiert die Audiowiedergabe. Bitte die Anmeldung "
-                "prüfen; möglicherweise ist ein PO-Token erforderlich."
-            ) from exc
-        url = info.get("url") if isinstance(info, dict) else None
-        if not isinstance(url, str) or not url.startswith("https://"):
-            raise RuntimeError("No HTTPS audio URL was returned")
-        headers = info.get("http_headers", {}) or {}
-        SOURCE_CACHE[vid] = {"url": url, "headers": headers,
-                             "duration": info.get("duration") if isinstance(info, dict) else None,
-                             "time": time.monotonic()}
-        if len(SOURCE_CACHE) > 15:
-            oldest = next(iter(SOURCE_CACHE))
-            del SOURCE_CACHE[oldest]
-        LOG.info("source_resolved video_id=%s client=%s format=%s elapsed_ms=%d",
-                 vid, CLIENT, info.get("format_id"),
-                 (time.monotonic()-started)*1000)
-        return url, headers
+            base["cookiefile"] = YT_DLP_COOKIE_FILE
+        # Automatic player selection is preferred over the historical forced
+        # visionos client. yt-dlp handles cookie compatibility itself.
+        strategies = [("auto", None),
+                      ("web_safari", ["web_safari"]),
+                      ("web_embedded", ["web_embedded"])]
+        if CLIENT not in ("auto", "visionos", "web_safari", "web_embedded"):
+            strategies.append((CLIENT, [CLIENT]))
+        last_error = None
+        for label, clients in strategies:
+            options = dict(base)
+            if clients is not None:
+                options["extractor_args"] = {"youtube": {"player_client": clients}}
+            try:
+                with yt_dlp.YoutubeDL(options) as downloader:
+                    info = downloader.extract_info(
+                        "https://www.youtube.com/watch?v=" + vid, download=False)
+                url = info.get("url") if isinstance(info, dict) else None
+                if not isinstance(url, str) or not url.startswith("https://"):
+                    raise RuntimeError("Extractor returned no HTTPS audio source")
+                headers = info.get("http_headers", {}) or {}
+                SOURCE_CACHE[vid] = {
+                    "url": url, "headers": headers,
+                    "duration": info.get("duration"),
+                    "strategy": label,
+                    "time": time.monotonic()
+                }
+                if len(SOURCE_CACHE) > 15:
+                    oldest = next(iter(SOURCE_CACHE))
+                    del SOURCE_CACHE[oldest]
+                LOG.info("source_resolved video_id=%s strategy=%s format=%s elapsed_ms=%d",
+                         vid, label, info.get("format_id"),
+                         (time.monotonic()-started)*1000)
+                return url, headers
+            except (yt_dlp.utils.DownloadError, RuntimeError,
+                    yt_dlp.utils.ExtractorError) as exc:
+                last_error = exc
+                LOG.warning("source_strategy_unavailable video_id=%s strategy=%s type=%s",
+                            vid, label, type(exc).__name__)
+        raise AudioSourceUnavailable(
+            "Kein abspielbarer YouTube-Audiostream gefunden. "
+            "Bei YouTube kann ein PO-Token erforderlich sein."
+        ) from last_error
 
 
 PLAYER = Playback(CATALOG, sign_url, str(OPTIONS.get(
