@@ -88,8 +88,19 @@ a{color:#a8e5ff}
 <label for="library">Meine Playlists</label>
 <select id="library"><option value="">Playlist auswählen …</option></select>
 <label for="search">Oder einen Titel suchen</label>
-<div class="grid"><input id="search" type="text" placeholder="Künstler oder Titel" autocomplete="off">
+<div class="grid"><input id="search" type="text" placeholder="Künstler, Titel, Playlist …" autocomplete="off">
 <button id="searchBtn">Suchen</button></div>
+<select id="searchKind" style="width:100%;margin-top:7px">
+<option value="songs">Songs</option><option value="playlists">Playlists</option>
+<option value="radios">Radios nach Künstler/Titel</option>
+<option value="featured_playlists">YouTube-Mixes</option>
+<option value="community_playlists">Community-Playlists</option>
+</select>
+<div class="grid" style="margin-top:8px">
+<button id="shuffle" class="secondary">🔀 Shuffle: Aus</button>
+<button id="repeat" class="secondary">🔁 Repeat: Aus</button>
+<button id="radio" class="secondary" disabled>📻 Radio</button>
+</div>
 <div id="results" aria-label="Titel"></div>
 </section>
 <section class="panel">
@@ -110,6 +121,7 @@ Nur „Abspielen“ kann Ton ausgeben – auf dem ausdrücklich ausgewählten Ge
 <script>
 const $=id=>document.getElementById(id);
 let selected=null,verified=false,outputs=new Map(),playingRemote="";
+let trackQueue=[],shuffle=false,repeatMode="off",radioMode=false;
 const audio=$("audio"),out=$("output"),msg=s=>$("message").textContent=s;
 async function api(path,body){
  const headers={"Content-Type":"application/json"};
@@ -130,42 +142,70 @@ function resetOutput(){
 out.onchange=resetOutput;
 function choose(t){
  if(!t?.video_id || !/^[A-Za-z0-9_-]{11}$/.test(t.video_id))return;
- selected=t;resetOutput();$("probe").disabled=false;
+ selected=t;resetOutput();$("probe").disabled=false;$("radio").disabled=false;
  $("song").textContent=t.title||"Unbekannter Titel";$("artist").textContent=t.artist||"";
  $("cover").style.visibility="visible";
  $("cover").src=(typeof t.thumbnail==="string"&&t.thumbnail.startsWith("https://"))?t.thumbnail:"";
  msg("Titel ausgewählt. Keine Wiedergabe gestartet.");
  document.querySelectorAll(".track").forEach(e=>e.setAttribute("aria-pressed",String(e.dataset.id===t.video_id)));
 }
-function listTracks(items){
+function listTracks(items,kind="songs"){
  const wrap=$("results");wrap.replaceChildren();
+ trackQueue=kind.includes("playlist")?[]:items.filter(t=>t?.video_id);
+ radioMode=kind==="radios";
  if(!items.length){wrap.textContent="Keine abspielbaren Titel gefunden.";return;}
  for(const t of items.slice(0,100)){
-  if(!t.video_id)continue;
+  if(!t.video_id&&!t.playlist_id)continue;
   const button=document.createElement("button");button.className="track";
-  button.type="button";button.dataset.id=t.video_id;
+  button.type="button";button.dataset.id=t.video_id||t.playlist_id;
   const img=document.createElement("img");img.alt="";img.loading="lazy";
   if(typeof t.thumbnail==="string" && t.thumbnail.startsWith("https://"))img.src=t.thumbnail;
   const span=document.createElement("span"),title=document.createElement("strong"),artist=document.createElement("small");
-  title.textContent=t.title||t.video_id;artist.textContent=t.artist||"";
+  title.textContent=t.title||t.video_id||t.playlist_id;
+  artist.textContent=t.artist||(t.playlist_id?"Playlist":kind==="radios"?"Radio":"");
   span.append(title,artist);button.append(img,span);
-  button.onclick=()=>choose(t);wrap.append(button);
+  button.onclick=()=>t.playlist_id?loadPlaylist(t.playlist_id):choose(t);
+  wrap.append(button);
  }
 }
 $("searchBtn").onclick=async()=>{
  const q=$("search").value.trim();if(!q)return;
  msg("Suche …");
- try{const d=await api("search?q="+encodeURIComponent(q));listTracks(d.results||[]);
- msg((d.results||[]).length+" Titel gefunden.");}
+ try{
+  const kind=$("searchKind").value;
+  const d=await api("search?q="+encodeURIComponent(q)+"&kind="+kind);
+  listTracks(d.results||[],kind);
+  msg((d.results||[]).length+" Treffer gefunden.");
+ }
  catch(e){msg("Suche fehlgeschlagen: "+e.message)}
 };
 $("search").onkeydown=e=>{if(e.key==="Enter")$("searchBtn").click()};
-$("library").onchange=async()=>{
- const id=$("library").value;if(!id)return;
+async function loadPlaylist(id){
+ if(!id)return;
  msg("Playlist wird geladen …");
- try{const d=await api("playlist?id="+encodeURIComponent(id));
- listTracks(d.tracks||[]);msg((d.tracks||[]).length+" Titel in "+d.title+".");}
- catch(e){msg("Playlist konnte nicht geladen werden: "+e.message)}
+ try{
+  const d=await api("playlist?id="+encodeURIComponent(id));
+  listTracks(d.tracks||[]);
+  msg((d.tracks||[]).length+" Titel in "+d.title+" geladen.");
+ }catch(e){msg("Playlist konnte nicht geladen werden: "+e.message);}
+}
+$("library").onchange=()=>loadPlaylist($("library").value);
+$("shuffle").onclick=()=>{
+ shuffle=!shuffle;$("shuffle").textContent="🔀 Shuffle: "+(shuffle?"An":"Aus");
+};
+$("repeat").onclick=()=>{
+ repeatMode=repeatMode==="off"?"all":repeatMode==="all"?"one":"off";
+ $("repeat").textContent="🔁 Repeat: "+(repeatMode==="off"?"Aus":repeatMode==="one"?"Titel":"Alle");
+};
+$("radio").onclick=async()=>{
+ if(!selected)return;
+ msg("Radio wird vorbereitet (ohne Wiedergabe) …");
+ try{
+  const d=await api("radio?video_id="+encodeURIComponent(selected.video_id));
+  trackQueue=[selected,...(d.tracks||[])].filter(t=>t?.video_id);
+  radioMode=true;
+  msg("Radio vorbereitet: "+trackQueue.length+" Titel. ▶ startet nur auf dem gewählten Gerät.");
+ }catch(e){msg("Radio konnte nicht vorbereitet werden: "+e.message);}
 };
 $("probe").onclick=async()=>{
  if(!selected)return;
@@ -201,7 +241,43 @@ $("play").onclick=async()=>{
  }catch(e){msg("Lautsprecher konnte nicht starten: "+e.message)}
 };
 audio.addEventListener("error",()=>msg("Der Audiostream konnte am Handy nicht abgespielt werden."));
-audio.addEventListener("ended",()=>msg("Titel beendet. Keine automatische weitere Wiedergabe."));
+async function advancePhone(){
+ // Automatic continuation is NEVER permitted for HA speakers/TVs.
+ if(out.value!=="phone" || !selected)return;
+ let next=null;
+ if(repeatMode==="one")next=selected;
+ else if(trackQueue.length){
+  if(shuffle){
+   const choices=trackQueue.filter(t=>t.video_id!==selected.video_id);
+   if(choices.length)next=choices[Math.floor(Math.random()*choices.length)];
+  }else{
+   const idx=trackQueue.findIndex(t=>t.video_id===selected.video_id);
+   next=trackQueue[idx+1]||null;
+   if(!next&&repeatMode==="all")next=trackQueue[0];
+  }
+ }
+ if(!next&&radioMode){
+  try{
+   const d=await api("radio?video_id="+encodeURIComponent(selected.video_id));
+   const known=new Set(trackQueue.map(t=>t.video_id));
+   const more=(d.tracks||[]).filter(t=>t?.video_id&&!known.has(t.video_id));
+   trackQueue.push(...more);
+   next=more[0]||null;
+  }catch(e){msg("Radio-Folgetitel konnten nicht geladen werden.");}
+ }
+ if(!next){msg("Wiedergabe beendet.");return;}
+ try{
+  const check=await api("probe?video_id="+encodeURIComponent(next.video_id));
+  if(!check.ok)throw Error(check.reason||"Audio nicht verfügbar");
+  // Preserve queue and radio mode; do not invoke choose(), which resets audio.
+  selected=next;verified=true;
+  $("song").textContent=next.title||"Titel";$("artist").textContent=next.artist||"";
+  $("cover").src=next.thumbnail||"";$("cover").style.visibility="visible";
+  audio.hidden=false;audio.src="api/mobile/audio/"+encodeURIComponent(next.video_id);
+  await audio.play();
+ }catch(e){msg("Automatische Fortsetzung fehlgeschlagen: "+e.message);}
+}
+audio.addEventListener("ended",()=>{void advancePhone();});
 (async()=>{
  try{
   const devices=await api("outputs");
