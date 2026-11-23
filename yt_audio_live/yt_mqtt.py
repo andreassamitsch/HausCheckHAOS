@@ -261,11 +261,18 @@ class MusicMqttBridge:
                 client.connect(str(broker.get("host") or "core-mosquitto"),
                                int(broker.get("port",1883)),keepalive=45)
                 client.loop_start()
-                while client.is_connected():
+                wait_started=time.monotonic()
+                was_connected=False
+                while True:
                     self.wake.wait(timeout=3)
                     self.wake.clear()
-                    self._publish()
+                    if client.is_connected():
+                        was_connected=True
+                        self._publish()
+                    elif was_connected or time.monotonic()-wait_started>30:
+                        break
                 self.connected=False
+                client.disconnect()
                 client.loop_stop()
             except Exception as exc:
                 self.connected=False
