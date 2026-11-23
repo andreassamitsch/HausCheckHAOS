@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import re
+import socket
 import time
 from pathlib import Path
 from urllib.parse import quote
@@ -382,8 +383,26 @@ async def page(request):
                         headers={"Cache-Control":"no-store"})
 
 
+async def diagnostics(request):
+    def inspect_provider():
+        try:
+            with socket.create_connection(("127.0.0.1",4416),timeout=1.0):
+                return True
+        except OSError:
+            return False
+    import yt_dlp
+    available=await asyncio.to_thread(inspect_provider)
+    return web.json_response({
+        "token_provider_listening":available,
+        "provider_binary_present":Path("/opt/bgutil/server/build/main.js").is_file(),
+        "yt_dlp_version":yt_dlp.version.__version__,
+        "phone_playback_only_by_default":True,
+    })
+
+
 def routes(app):
     app.router.add_get("/player",page)
+    app.router.add_get("/api/mobile/diagnostics",diagnostics)
     app.router.add_get("/api/mobile/outputs",outputs)
     app.router.add_get("/api/mobile/library",library)
     app.router.add_get("/api/mobile/playlist",playlist)
