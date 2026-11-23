@@ -134,7 +134,11 @@ class MusicMqttBridge:
             self.player.set_output(eid)
             self._set(last_action=action,last_error="")
             return
-        if action=="shuffle":
+        if action=="auto_continue":
+            if type(cmd.get("enabled")) is not bool:
+                raise ValueError("Autoplay benötigt An oder Aus")
+            self.player.set_auto_continue(cmd["enabled"])
+        elif action=="shuffle":
             self.player.set_shuffle(cmd.get("enabled") is True)
         elif action=="repeat":
             self.player.set_repeat(cmd.get("mode"))
@@ -269,6 +273,7 @@ class MusicMqttBridge:
           "player_state":current.get("cast_state"),
           "selected_output":current.get("player_entity"),
           "radio_enabled":current.get("radio_enabled",False),
+          "auto_continue_enabled":current.get("auto_continue_enabled",True),
           "shuffle_enabled":current.get("shuffle_enabled",False),
           "repeat_mode":current.get("repeat_mode","off"),
           "search_query":info["search_query"],"search_kind":info["search_kind"],
