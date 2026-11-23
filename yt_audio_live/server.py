@@ -35,8 +35,9 @@ try:
         raise ValueError()
 except (ValueError, TypeError):
     raise SystemExit("stream_base_url must use a private LAN IPv4 and port 8765")
-CLIENT = str(OPTIONS.get("player_client", "visionos"))
-if CLIENT not in ("visionos", "mweb", "web_embedded", "web_safari", "tv"):
+CLIENT = str(OPTIONS.get("player_client", "web_music"))
+if CLIENT not in ("web_music", "auto", "mweb", "web_embedded", "web_safari",
+                  "tv", "visionos"):
     raise SystemExit("Unsupported youtube player_client")
 
 SESSION_FILE = Path("/data/ytmusic-session-cookies.txt")
@@ -152,10 +153,9 @@ def validate_stream_url(vid, query):
 def resolve_source(vid):
     """Resolve audio without ever calling a Home Assistant media player.
 
-    yt-dlp decides its currently supported clients by default. A forced
-    visionos client sometimes exposes no direct audio formats, particularly
-    when a browser account is linked. Try browser-capable fallbacks only if
-    automatic selection cannot resolve an HTTPS audio source.
+    For logged-in YouTube Music, prefer the proven web_music client.
+    A first-try strategy must validate actual audio bytes; on failure try
+    the remaining clients without starting any Home Assistant media player.
     """
     checked_video_id(vid)
     with SOURCE_LOCK:
@@ -175,16 +175,17 @@ def resolve_source(vid):
         }
         if YT_DLP_COOKIE_FILE:
             base["cookiefile"] = YT_DLP_COOKIE_FILE
-        # Automatic player selection is preferred over the historical forced
-        # visionos client. yt-dlp handles cookie compatibility itself.
-        strategies = [("mweb", ["mweb"]),
-                      ("auto", None),
-                      ("web_music", ["web_music"]),
-                      ("tv", ["tv"]),
-                      ("web_safari", ["web_safari"]),
-                      ("web_embedded", ["web_embedded"])]
-        if CLIENT not in ("auto", "visionos", "web_safari", "web_embedded"):
-            strategies.append((CLIENT, [CLIENT]))
+        # The selected preferred client is genuinely attempted first.
+        # web_music is most useful with a signed-in browser session; without
+        # cookies, let yt-dlp select its current default before falling back.
+        preferred = CLIENT if CLIENT != "web_music" or YT_DLP_COOKIE_FILE else "auto"
+        ordered = [preferred, "web_music", "auto", "mweb", "tv",
+                   "web_safari", "web_embedded"]
+        strategies = []
+        for label in ordered:
+            if any(existing == label for existing, _ in strategies):
+                continue
+            strategies.append((label, None if label == "auto" else [label]))
         last_error = None
         for label, clients in strategies:
             options = dict(base)
@@ -564,6 +565,6 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    LOG.info("server_started version=0.2.33 player_client=%s player=%s",
+    LOG.info("server_started version=0.2.34 player_client=%s player=%s",
              CLIENT, PLAYER.entity_id)
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever(poll_interval=0.25)
