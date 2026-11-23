@@ -113,6 +113,21 @@ class MusicMqttBridge:
             self._set(list_title=data["title"],list_tracks=data["tracks"][:55],
                       last_action=action,last_error="")
             return
+        if action=="radio_preview":
+            vid=str(cmd.get("video_id") or "")
+            tracks=catalog.radio(vid,limit=35)
+            self._set(list_title="Radio zu "+str(cmd.get("title") or vid)[:90],
+                      list_tracks=tracks[:35],last_action=action,last_error="")
+            return
+        if action=="enqueue":
+            track=self._find_track(cmd.get("video_id"))
+            self.player.enqueue([track])
+            self._set(last_action=action,last_error="")
+            return
+        if action=="queue_play":
+            self.player.play_queued(cmd.get("index"),cmd.get("video_id"))
+            self._set(last_action=action,last_error="")
+            return
         if action=="select_output":
             eid=cmd.get("entity_id")
             self._validate_output(eid)
