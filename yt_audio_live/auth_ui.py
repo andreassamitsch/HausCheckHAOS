@@ -399,11 +399,7 @@ def save_browser_session():
 
 
 def browser_ready():
-    try:
-        with socket.create_connection(("127.0.0.1", 5900), timeout=0.8):
-            return True
-    except OSError:
-        return False
+    return BROWSER.status()["browser_running"] and BROWSER._vnc_ready()
 
 
 async def session_status(request):
@@ -417,6 +413,8 @@ async def session_status(request):
     return web.json_response({
         "connected": connected,
         "browser_ready": await asyncio.to_thread(browser_ready),
+        "browser_running": BROWSER.status()["browser_running"],
+        "browser_idle_timeout_seconds": 480,
         "browser_profile_initialized": (PROFILE / "cookies.sqlite").is_file(),
         "playlists_verified": bool(connected and status.get("playlists_verified")),
         "playlist_count": status.get("playlist_count") if connected else None,
@@ -424,10 +422,15 @@ async def session_status(request):
 
 
 async def session_save(request):
+    if not browser_ready():
+        return web.json_response({"error": "Bitte erst Anmeldebrowser starten"}, status=409)
     if not SAVE_LOCK.acquire(blocking=False):
         return web.json_response({"error": "Anmeldung läuft bereits"}, status=429)
     try:
         result = await asyncio.to_thread(save_browser_session)
+        # The saved music session is independent of Firefox.
+        # Stopping Firefox/Xvfb/VNC releases most of this App's RAM.
+        await asyncio.to_thread(BROWSER.stop, "session_saved")
         return web.json_response(result)
     except (ValueError, sqlite3.Error) as exc:
         return web.json_response({"error": str(exc)}, status=400)
@@ -455,7 +458,26 @@ async def session_logout(request):
     return web.json_response({"connected": False})
 
 
+async def browser_start(request):
+    try:
+        status = await asyncio.to_thread(BROWSER.start)
+        return web.json_response(status)
+    except Exception as exc:
+        LOG.warning("login_browser_start_failed type=%s", type(exc).__name__)
+        return web.json_response(
+            {"error": "Anmeldebrowser konnte nicht gestartet werden."}, status=503)
+
+
+async def browser_stop(request):
+    if SAVE_LOCK.locked():
+        return web.json_response({"error": "Sitzung wird gerade gespeichert"}, status=409)
+    return web.json_response(await asyncio.to_thread(BROWSER.stop, "user"))
+
+
 async def browser_socket(request):
+    if not browser_ready():
+        raise web.HTTPServiceUnavailable(text="Login browser not started")
+    BROWSER.touch()
     ws = web.WebSocketResponse(heartbeat=20)
     await ws.prepare(request)
     try:
@@ -478,6 +500,7 @@ async def browser_socket(request):
         try:
             async for message in ws:
                 if message.type == WSMsgType.BINARY:
+                    BROWSER.touch()
                     writer.write(message.data)
                     await writer.drain()
                 elif message.type in (WSMsgType.CLOSE, WSMsgType.ERROR):
@@ -509,10 +532,34 @@ async def index(request):
                                  "frame-ancestors 'self'"})
 
 
+async def _idle_monitor():
+    while True:
+        await asyncio.sleep(30)
+        await asyncio.to_thread(BROWSER.idle_check)
+
+
+async def _on_start(app):
+    app["browser_idle_monitor"] = asyncio.create_task(_idle_monitor())
+
+
+async def _on_cleanup(app):
+    task = app["browser_idle_monitor"]
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+    await asyncio.to_thread(BROWSER.stop, "app_shutdown")
+
+
 def make_app():
     application = web.Application(client_max_size=2048)
+    application.on_startup.append(_on_start)
+    application.on_cleanup.append(_on_cleanup)
     application.router.add_get("/", index)
     application.router.add_get("/api/session", session_status)
+    application.router.add_post("/api/browser/start", browser_start)
+    application.router.add_post("/api/browser/stop", browser_stop)
     application.router.add_post("/api/session/save", session_save)
     application.router.add_post("/api/session/logout", session_logout)
     application.router.add_get("/websockify", browser_socket)
