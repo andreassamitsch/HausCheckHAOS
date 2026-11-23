@@ -68,7 +68,8 @@ small{color:#cbd5e1;font-size:12px;line-height:1.4}
 </style></head>
 <body><header><h1>🎵 YouTube Music – Konto verbinden</h1>
 <p>Bei Google anmelden, danach unten „Sitzung übernehmen“ wählen.</p>
-<p class="long">Der Browser läuft geschützt in Home Assistant. Kein Cookie-Export nötig.</p></header>
+<p class="long">Der Browser läuft geschützt in Home Assistant. Kein Cookie-Export nötig.</p>
+<p><a href="./player" style="color:#b8edff;font-weight:700">🎧 Musik am Handy testen · Ausgabegerät auswählen</a></p></header>
 <main>
 <div class="toolbar" aria-label="Handy-Browsersteuerung">
   <button id="keyboardbtn" type="button">⌨ Tastatur öffnen</button>
@@ -478,6 +479,8 @@ def make_app():
     application.router.add_post("/api/session/logout", session_logout)
     application.router.add_get("/websockify", browser_socket)
     application.router.add_static("/novnc/", str(NOVNC), show_index=False)
+    from mobile_preview import routes as register_mobile_routes
+    register_mobile_routes(application)
     return application
 
 
