@@ -158,7 +158,7 @@ class Playback:
         if not isinstance(entity_id, str) or not entity_id.startswith("media_player."):
             raise ValueError("Invalid media_player")
         with self.lock:
-            if self.current is not None:
+            if self.current is not None and entity_id != self.entity_id:
                 raise ValueError("Stop current playback before changing output")
             self.entity_id = entity_id
         LOG.info("output_selected entity_id=%s autoplay=0", entity_id)
