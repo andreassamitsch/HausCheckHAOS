@@ -8,6 +8,8 @@ startup: services
 boot: manual
 init: false
 homeassistant_api: true
+services:
+  - mqtt:want
 ingress: true
 ingress_port: 8766
 panel_icon: mdi:account-key
