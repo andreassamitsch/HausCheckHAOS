@@ -317,7 +317,7 @@ def signed_url(vid):
 async def audio(request):
     vid=safe_video_id(request.match_info.get("vid"))
     # Only a recently probed source may be streamed through the phone UI.
-    if time.monotonic()-TRACKS_VERIFIED.get(vid,0)>300:
+    if vid not in TRACKS_VERIFIED or time.monotonic()-TRACKS_VERIFIED[vid]>300:
         return web.json_response({"error":"Audioquelle zuerst prüfen."},status=409)
     expiry=int(time.time())+90
     signature=hmac.new(API_KEY.encode(),f"{vid}:{expiry}".encode(),hashlib.sha256).hexdigest()
@@ -356,7 +356,7 @@ async def remote(request):
     eid=body.get("entity_id")
     if body.get("confirmed_remote") is not True or not isinstance(eid,str):
         return web.json_response({"error":"Freigabe fehlt"},status=403)
-    if time.monotonic()-TRACKS_VERIFIED.get(vid,0)>300:
+    if vid not in TRACKS_VERIFIED or time.monotonic()-TRACKS_VERIFIED[vid]>300:
         return web.json_response({"error":"Audioquelle zuerst prüfen"},status=409)
     all_devices=await outputs(request)
     # Avoid relying on HTTP response internals: verify against current HA state list
@@ -377,9 +377,13 @@ async def remote(request):
     return web.json_response({"entity_id":eid,"started":True})
 
 
+async def page(request):
+    return web.Response(text=PAGE,content_type="text/html",
+                        headers={"Cache-Control":"no-store"})
+
+
 def routes(app):
-    app.router.add_get("/player",lambda r:web.Response(text=PAGE,content_type="text/html",
-                          headers={"Cache-Control":"no-store"}))
+    app.router.add_get("/player",page)
     app.router.add_get("/api/mobile/outputs",outputs)
     app.router.add_get("/api/mobile/library",library)
     app.router.add_get("/api/mobile/playlist",playlist)
