@@ -353,6 +353,22 @@ class Playback:
                              len(recommendations))
                 except Exception as exc:
                     LOG.warning("queue_autocontinue_failed error=%s", type(exc).__name__)
+            if seed and recommendations and reason == "ended":
+                # This recommendation lookup may take several seconds. If
+                # the output was turned off, paused or switched during that
+                # time, fail closed instead of reviving the receiver.
+                try:
+                    receiver = self._cast_status()
+                    receiver_state = str(receiver.get("state") or "unknown")
+                except Exception as exc:
+                    receiver_state = "unavailable"
+                    LOG.warning("autocontinue_receiver_check_failed type=%s",
+                                type(exc).__name__)
+                if receiver_state != "idle":
+                    with self.lock:
+                        if old_generation == self.generation:
+                            self._clear_playback("receiver_not_idle_after_recommendations")
+                    return self.status()
             with self.lock:
                 if old_generation != self.generation:
                     return self.status()
