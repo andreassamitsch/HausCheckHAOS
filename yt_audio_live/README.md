@@ -64,6 +64,41 @@ POST /api/resume    {}
 Queries with a title automatically play the first search result. To avoid
 unwanted versions, use /api/search and then play an exact video ID.
 
+## Version 0.2.29 – Safe mobile preview with selectable output (23 November 2026)
+
+The Home Assistant App Web UI now links to **🎧 Musik am Handy testen**. The
+new **/player** screen reuses the UKW Radio card's actual-playback-device
+filtering (including duplicate-device suppression) and provides:
+
+- **📱 Dieses Handy** as the hardcoded default output – never the Ultra Slim
+  Soundbar or another HA media player
+- Personal playlist selector (31 private playlists confirmed), song search,
+  cover artwork and title selection
+- **Audioquelle prüfen**: absolutely no `media_player.play_media` call; validates
+  actual YouTube audio bytes and the complete ffmpeg MP3 stream by reading a
+  short segment and discarding it
+- **Abspielen**: browser-native HTML audio only, on the requesting mobile device
+- Optional other HA players, but only after explicitly choosing the device,
+  checking the **Lautsprecher ausdrücklich freigeben** box and accepting a
+  second confirmation dialog; no volume is modified, and output selection
+  never starts audio
+
+Current YouTube extraction uses up-to-date yt-dlp with Deno/EJS, a localhost
+bgutil PO token provider and verified client fallback. The old visionos-only
+configuration produced no audio formats; mweb/auto URLs were still 403 even
+with tokens. The signed-in **web_music** client returned valid audio data and
+its format worked with ffmpeg.
+
+Live, silent end-to-end checks on the Home Assistant server succeeded for
+**two different songs** from the authenticated YouTube Music library. The
+soundbar and living-room TV remained off; YouTube Music's HA queue remained
+empty. The phone's actual audio output requires a deliberate on-device test.
+
+**Do not use the existing native YouTube Music media-control card for the
+remote test**: it still controls its historically configured Ultra Slim
+Soundbar. Use the protected App Web UI → **🎧 Musik am Handy testen**
+instead until the dashboard's main output controls are updated.
+
 ## Version 0.2.21 – Persistent playlist verification (23 November 2026)
 
 - Persist the verified account and number of private playlists in the App's
