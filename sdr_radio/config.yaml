@@ -1,6 +1,6 @@
 name: "SDR UKW Radio"
 description: "UKW-Radioempfang mit RTL-SDR, Livestream und Home-Assistant-Wiedergabe"
-version: "0.5.2"
+version: "0.5.3"
 slug: "sdr_radio"
 url: "https://github.com/andreassamitsch/HausCheckHAOS/tree/main/sdr_radio"
 arch:
@@ -27,12 +27,16 @@ options:
   gain: "auto"
   ppm: 0
   rds_enabled: true
+  audio_target_dbfs: -18
+  audio_max_gain_db: 15
   stream_base_url: "http://192.168.1.66:8099"
 schema:
   device_index: "int(0,)"
   gain: str
   ppm: "int(-150,150)"
   rds_enabled: bool
+  audio_target_dbfs: "int(-24,-12)"
+  audio_max_gain_db: "int(0,20)"
   stream_base_url: str
 
 services:
