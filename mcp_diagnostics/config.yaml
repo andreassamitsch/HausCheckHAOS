@@ -1,0 +1,17 @@
+name: MCP Diagnostics
+version: "0.1.0"
+slug: mcp_diagnostics
+description: Restricted, read-only TCP connectivity diagnostics via authenticated HA Ingress
+arch:
+  - amd64
+  - aarch64
+startup: application
+boot: manual
+init: false
+ingress: true
+ingress_port: 8099
+panel_admin: true
+options:
+  target_ip: ""
+schema:
+  target_ip: str
