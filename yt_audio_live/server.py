@@ -21,6 +21,7 @@ from pathlib import Path
 import yt_dlp
 from music_catalog import Catalog, checked_video_id, checked_playlist_id
 from playback import Playback
+from audio_level import AudioLevel, measure, input_args
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 LOG = logging.getLogger("yt_audio_live")
@@ -67,6 +68,8 @@ WARM_RUNNING = False
 WARM_LAST = {}
 WARM_INFLIGHT = {}
 STREAM_SLOTS = threading.BoundedSemaphore(3)
+LEVEL_PROBE_SLOT = threading.BoundedSemaphore(1)
+AUDIO_LEVEL = AudioLevel()
 
 class AudioSourceUnavailable(RuntimeError):
     """YouTube audio source could not be resolved."""
@@ -496,7 +499,7 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
         args = parse_qs(parsed.query)
         if path == "/health":
-            return self.json_reply(200, {"ok": True, "version": "0.2.43",
+            return self.json_reply(200, {"ok": True, "version": "0.2.44",
                                          "player_client": CLIENT,
                                          "api_auth": True})
         stream = VIDEO_RE.fullmatch(path)
@@ -548,6 +551,22 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/library":
                 result = {"playlists": CATALOG.library_playlists(
                     int((args.get("limit") or ["30"])[0]))}
+            elif path == "/api/audio-level":
+                result = {"gain_db": AUDIO_LEVEL.gain}
+            elif path == "/api/measure-audio":
+                vid = checked_video_id((args.get("video_id") or [""])[0])
+                start = max(0, min(3600, int((args.get("start") or ["45"])[0])))
+                duration = max(10, min(30, int((args.get("duration") or ["25"])[0])))
+                if not LEVEL_PROBE_SLOT.acquire(blocking=False):
+                    return self.json_reply(429, {"error": "measurement already running"})
+                try:
+                    url, headers = resolve_source(vid)
+                    result = {"video_id": vid, "start_seconds": start,
+                              "duration_seconds": duration, **measure(url, headers, start, duration)}
+                    LOG.info("audio_level_measured video_id=%s rms_dbfs=%.1f lufs=%.1f peak_dbfs=%.1f",
+                             vid, result["rms_dbfs"], result["integrated_lufs"], result["peak_dbfs"])
+                finally:
+                    LEVEL_PROBE_SLOT.release()
             elif path == "/api/probe":
                 vid = checked_video_id((args.get("video_id") or [""])[0])
                 started = time.monotonic()
@@ -601,6 +620,9 @@ class Handler(BaseHTTPRequestHandler):
                     YT_DLP_COOKIE_FILE = prepare_browser_cookies()
                 result = {"connected": CATALOG.authenticated,
                           "audio_browser_session": bool(YT_DLP_COOKIE_FILE)}
+            elif path == "/api/audio-level":
+                result = AUDIO_LEVEL.set(body.get("gain_db"))
+                LOG.info("audio_gain_configured gain_db=%.1f", AUDIO_LEVEL.gain)
             elif path == "/api/play":
                 if body.get("video_id"):
                     vid = checked_video_id(body["video_id"])
@@ -707,19 +729,11 @@ class Handler(BaseHTTPRequestHandler):
         proc = None
         try:
             source, source_headers = resolve_source(vid)
-            command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin"]
-            for header, switch in (("User-Agent", "-user_agent"),
-                                   ("Referer", "-referer")):
-                value = source_headers.get(header)
-                if isinstance(value, str) and value and "\r" not in value and "\n" not in value:
-                    command.extend((switch, value))
-            command.extend(["-rw_timeout", "15000000"])
-            if start:
-                # FFmpeg input-side seek, independent of Cast HTTP Range support.
-                command.extend(["-ss", str(start)])
-            command.extend(["-i", source, "-vn", "-map", "0:a:0",
-                "-c:a", "libmp3lame", "-b:a", "128k", "-f", "mp3",
-                "-flush_packets", "1", "pipe:1"])
+            command = input_args(source, source_headers, start)
+            command += ["-loglevel", "error"] + AUDIO_LEVEL.filter_args()
+            command.extend(["-c:a", "libmp3lame", "-b:a", "128k", "-f", "mp3",
+                            "-flush_packets", "1", "pipe:1"])
+            LOG.info("stream_audio_gain video_id=%s gain_db=%.1f", vid, AUDIO_LEVEL.gain)
             proc = subprocess.Popen(command, stdin=subprocess.DEVNULL,
                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                     bufsize=0)
@@ -780,6 +794,6 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     log_runtime_versions()
     LOG.info("audio_cookie_status %s", json.dumps(cookie_diagnostics(), sort_keys=True))
-    LOG.info("server_started version=0.2.43 player_client=%s player=%s",
+    LOG.info("server_started version=0.2.44 player_client=%s player=%s",
              CLIENT, PLAYER.entity_id)
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever(poll_interval=0.25)
