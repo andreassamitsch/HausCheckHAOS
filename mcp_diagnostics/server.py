@@ -83,6 +83,9 @@ def main():
     server.target = validated_target(options.get("target_ip", ""))
     server.last_probe = -100.0
     print("MCP Diagnostics started; target configured:", bool(server.target), flush=True)
+    if server.target:
+        print(json.dumps({"startup_tcp_check": probe(server.target)}), flush=True)
+        server.last_probe = time.monotonic()
     server.serve_forever()
 
 if __name__ == "__main__":

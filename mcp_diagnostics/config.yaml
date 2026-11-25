@@ -1,5 +1,5 @@
 name: MCP Diagnostics
-version: "0.1.1"
+version: "0.1.2"
 slug: mcp_diagnostics
 description: Restricted, read-only TCP connectivity diagnostics via authenticated HA Ingress
 arch:

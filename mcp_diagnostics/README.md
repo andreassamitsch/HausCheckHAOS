@@ -7,3 +7,5 @@ Install from the existing repository. Configure target_ip locally in the app set
 TCP reachability does not establish protocol identity or permission to install software. No device addresses belong in the repository. Compatibility with the HA-MCP ingress proxy must be verified after installation.
 
 Reference: https://contributors.home-assistant.io/apps/guides/ingress/
+
+At startup, when configured, the app performs exactly one fixed TCP check and prints the port/status pairs to its Supervisor log (no target address). HA-MCP can retrieve logs without direct access to the Ingress server. Restart explicitly to repeat; no periodic scans.
