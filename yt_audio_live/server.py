@@ -9,6 +9,8 @@ import os
 import re
 import subprocess
 import threading
+import tempfile
+import shutil
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.error import HTTPError
@@ -57,6 +59,12 @@ def load_catalog():
 CATALOG = load_catalog()
 SOURCE_CACHE = {}
 SOURCE_LOCK = threading.RLock()
+SOURCE_EPOCH = 0
+SOURCE_TTL = 240
+WARM_LOCK = threading.Lock()
+WARM_PENDING = None
+WARM_RUNNING = False
+WARM_LAST = {}
 STREAM_SLOTS = threading.BoundedSemaphore(3)
 
 class AudioSourceUnavailable(RuntimeError):
@@ -233,99 +241,181 @@ def validate_stream_url(vid, query):
     return hmac.compare_digest(expected, supplied)
 
 
-def resolve_source(vid):
-    """Resolve audio without ever calling a Home Assistant media player.
+def _cache_get(vid):
+    entry = SOURCE_CACHE.get(vid)
+    if not entry or time.monotonic() - entry["time"] >= SOURCE_TTL:
+        return None
+    try:
+        expiry = int((parse_qs(urlsplit(entry["url"]).query).get("expire") or ["0"])[0])
+        if expiry and expiry < time.time() + 60:
+            return None
+    except (ValueError, TypeError):
+        return None
+    return entry
 
-    For logged-in YouTube Music, prefer the proven web_music client.
-    A first-try strategy must validate actual audio bytes; on failure try
-    the remaining clients without starting any Home Assistant media player.
-    """
+
+def _cache_put(vid, entry):
+    SOURCE_CACHE.pop(vid, None)
+    SOURCE_CACHE[vid] = entry
+    while len(SOURCE_CACHE) > 15:
+        SOURCE_CACHE.pop(next(iter(SOURCE_CACHE)))
+
+
+def _extract_source(vid, cookiefile, warm_only=False):
+    """Resolve and validate bytes, without contacting any HA receiver."""
+    started = time.monotonic()
+    base = {
+        "quiet": True, "no_warnings": False, "noplaylist": True,
+        "format": "bestaudio/best",
+        "skip_download": True, "socket_timeout": 15,
+        "retries": 1, "extractor_retries": 1,
+        "js_runtimes": {"deno": {}, "node": {}},
+        "ignore_no_formats_error": False,
+        "verbose": True,
+        "logger": ExtractionDiagnostics(),
+    }
+    if cookiefile:
+        base["cookiefile"] = cookiefile
+    # The selected preferred client is genuinely attempted first.
+    # web_music is most useful with a signed-in browser session; without
+    # cookies, let yt-dlp select its current default before falling back.
+    preferred = CLIENT if CLIENT != "web_music" or cookiefile else "auto"
+    ordered = [preferred, "web_music", "auto", "mweb", "tv",
+               "web_safari", "web_embedded"]
+    if warm_only:
+        ordered = ordered[:1]
+        base["socket_timeout"] = 6
+        base["retries"] = 0
+        base["extractor_retries"] = 0
+    strategies = []
+    for label in ordered:
+        if any(existing == label for existing, _ in strategies):
+            continue
+        strategies.append((label, None if label == "auto" else [label]))
+    last_error = None
+    LOG.info("audio_probe_start video_id=%s cookie_status=%s", vid, json.dumps(cookie_diagnostics(), sort_keys=True))
+    for label, clients in strategies:
+        options = dict(base)
+        if clients is not None:
+            options["extractor_args"] = {"youtube": {"player_client": clients}}
+        try:
+            with yt_dlp.YoutubeDL(options) as downloader:
+                info = downloader.extract_info(
+                    "https://www.youtube.com/watch?v=" + vid, download=False)
+            url = info.get("url") if isinstance(info, dict) else None
+            if not isinstance(url, str) or not url.startswith("https://"):
+                raise RuntimeError("Extractor returned no HTTPS audio source")
+            headers = info.get("http_headers", {}) or {}
+            # A URL can exist yet return HTTP 403. Test the first 1 KiB
+            # before caching, selecting it or initiating any Cast session.
+            safe_headers = {k: v for k, v in headers.items()
+                            if isinstance(v, str) and "\r" not in v and "\n" not in v}
+            safe_headers["Range"] = "bytes=0-1023"
+            try:
+                with urlopen(Request(url, headers=safe_headers), timeout=6 if warm_only else 15) as check:
+                    sniff = check.read(1024)
+                    if check.status not in (200, 206) or not sniff:
+                        raise RuntimeError("Audio server returned no bytes")
+            except HTTPError as http_error:
+                LOG.warning("audio_url_rejected video_id=%s strategy=%s http=%d",
+                            vid, label, http_error.code)
+                raise
+            entry = {
+                "url": url, "headers": headers, "duration": info.get("duration"),
+                "strategy": label, "time": time.monotonic(),
+            }
+            LOG.info("source_resolved video_id=%s strategy=%s format=%s elapsed_ms=%d",
+                     vid, label, info.get("format_id"),
+                     (time.monotonic()-started)*1000)
+            return entry
+        except (yt_dlp.utils.DownloadError, RuntimeError, HTTPError,
+                yt_dlp.utils.ExtractorError) as exc:
+            last_error = exc
+            LOG.warning("source_strategy_unavailable video_id=%s strategy=%s type=%s reason=%s",
+                        vid, label, type(exc).__name__, diagnostic_reason(exc))
+    raise AudioSourceUnavailable(
+        "Kein abspielbarer YouTube-Audiostream gefunden. "
+        "Bei YouTube kann ein PO-Token erforderlich sein."
+    ) from last_error
+
+
+def resolve_source(vid):
     checked_video_id(vid)
     with SOURCE_LOCK:
-        entry = SOURCE_CACHE.get(vid)
-        if entry and time.monotonic() - entry["time"] < 85:
+        entry = _cache_get(vid)
+        if entry:
+            LOG.info("source_cache_hit video_id=%s age_ms=%d", vid, (time.monotonic()-entry["time"])*1000)
             return entry["url"], entry["headers"]
-        started = time.monotonic()
-        base = {
-            "quiet": True, "no_warnings": False, "noplaylist": True,
-            "format": "bestaudio/best",
-            "skip_download": True, "socket_timeout": 15,
-            "retries": 1, "extractor_retries": 1,
-            "js_runtimes": {"deno": {}, "node": {}},
-            "ignore_no_formats_error": False,
-            "verbose": True,
-            "logger": ExtractionDiagnostics(),
-        }
-        if YT_DLP_COOKIE_FILE:
-            base["cookiefile"] = YT_DLP_COOKIE_FILE
-        # The selected preferred client is genuinely attempted first.
-        # web_music is most useful with a signed-in browser session; without
-        # cookies, let yt-dlp select its current default before falling back.
-        preferred = CLIENT if CLIENT != "web_music" or YT_DLP_COOKIE_FILE else "auto"
-        ordered = [preferred, "web_music", "auto", "mweb", "tv",
-                   "web_safari", "web_embedded"]
-        strategies = []
-        for label in ordered:
-            if any(existing == label for existing, _ in strategies):
-                continue
-            strategies.append((label, None if label == "auto" else [label]))
-        last_error = None
-        LOG.info("audio_probe_start video_id=%s cookie_status=%s", vid, json.dumps(cookie_diagnostics(), sort_keys=True))
-        for label, clients in strategies:
-            options = dict(base)
-            if clients is not None:
-                options["extractor_args"] = {"youtube": {"player_client": clients}}
+        entry = _extract_source(vid, YT_DLP_COOKIE_FILE)
+        _cache_put(vid, entry)
+        return entry["url"], entry["headers"]
+
+
+def warm_source(vid):
+    """One low-priority candidate at a time. No Cast calls or full-song downloads."""
+    global WARM_PENDING, WARM_RUNNING
+    checked_video_id(vid)
+    with WARM_LOCK:
+        # No queue of speculative network work; only the newest candidate matters.
+        now = time.monotonic()
+        if now - WARM_LAST.get(vid, -1000) < 90:
+            return
+        WARM_PENDING = vid
+        if WARM_RUNNING:
+            return
+        WARM_RUNNING = True
+
+    def worker():
+        global WARM_PENDING, WARM_RUNNING
+        while True:
+            with WARM_LOCK:
+                candidate, WARM_PENDING = WARM_PENDING, None
+                if not candidate:
+                    WARM_RUNNING = False
+                    return
+                now = time.monotonic()
+                if now - WARM_LAST.get(candidate, -1000) < 90:
+                    continue
+                WARM_LAST[candidate] = now
+                for k in list(WARM_LAST):
+                    if now - WARM_LAST[k] > 300:
+                        del WARM_LAST[k]
             try:
-                with yt_dlp.YoutubeDL(options) as downloader:
-                    info = downloader.extract_info(
-                        "https://www.youtube.com/watch?v=" + vid, download=False)
-                url = info.get("url") if isinstance(info, dict) else None
-                if not isinstance(url, str) or not url.startswith("https://"):
-                    raise RuntimeError("Extractor returned no HTTPS audio source")
-                headers = info.get("http_headers", {}) or {}
-                # A URL can exist yet return HTTP 403. Test the first 1 KiB
-                # before caching, selecting it or initiating any Cast session.
-                safe_headers = {k: v for k, v in headers.items()
-                                if isinstance(v, str) and "\r" not in v and "\n" not in v}
-                safe_headers["Range"] = "bytes=0-1023"
-                try:
-                    with urlopen(Request(url, headers=safe_headers), timeout=15) as check:
-                        sniff = check.read(1024)
-                        if check.status not in (200, 206) or not sniff:
-                            raise RuntimeError("Audio server returned no bytes")
-                except HTTPError as http_error:
-                    LOG.warning("audio_url_rejected video_id=%s strategy=%s http=%d",
-                                vid, label, http_error.code)
-                    raise
-                SOURCE_CACHE[vid] = {
-                    "url": url, "headers": headers,
-                    "duration": info.get("duration"),
-                    "strategy": label,
-                    "time": time.monotonic()
-                }
-                if len(SOURCE_CACHE) > 15:
-                    oldest = next(iter(SOURCE_CACHE))
-                    del SOURCE_CACHE[oldest]
-                LOG.info("source_resolved video_id=%s strategy=%s format=%s elapsed_ms=%d",
-                         vid, label, info.get("format_id"),
-                         (time.monotonic()-started)*1000)
-                return url, headers
-            except (yt_dlp.utils.DownloadError, RuntimeError, HTTPError,
-                    yt_dlp.utils.ExtractorError) as exc:
-                last_error = exc
-                LOG.warning("source_strategy_unavailable video_id=%s strategy=%s type=%s reason=%s",
-                            vid, label, type(exc).__name__, diagnostic_reason(exc))
-        raise AudioSourceUnavailable(
-            "Kein abspielbarer YouTube-Audiostream gefunden. "
-            "Bei YouTube kann ein PO-Token erforderlich sein."
-        ) from last_error
+                with tempfile.TemporaryDirectory(prefix="yt-warm-") as tmp:
+                    # Avoid competing with foreground extraction or modifying its cookie jar.
+                    if not SOURCE_LOCK.acquire(blocking=False):
+                        with WARM_LOCK:
+                            WARM_LAST.pop(candidate, None)
+                        continue
+                    try:
+                        if _cache_get(candidate):
+                            # Retry later when the current cache entry approaches expiry.
+                            with WARM_LOCK:
+                                WARM_LAST.pop(candidate, None)
+                            continue
+                        epoch = SOURCE_EPOCH
+                        copy = None
+                        if YT_DLP_COOKIE_FILE:
+                            copy = os.path.join(tmp, "cookies.txt")
+                            shutil.copyfile(YT_DLP_COOKIE_FILE, copy)
+                            os.chmod(copy, 0o600)
+                    finally:
+                        SOURCE_LOCK.release()
+                    entry = _extract_source(candidate, copy, warm_only=True)
+                    with SOURCE_LOCK:
+                        if epoch == SOURCE_EPOCH and not _cache_get(candidate):
+                            _cache_put(candidate, entry)
+                            LOG.info("source_prefetched video_id=%s", candidate)
+            except Exception as exc:
+                LOG.info("source_prefetch_skipped video_id=%s type=%s", candidate, type(exc).__name__)
+    threading.Thread(target=worker, daemon=True, name="audio-source-prefetch").start()
 
 
 PLAYER = Playback(CATALOG, sign_url, str(OPTIONS.get(
     "player_entity", "media_player.ultra_slim_soundbar")))
 
 from yt_mqtt import MusicMqttBridge
-MUSIC_BRIDGE = MusicMqttBridge(lambda: CATALOG, PLAYER, resolve_source)
+MUSIC_BRIDGE = MusicMqttBridge(lambda: CATALOG, PLAYER, resolve_source, warm_source=warm_source)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -473,11 +563,12 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/auth/reload":
                 # Called only by the HA Ingress session manager, with API key.
                 # A fresh catalog replaces the old one only after validation.
-                global CATALOG, YT_DLP_COOKIE_FILE
+                global CATALOG, YT_DLP_COOKIE_FILE, SOURCE_EPOCH
                 new_catalog = load_catalog()
                 with SOURCE_LOCK:
                     CATALOG = new_catalog
                     PLAYER.catalog = new_catalog
+                    SOURCE_EPOCH += 1
                     SOURCE_CACHE.clear()
                     YT_DLP_COOKIE_FILE = prepare_browser_cookies()
                 result = {"connected": CATALOG.authenticated,
