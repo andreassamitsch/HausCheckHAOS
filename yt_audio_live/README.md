@@ -1,5 +1,12 @@
 # YouTube Music Live for Home Assistant OS
 
+## Release 0.2.43 – Four-track preparation and stable transitions (25 November 2026)
+
+- Prepare the next four tracks in queue order, with one background worker and bounded cache; on opening music, prepare the retained title and three following songs.
+- Reuse an in-flight preparation of the selected song with a bounded three-second wait before normal foreground fallback. No full-song downloads, automatic playback, or volume changes.
+- Keep the starting state through transient Cast buffering/idle before first playback.
+- Existing queue persistence, diagnostic logging and receiver-free playback regression tests remain in place.
+
 ## Release 0.2.42 – Faster music start and track changes (25 November 2026)
 
 - One background worker prepares a validated audio URL for the upcoming song during actual playback, or the retained song when the music panel is opened. Search and playlist browsing can prepare the first visible track. No receiver commands or full-song downloads in this worker.
