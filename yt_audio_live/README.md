@@ -1,5 +1,12 @@
 # YouTube Music Live for Home Assistant OS
 
+## Release 0.2.41 – Retained playback session and seek (25 November 2026)
+
+- Stop, external stop, receiver change and queue completion retain the last title, upcoming songs, bounded history and position. Only explicit new music/playlist playback replaces the session (explicit queue-edit actions still work).
+- Private atomic checkpoints restore the session after app restart without starting audio. Explicit resume opens the signed stream at the retained position.
+- MQTT supports `seek` with integer seconds, reports absolute media position and timestamp and exposes played history. Seeking while paused/stopped changes the resume position without starting playback.
+- Regression tests run during the image build with mocked receiver calls. No changes to source extraction strategies or Google login.
+
 ## Release 0.2.40 – Safe audio diagnostics (25 November 2026)
 
 - Logs classified yt-dlp failure reasons and HTTP codes for each extraction strategy; never writes upstream URLs, cookie values or tokens.
