@@ -108,8 +108,13 @@ class MusicMqttBridge:
         return data
 
     def _warm(self, track):
-        if isinstance(track, dict) and re.fullmatch(r"[A-Za-z0-9_-]{11}", str(track.get("video_id") or "")):
-            self.warm_source(track["video_id"])
+        self._warm_many([track])
+
+    def _warm_many(self, tracks):
+        ids = [t["video_id"] for t in tracks if isinstance(t, dict)
+               and re.fullmatch(r"[A-Za-z0-9_-]{11}", str(t.get("video_id") or ""))]
+        if ids:
+            self.warm_source(ids[:4])
 
     def _handle(self, cmd):
         action=cmd.get("action")
@@ -117,7 +122,7 @@ class MusicMqttBridge:
         if action=="warm_current":
             status = self.player.status()
             if status.get("cast_state") == "stopped" and status.get("player_entity") == cmd.get("entity_id"):
-                self._warm(status.get("current"))
+                self._warm_many([status.get("current")] + (status.get("queue") or [])[:3])
             return
         if action=="library":
             lists=catalog.library_playlists(limit=100)
@@ -133,7 +138,7 @@ class MusicMqttBridge:
             self._set(search_query=query,search_kind=kind,search_results=items[:22],
                       last_action=action,last_error="")
             if items and kind in ("songs","videos","radios"):
-                self._warm(items[0])
+                self._warm_many(items[:4])
             return
         if action=="load_playlist":
             pid=str(cmd.get("playlist_id") or "")
@@ -141,7 +146,7 @@ class MusicMqttBridge:
             self._set(list_playlist_id=pid,list_title=data["title"],list_tracks=data["tracks"][:55],
                       last_action=action,last_error="")
             if data["tracks"]:
-                self._warm(data["tracks"][0])
+                self._warm_many(data["tracks"][:4])
             return
         if action=="radio_preview":
             vid=str(cmd.get("video_id") or "")
@@ -300,15 +305,15 @@ class MusicMqttBridge:
         current=self.player.status()
         info=self._current()
         current_track=current.get("current")
-        # Only warm the first upcoming song during real playback; never start it.
+        # Warm the next four in queue order, without downloading complete songs.
         queue = current.get("queue") or []
-        if current_track and current.get("cast_state") == "playing" and queue:
-            candidate = queue[0]
-            vid = candidate.get("video_id")
+        if current_track and current.get("cast_state") in ("playing", "starting", "buffering") and queue:
+            candidates = queue[:4]
+            vids = tuple(t.get("video_id") for t in candidates)
             now = time.monotonic()
-            if vid != self._next_warm_vid or now - self._next_warm_at >= 30:
-                self._next_warm_vid, self._next_warm_at = vid, now
-                self._warm(candidate)
+            if vids != self._next_warm_vid or now - self._next_warm_at >= 30:
+                self._next_warm_vid, self._next_warm_at = vids, now
+                self._warm_many(candidates)
         else:
             self._next_warm_vid = None
         state="playing" if current_track and current.get("cast_state")=="playing" else "idle"
