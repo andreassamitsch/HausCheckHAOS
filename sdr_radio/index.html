@@ -169,19 +169,20 @@ async function startLiveAudio(){
   const AudioCtx=window.AudioContext||window.webkitAudioContext;
   if(!AudioCtx||!window.WebSocket)throw Error("WebAudio nicht unterstützt");
   const ctx=new AudioCtx({sampleRate:48000,latencyHint:"interactive"});
-  const node=ctx.createScriptProcessor(1024,0,1);
+  const node=ctx.createScriptProcessor(1024,0,2);
   let packets=[],current=null,at=0;
   node.onaudioprocess=event=>{
-    const dst=event.outputBuffer.getChannelData(0);
-    for(let i=0;i<dst.length;i++){
+    const left=event.outputBuffer.getChannelData(0),right=event.outputBuffer.getChannelData(1);
+    for(let i=0;i<left.length;i++){
       if(!current||at>=current.length){
         current=packets.shift()||null;at=0;
       }
-      dst[i]=current?current[at++]/32768:0;
+      left[i]=current?current[at++]/32768:0;
+      right[i]=current?current[at++]/32768:0;
     }
   };
   node.connect(ctx.destination);
-  const addr=new URL("pcm",location.href);
+  const addr=new URL("pcm-stereo",location.href);
   addr.protocol=addr.protocol==="https:"?"wss:":"ws:";
   const ws=new WebSocket(addr);
   ws.binaryType="arraybuffer";
@@ -206,7 +207,7 @@ async function startLiveAudio(){
       ws.onerror=()=>reject(new Error("WebSocket-Verbindung fehlgeschlagen"));
     });
     $("audio").style.display="none";
-    $("playerMode").textContent="Direkt-Audio aktiv (PCM, ca. 0,1–0,2 s Puffer). Beim Senderwechsel verbunden bleiben.";
+    $("playerMode").textContent="Direkt-Audio aktiv (Stereo-PCM, ca. 0,1–0,2 s Puffer). Beim Senderwechsel verbunden bleiben.";
   }catch(e){
     stopLocalAudio();
     throw e;
