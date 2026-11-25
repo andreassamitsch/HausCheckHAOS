@@ -344,8 +344,23 @@ def resolve_source(vid):
     with SOURCE_LOCK:
         entry = _cache_get(vid)
         if entry:
-            LOG.info("source_cache_hit video_id=%s age_ms=%d", vid, (time.monotonic()-entry["time"])*1000)
-            return entry["url"], entry["headers"]
+            # Older URLs may have been invalidated before their advertised expiry.
+            # Recheck a tiny range before reuse, then fall back to normal extraction.
+            if time.monotonic() - entry["time"] > 85:
+                try:
+                    headers = {k: v for k, v in entry["headers"].items()
+                               if isinstance(v, str) and "\r" not in v and "\n" not in v}
+                    headers["Range"] = "bytes=0-1023"
+                    with urlopen(Request(entry["url"], headers=headers), timeout=4) as response:
+                        if response.status not in (200, 206) or not response.read(1024):
+                            raise RuntimeError("Cached audio no longer available")
+                except (OSError, RuntimeError, HTTPError) as exc:
+                    LOG.info("source_cache_invalidated video_id=%s type=%s", vid, type(exc).__name__)
+                    SOURCE_CACHE.pop(vid, None)
+                    entry = None
+            if entry:
+                LOG.info("source_cache_hit video_id=%s age_ms=%d", vid, (time.monotonic()-entry["time"])*1000)
+                return entry["url"], entry["headers"]
         entry = _extract_source(vid, YT_DLP_COOKIE_FILE)
         _cache_put(vid, entry)
         return entry["url"], entry["headers"]
@@ -471,7 +486,7 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
         args = parse_qs(parsed.query)
         if path == "/health":
-            return self.json_reply(200, {"ok": True, "version": "0.2.41",
+            return self.json_reply(200, {"ok": True, "version": "0.2.42",
                                          "player_client": CLIENT,
                                          "api_auth": True})
         stream = VIDEO_RE.fullmatch(path)
@@ -752,6 +767,6 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     log_runtime_versions()
     LOG.info("audio_cookie_status %s", json.dumps(cookie_diagnostics(), sort_keys=True))
-    LOG.info("server_started version=0.2.41 player_client=%s player=%s",
+    LOG.info("server_started version=0.2.42 player_client=%s player=%s",
              CLIENT, PLAYER.entity_id)
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever(poll_interval=0.25)
