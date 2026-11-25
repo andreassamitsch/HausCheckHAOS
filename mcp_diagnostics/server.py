@@ -1,6 +1,8 @@
 """Fixed-purpose HA Ingress diagnostic service; no shell, arbitrary URL or command execution."""
 import ipaddress
 import json
+import os
+import pwd
 import socket
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -69,6 +71,14 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     options = json.loads(Path("/data/options.json").read_text())
+    # Supervisor writes root-only options; drop privileges before opening the listener.
+    if os.getuid() == 0:
+        account = pwd.getpwnam("diag")
+        os.setgroups([])
+        os.setgid(account.pw_gid)
+        os.setuid(account.pw_uid)
+    if os.getuid() == 0:
+        raise RuntimeError("Refusing to serve as root")
     server = HTTPServer(("0.0.0.0", 8099), Handler)
     server.target = validated_target(options.get("target_ip", ""))
     server.last_probe = -100.0
