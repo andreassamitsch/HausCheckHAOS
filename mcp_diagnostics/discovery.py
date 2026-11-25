@@ -4,6 +4,7 @@ import socket
 import struct
 import time
 import re
+from fingerprint import fingerprint
 
 # Conventional HTTP, media, Samsung control and developer service candidates.
 # A reachable port is not a verified protocol.
@@ -139,6 +140,7 @@ def mdns_discover(target):
     return {"target_replies": len(replies), "services": sorted(found)}
 
 def inventory(target):
-    return {"tcp": tcp_inventory(target), "ssdp": ssdp_discover(target),
+    tcp = tcp_inventory(target)
+    return {"tcp": tcp, "http": fingerprint(target, {r["port"] for r in tcp if r["status"] == "open"}), "ssdp": ssdp_discover(target),
             "mdns": mdns_discover(target),
             "note": "Negative discovery may reflect container multicast limitations."}

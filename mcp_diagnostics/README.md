@@ -11,3 +11,5 @@ Reference: https://contributors.home-assistant.io/apps/guides/ingress/
 At startup, when configured, the app performs one bounded service inventory and prints the port/status pairs and sanitized discovery service types to its Supervisor log (no target address). HA-MCP can retrieve logs without direct access to the Ingress server. Restart explicitly to repeat; no periodic scans.
 
 Version 0.1.3 adds a fixed 22-port inventory (four concurrent connections maximum), standard read-only SSDP and mDNS queries, and target-only reply filtering. No credentials, packet contents, instance names, private IPs or arbitrary commands are logged. Multicast queries are local; other devices' replies are discarded. Container networking can limit discovery. An open port is only a reachability observation.
+
+0.1.4 adds fixed read-only HTTP GET metadata checks on ports 8001, 8002, 8008, 8080 and 8443 when reachable. No credentials, redirects, write methods, raw response bodies or identifiers. Local TLS service classification does not verify certificates and is never used for authenticated traffic.
