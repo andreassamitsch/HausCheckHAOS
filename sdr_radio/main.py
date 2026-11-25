@@ -53,6 +53,8 @@ DEVICE = max(0, int(OPTIONS.get("device_index", 0)))
 PPM = int(OPTIONS.get("ppm", 0))
 GAIN = str(OPTIONS.get("gain", "auto")).strip().lower()
 RDS_ENABLED = bool(OPTIONS.get("rds_enabled", True))
+AUDIO_TARGET = max(-24., min(-12., float(OPTIONS.get("audio_target_dbfs", -18))))
+AUDIO_MAX_GAIN = max(0., min(20., float(OPTIONS.get("audio_max_gain_db", 15))))
 STREAM_BASE = str(OPTIONS.get("stream_base_url", "http://homeassistant.local:8099")).rstrip("/")
 PRESETS_PATH = DATA / "presets.json"
 
@@ -78,7 +80,7 @@ class Receiver:
 
     PCM_RATE = 48000
     PCM_FRAME_MS = 20
-    PCM_FRAME_BYTES = PCM_RATE * 2 * PCM_FRAME_MS // 1000
+    PCM_FRAME_BYTES = PCM_RATE * 2 * 2 * PCM_FRAME_MS // 1000
     SILENCE = b"\0" * PCM_FRAME_BYTES
 
     def __init__(self):
@@ -88,6 +90,7 @@ class Receiver:
         self.radio = None
         self.redsea = None
         self.pcm_converter = None
+        self.audio_metrics = {}
         self.encoder = None
         self.frequency = None
         self.scanning = False
@@ -113,6 +116,7 @@ class Receiver:
 
     def _running_locked(self):
         return bool(self.radio and self.radio.poll() is None and
+                    self.pcm_converter and self.pcm_converter.poll() is None and
                     self.encoder and self.encoder.poll() is None)
 
     def status(self):
@@ -121,6 +125,9 @@ class Receiver:
                 "running": self._running_locked(),
                 "frequency": self.frequency,
                 "rds_enabled": RDS_ENABLED,
+                "audio_channels": 2,
+                "audio_target_dbfs": AUDIO_TARGET,
+                **self.audio_metrics,
                 "scanning": self.scanning,
                 "scan_stations": list(self.scan_cache),
                 "scan_duration_ms": self.scan_duration_ms,
@@ -141,6 +148,16 @@ class Receiver:
             for line in iter(proc.stderr.readline, b""):
                 msg = line.decode("utf-8", errors="replace").strip()
                 if not msg:
+                    continue
+                if label == "PCM" and msg.startswith("AUDIO_METRICS "):
+                    try:
+                        values = json.loads(msg[len("AUDIO_METRICS "):])
+                        with self.lock:
+                            if generation == self.tuner_gen:
+                                self.audio_metrics = values
+                        print(msg, flush=True)
+                    except (ValueError, TypeError):
+                        pass
                     continue
                 with self.lock:
                     if generation == (self.tuner_gen if tuner else self.session_gen):
@@ -223,7 +240,7 @@ class Receiver:
                     packet = self.pcm_queue.get(timeout=0.01)
                 except queue.Empty:
                     packet = self.SILENCE
-                # A frame is always exactly 20ms / 1920 bytes at 48 kHz s16le.
+                # A frame is 20ms / 3840 bytes at 48 kHz stereo s16le.
                 if len(packet) != self.PCM_FRAME_BYTES:
                     packet = self.SILENCE
                 try:
@@ -297,6 +314,7 @@ class Receiver:
         self.radio = None
         self.redsea = None
         self.pcm_converter = None
+        self.audio_metrics = {}
         self.frequency = None
         self.last_rf_at = None
         while True:
@@ -337,8 +355,8 @@ class Receiver:
         if self.encoder is not None:
             self._stop_locked()
         ffmpeg = ["ffmpeg", "-hide_banner", "-nostdin", "-loglevel", "error",
-                  "-f", "s16le", "-ar", "48000", "-ac", "1", "-i", "pipe:0",
-                  "-c:a", "libmp3lame", "-b:a", "96k",
+                  "-f", "s16le", "-ar", "48000", "-ac", "2", "-i", "pipe:0",
+                  "-c:a", "libmp3lame", "-b:a", "160k",
                   "-write_xing", "0", "-flush_packets", "1",
                   "-f", "mp3", "pipe:1"]
         self.encoder = subprocess.Popen(ffmpeg, stdin=subprocess.PIPE,
@@ -372,10 +390,8 @@ class Receiver:
             # discards RDS. Redsea uses the same SINGLE SDR dongle.
             args = ["rtl_fm", "-d", str(DEVICE),
                     "-M", "fm", "-f", f"{freq:.2f}M",
-                    "-s", ("171k" if RDS_ENABLED else "240k"), "-A", "std",
+                    "-s", "171k", "-A", "std",
                     "-F", "9", "-l", "0", "-p", str(PPM)]
-            if not RDS_ENABLED:
-                args += ["-r", "48k", "-E", "deemp", "-E", "dc"]
             if GAIN != "auto":
                 try:
                     args += ["-g", str(float(GAIN))]
@@ -402,24 +418,22 @@ class Receiver:
                         stderr=subprocess.PIPE)
                     proc.stdout.close()
                     self.redsea = redsea
-                    converter = subprocess.Popen(
-                        ["ffmpeg", "-hide_banner", "-nostdin", "-loglevel", "error",
-                         "-f", "s16le", "-ar", "171000", "-ac", "1", "-i", "pipe:0",
-                         "-af", "lowpass=f=15500,lowpass=f=3183:p=1,aresample=48000",
-                         "-f", "s16le", "-ar", "48000", "-ac", "1", "pipe:1"],
-                        stdin=redsea.stdout, stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE)
-                    redsea.stdout.close()
-                    self.pcm_converter = converter
                     threading.Thread(target=self._rds_groups,
                                      args=(redsea, generation, freq),
                                      daemon=True).start()
-                    threading.Thread(target=self._log_pipe,
-                                     args=(converter, "PCM", generation, True),
-                                     daemon=True).start()
-                    capture = converter
+                    mpx = redsea.stdout
                 else:
-                    capture = proc
+                    mpx = proc.stdout
+                converter = subprocess.Popen(
+                    ["python3", "-u", "/app/stereo_decoder.py",
+                     str(AUDIO_TARGET), str(AUDIO_MAX_GAIN)],
+                    stdin=mpx, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                mpx.close()
+                self.pcm_converter = converter
+                threading.Thread(target=self._log_pipe,
+                                 args=(converter, "PCM", generation, True),
+                                 daemon=True).start()
+                capture = converter
                 threading.Thread(target=self._pcm_capture,
                                  args=(capture, generation), daemon=True).start()
             except OSError as exc:
@@ -974,7 +988,7 @@ class Handler(BaseHTTPRequestHandler):
                     data = q.get(timeout=0.5)
                 except queue.Empty:
                     continue
-                # Binary, unmasked server-to-client RFC6455 frame (1920 bytes).
+                # Binary, unmasked server-to-client RFC6455 frame (3840 bytes).
                 header = b"\x82\x7e" + struct.pack("!H", len(data))
                 self.connection.sendall(header + data)
         except (BrokenPipeError, ConnectionResetError, OSError):
