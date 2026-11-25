@@ -1,5 +1,12 @@
 # YouTube Music Live for Home Assistant OS
 
+## Release 0.2.42 – Faster music start and track changes (25 November 2026)
+
+- One background worker prepares a validated audio URL for the upcoming song during actual playback, or the retained song when the music panel is opened. Search and playlist browsing can prepare the first visible track. No receiver commands or full-song downloads in this worker.
+- Audio source cache is bounded to 15 entries and four minutes, checks URL expiry, and revalidates entries older than 85 seconds before use. Normal extraction remains the fallback. Background work has one preferred-client attempt and a private temporary cookie copy; session reload invalidates its results.
+- Cache the opened playlist (up to 200 tracks) for 90 seconds, avoiding another catalogue request when starting it. Opening a playlist explicitly refreshes it.
+- Logs source cache hits, prefetch successes and first audio bytes. Cast startup latency is unchanged; no claim of gapless playback.
+
 ## Release 0.2.41 – Retained playback session and seek (25 November 2026)
 
 - Stop, external stop, receiver change and queue completion retain the last title, upcoming songs, bounded history and position. Only explicit new music/playlist playback replaces the session (explicit queue-edit actions still work).
