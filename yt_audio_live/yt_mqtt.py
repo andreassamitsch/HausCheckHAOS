@@ -25,10 +25,14 @@ FEATURE_PLAY_MEDIA = 131072
 EXCLUDE = re.compile(r"youtube_music_live|kreativ_tonie|toniebox|this_device|uberall", re.I)
 
 class MusicMqttBridge:
-    def __init__(self, catalog_provider, player, resolve_source):
+    def __init__(self, catalog_provider, player, resolve_source, warm_source=None):
         self.catalog_provider = catalog_provider
         self.player = player
         self.resolve_source = resolve_source
+        self.warm_source = warm_source or (lambda vid: None)
+        self._next_warm_at = 0.0
+        self._next_warm_vid = None
+        self._playlist_cache = {}
         self.connected = False
         self.client = None
         self.lock = threading.RLock()
@@ -90,9 +94,31 @@ class MusicMqttBridge:
                 return t
         return {"video_id":vid,"title":vid,"artist":""}
 
+    def _playlist(self, catalog, pid, refresh=False):
+        # Reuse the list just opened by the user, instead of downloading it twice.
+        now = time.monotonic()
+        entry = self._playlist_cache.get(pid)
+        if not refresh and entry and entry[0] is catalog and now - entry[1] < 90:
+            LOG.info("playlist_cache_hit")
+            return entry[2]
+        data = catalog.playlist(pid, limit=200)
+        self._playlist_cache[pid] = (catalog, time.monotonic(), data)
+        while len(self._playlist_cache) > 5:
+            self._playlist_cache.pop(next(iter(self._playlist_cache)))
+        return data
+
+    def _warm(self, track):
+        if isinstance(track, dict) and re.fullmatch(r"[A-Za-z0-9_-]{11}", str(track.get("video_id") or "")):
+            self.warm_source(track["video_id"])
+
     def _handle(self, cmd):
         action=cmd.get("action")
         catalog=self.catalog_provider()
+        if action=="warm_current":
+            status = self.player.status()
+            if status.get("cast_state") == "stopped" and status.get("player_entity") == cmd.get("entity_id"):
+                self._warm(status.get("current"))
+            return
         if action=="library":
             lists=catalog.library_playlists(limit=100)
             self._set(playlists=lists[:100],last_action=action,last_error="")
@@ -106,12 +132,16 @@ class MusicMqttBridge:
             items=catalog.search(query,kind=kind,limit=22)
             self._set(search_query=query,search_kind=kind,search_results=items[:22],
                       last_action=action,last_error="")
+            if items and kind in ("songs","videos","radios"):
+                self._warm(items[0])
             return
         if action=="load_playlist":
             pid=str(cmd.get("playlist_id") or "")
-            data=catalog.playlist(pid,limit=100)
+            data=self._playlist(catalog,pid,refresh=True)
             self._set(list_playlist_id=pid,list_title=data["title"],list_tracks=data["tracks"][:55],
                       last_action=action,last_error="")
+            if data["tracks"]:
+                self._warm(data["tracks"][0])
             return
         if action=="radio_preview":
             vid=str(cmd.get("video_id") or "")
@@ -165,7 +195,7 @@ class MusicMqttBridge:
             vid=cmd.get("video_id")
             if not isinstance(vid,str) or not re.fullmatch(r"[A-Za-z0-9_-]{11}",vid):
                 raise ValueError("Ungültiger Titel")
-            tracks=catalog.playlist(pid,limit=200)["tracks"]
+            tracks=self._playlist(catalog,pid)["tracks"]
             index=cmd.get("index")
             if type(index) is not int or not 0<=index<len(tracks) or tracks[index]["video_id"]!=vid:
                 index=next((i for i,track in enumerate(tracks)
@@ -180,7 +210,7 @@ class MusicMqttBridge:
             self.player.start(current,rest=rest,radio=False)
         elif action=="start_playlist":
             self._prepare_output(cmd)
-            data=catalog.playlist(str(cmd.get("playlist_id") or ""),limit=200)
+            data=self._playlist(catalog,str(cmd.get("playlist_id") or ""))
             items=data["tracks"]
             if not items:
                 raise ValueError("Diese Playlist enthält keine verfügbaren Titel")
@@ -270,6 +300,17 @@ class MusicMqttBridge:
         current=self.player.status()
         info=self._current()
         current_track=current.get("current")
+        # Only warm the first upcoming song during real playback; never start it.
+        queue = current.get("queue") or []
+        if current_track and current.get("cast_state") == "playing" and queue:
+            candidate = queue[0]
+            vid = candidate.get("video_id")
+            now = time.monotonic()
+            if vid != self._next_warm_vid or now - self._next_warm_at >= 30:
+                self._next_warm_vid, self._next_warm_at = vid, now
+                self._warm(candidate)
+        else:
+            self._next_warm_vid = None
         state="playing" if current_track and current.get("cast_state")=="playing" else "idle"
         data={
           "state":state,
