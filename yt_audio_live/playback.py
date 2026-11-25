@@ -28,7 +28,7 @@ class Playback:
         self.lock = threading.RLock()
         self.current = None
         self.queue = deque()
-        self.history = deque(maxlen=50)
+        self.history = deque(maxlen=200)
         self.radio_enabled = False
         # Distinct from explicit Radio mode: use suggestions only after the
         # existing playlist/queue has naturally reached its end.
@@ -60,7 +60,7 @@ class Playback:
             if data.get("current"):
                 self.current = self._minimal_track(data["current"])
             self.queue = deque(self._minimal_track(t) for t in data.get("queue", [])[:200])
-            self.history = deque((self._minimal_track(t) for t in data.get("history", [])[:50]), maxlen=50)
+            self.history = deque((self._minimal_track(t) for t in data.get("history", [])[:200]), maxlen=200)
             self.radio_enabled = data.get("radio_enabled") is True
             self.shuffle_enabled = data.get("shuffle_enabled") is True
             if data.get("repeat_mode") in ("off", "all", "one"):
@@ -88,7 +88,7 @@ class Playback:
                 "history": list(self.history), "position": int(position),
                 "player_entity": self.entity_id, "radio_enabled": self.radio_enabled,
                 "shuffle_enabled": self.shuffle_enabled, "repeat_mode": self.repeat_mode}
-        signature = json.dumps({**data, "position": int(position) if self.last_player_state == "stopped" else int(position) // 30 * 30}, sort_keys=True)
+        signature = json.dumps({**data, "stopped": self.last_player_state == "stopped", "position": int(position) if self.last_player_state == "stopped" or self._deferred_seek else int(position) // 30 * 30}, sort_keys=True)
         if signature == self._session_signature:
             return
         try:
@@ -175,7 +175,7 @@ class Playback:
             self._persist_session(position)
             return {
                 "current": dict(self.current) if self.current else None,
-                "queue": [dict(x) for x in list(self.queue)[:50]],
+                "queue": [dict(x) for x in list(self.queue)[:200]],
                 "queue_length": len(self.queue),
                 "history": [dict(x) for x in self.history],
                 "history_length": len(self.history),
@@ -397,8 +397,8 @@ class Playback:
             else:
                 first = None
                 gen = None
-                # Never restart after a manual stop: stop/external_stop clears
-                # current and increments generation. This path is reached only
+                # Never restart after a manual stop: stop/external_stop disarms
+                # playback and increments generation. This path is reached only
                 # from a natural song end or an explicit "next" click.
                 seed = (previous["video_id"] if previous
                         and (self.radio_enabled or self.auto_continue_enabled)
@@ -522,7 +522,7 @@ class Playback:
             if first["video_id"] != video_id:
                 raise ValueError("History changed; reload the media browser")
             items.pop(index)
-            self.history = deque(items, maxlen=50)
+            self.history = deque(items, maxlen=200)
             self.queue.appendleft(self.current)
             self.current = first
             self.seen.append(first["video_id"])
@@ -667,7 +667,7 @@ class Playback:
         threading.Thread(target=work, name="radio-prefetch", daemon=True).start()
 
     def _poll(self):
-        """Only a real track end advances; user-initiated stop clears the app.
+        """Only a real track end advances; user-initiated stop disarms playback.
 
         Cast 'idle' is ambiguous: it also occurs on stop/disconnect, so we
         use the last reported playback position and the known song duration.
@@ -698,7 +698,7 @@ class Playback:
                 if previous_state == "starting" and not self.playing_seen and state in ("playing", "paused") and content_id and "/stream/" + expected + ".mp3" not in content_id and now - self.started_at < 25:
                     continue
                 # If Cast switches to another app/media, never take over its audio.
-                if state == "playing" and content_id and (
+                if state in ("playing", "paused") and content_id and (
                     "/stream/" + expected + ".mp3" not in content_id
                 ):
                     action = "source_changed"
