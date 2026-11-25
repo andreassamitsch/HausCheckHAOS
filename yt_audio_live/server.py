@@ -62,9 +62,10 @@ SOURCE_LOCK = threading.RLock()
 SOURCE_EPOCH = 0
 SOURCE_TTL = 240
 WARM_LOCK = threading.Lock()
-WARM_PENDING = None
+WARM_PENDING = []
 WARM_RUNNING = False
 WARM_LAST = {}
+WARM_INFLIGHT = {}
 STREAM_SLOTS = threading.BoundedSemaphore(3)
 
 class AudioSourceUnavailable(RuntimeError):
@@ -341,6 +342,11 @@ def _extract_source(vid, cookiefile, warm_only=False):
 
 def resolve_source(vid):
     checked_video_id(vid)
+    # Reuse an already-running preparation of this exact title, not another one.
+    with WARM_LOCK:
+        pending = WARM_INFLIGHT.get(vid)
+    if pending:
+        pending.wait(timeout=3)
     with SOURCE_LOCK:
         entry = _cache_get(vid)
         if entry:
@@ -366,17 +372,17 @@ def resolve_source(vid):
         return entry["url"], entry["headers"]
 
 
-def warm_source(vid):
-    """One low-priority candidate at a time. No Cast calls or full-song downloads."""
+def warm_source(vids):
+    """Prepare up to four candidates in order, using a single background worker."""
     global WARM_PENDING, WARM_RUNNING
-    checked_video_id(vid)
+    if isinstance(vids, str):
+        vids = [vids]
+    candidates = list(dict.fromkeys(checked_video_id(vid) for vid in vids))[:4]
     with WARM_LOCK:
-        # No queue of speculative network work; only the newest candidate matters.
         now = time.monotonic()
-        if now - WARM_LAST.get(vid, -1000) < 90:
-            return
-        WARM_PENDING = vid
-        if WARM_RUNNING:
+        WARM_PENDING = [v for v in candidates if v not in WARM_INFLIGHT
+                        and now - WARM_LAST.get(v, -1000) >= 90]
+        if WARM_RUNNING or not WARM_PENDING:
             return
         WARM_RUNNING = True
 
@@ -384,10 +390,10 @@ def warm_source(vid):
         global WARM_PENDING, WARM_RUNNING
         while True:
             with WARM_LOCK:
-                candidate, WARM_PENDING = WARM_PENDING, None
-                if not candidate:
+                if not WARM_PENDING:
                     WARM_RUNNING = False
                     return
+                candidate = WARM_PENDING.pop(0)
                 now = time.monotonic()
                 if now - WARM_LAST.get(candidate, -1000) < 90:
                     continue
@@ -395,16 +401,16 @@ def warm_source(vid):
                 for k in list(WARM_LAST):
                     if now - WARM_LAST[k] > 300:
                         del WARM_LAST[k]
+                event = threading.Event()
+                WARM_INFLIGHT[candidate] = event
             try:
                 with tempfile.TemporaryDirectory(prefix="yt-warm-") as tmp:
-                    # Avoid competing with foreground extraction or modifying its cookie jar.
                     if not SOURCE_LOCK.acquire(blocking=False):
                         with WARM_LOCK:
                             WARM_LAST.pop(candidate, None)
                         continue
                     try:
                         if _cache_get(candidate):
-                            # Retry later when the current cache entry approaches expiry.
                             with WARM_LOCK:
                                 WARM_LAST.pop(candidate, None)
                             continue
@@ -423,6 +429,10 @@ def warm_source(vid):
                             LOG.info("source_prefetched video_id=%s", candidate)
             except Exception as exc:
                 LOG.info("source_prefetch_skipped video_id=%s type=%s", candidate, type(exc).__name__)
+            finally:
+                with WARM_LOCK:
+                    WARM_INFLIGHT.pop(candidate, None)
+                    event.set()
     threading.Thread(target=worker, daemon=True, name="audio-source-prefetch").start()
 
 
@@ -486,7 +496,7 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
         args = parse_qs(parsed.query)
         if path == "/health":
-            return self.json_reply(200, {"ok": True, "version": "0.2.42",
+            return self.json_reply(200, {"ok": True, "version": "0.2.43",
                                          "player_client": CLIENT,
                                          "api_auth": True})
         stream = VIDEO_RE.fullmatch(path)
@@ -585,6 +595,9 @@ class Handler(BaseHTTPRequestHandler):
                     PLAYER.catalog = new_catalog
                     SOURCE_EPOCH += 1
                     SOURCE_CACHE.clear()
+                    with WARM_LOCK:
+                        WARM_PENDING.clear()
+                        WARM_LAST.clear()
                     YT_DLP_COOKIE_FILE = prepare_browser_cookies()
                 result = {"connected": CATALOG.authenticated,
                           "audio_browser_session": bool(YT_DLP_COOKIE_FILE)}
@@ -767,6 +780,6 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     log_runtime_versions()
     LOG.info("audio_cookie_status %s", json.dumps(cookie_diagnostics(), sort_keys=True))
-    LOG.info("server_started version=0.2.42 player_client=%s player=%s",
+    LOG.info("server_started version=0.2.43 player_client=%s player=%s",
              CLIENT, PLAYER.entity_id)
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever(poll_interval=0.25)
