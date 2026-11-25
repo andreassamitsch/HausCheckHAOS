@@ -708,9 +708,9 @@ class Playback:
                 # so the native HA transport controls remain visible.
                 # Existing post-playback stop detection is left unchanged.
                 awaiting_first_audio = (
-                    previous_state == "starting"
+                    previous_state in ("starting", "buffering")
                     and not self.playing_seen
-                    and state in ("idle", "off", "unknown")
+                    and state in ("idle", "off", "unknown", "buffering")
                     and now - self.started_at < 25
                 )
                 if action == "source_changed":
