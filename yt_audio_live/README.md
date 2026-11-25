@@ -1,5 +1,10 @@
 # YouTube Music Live for Home Assistant OS
 
+## Release 0.2.44 – Audio level calibration (25 November 2026)
+
+- Authenticated `GET /api/measure-audio?video_id=...&start=45&duration=25` decodes a bounded sample to null, reports RMS, peak and integrated sample LUFS, without playing audio or storing it. One probe at a time.
+- Authenticated `GET /api/audio-level` reads the persisted output gain; `POST /api/audio-level` accepts `gain_db` between -18 and 0. Changes take effect for new streams without restart and do not change receiver volume. Default is 0 dB for fresh installations. Fixed gain adds no normalization buffer; per-track normalization is not yet implemented.
+
 ## Release 0.2.43 – Four-track preparation and stable transitions (25 November 2026)
 
 - Prepare the next four tracks in queue order, with one background worker and bounded cache; on opening music, prepare the retained title and three following songs.
