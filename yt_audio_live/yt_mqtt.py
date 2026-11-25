@@ -124,6 +124,10 @@ class MusicMqttBridge:
             self.player.enqueue([track])
             self._set(last_action=action,last_error="")
             return
+        if action=="history_play":
+            self.player.play_history(cmd.get("index"),cmd.get("video_id"))
+            self._set(last_action=action,last_error="")
+            return
         if action=="queue_play":
             self.player.play_queued(cmd.get("index"),cmd.get("video_id"))
             self._set(last_action=action,last_error="")
@@ -189,6 +193,8 @@ class MusicMqttBridge:
             self.player.set_radio(cmd.get("enabled") is True)
         elif action=="stop":
             self.player.stop()
+        elif action=="seek":
+            self.player.seek(cmd.get("position"))
         elif action=="pause":
             self.player.pause()
         elif action=="resume":
@@ -268,7 +274,11 @@ class MusicMqttBridge:
         data={
           "state":state,
           "current":current_track,
-          "queue":(current.get("queue") or [])[:25],
+          "queue":(current.get("queue") or []),
+          "history":(current.get("history") or []),
+          "history_length":current.get("history_length",0),
+          "media_position":current.get("media_position",0),
+          "media_position_updated_at":current.get("media_position_updated_at"),
           "queue_length":current.get("queue_length",0),
           "player_state":current.get("cast_state"),
           "selected_output":current.get("player_entity"),
