@@ -7,6 +7,7 @@ import socket
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from discovery import inventory
 
 PORTS = (1516, 26101)
 ALLOWED_NETWORKS = tuple(ipaddress.ip_network(n) for n in ("10.0.0.0/8", "192.168.0.0/16", "172.16.0.0/12"))
@@ -84,7 +85,7 @@ def main():
     server.last_probe = -100.0
     print("MCP Diagnostics started; target configured:", bool(server.target), flush=True)
     if server.target:
-        print(json.dumps({"startup_tcp_check": probe(server.target)}), flush=True)
+        print(json.dumps({"startup_service_inventory": inventory(server.target)}), flush=True)
         server.last_probe = time.monotonic()
     server.serve_forever()
 

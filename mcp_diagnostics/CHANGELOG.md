@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.3
+- Add bounded fixed-port inventory and SSDP/mDNS discovery at startup with target-only reply filtering; preserve Ingress restrictions and no shell access.
+
 ## 0.1.2
 - Run fixed connectivity check once at configured startup; publish results via existing authenticated Supervisor logs. Retain Ingress source restriction.
 
