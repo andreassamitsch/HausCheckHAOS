@@ -1,5 +1,13 @@
 # YouTube Music Live for Home Assistant OS
 
+## Release 0.2.40 – Safe audio diagnostics (25 November 2026)
+
+- Logs classified yt-dlp failure reasons and HTTP codes for each extraction strategy; never writes upstream URLs, cookie values or tokens.
+- Records yt-dlp, EJS, PO-token plugin, YTMusic API, Deno and Node runtime versions on startup.
+- Reports provider startup, classified failure events and process exit codes instead of discarding its output.
+- Authenticated `GET /api/diagnostics` checks cookie expiry counts and live library access without playback. Existing `GET /api/probe?video_id=...` checks audio availability without casting.
+- No change to playback strategies, receiver volume, queue logic or saved Google login. This is a diagnostic release, not a confirmed fix for the extraction failure.
+
 ## Release 0.2.39 – Default-on Automatic Continuation (23 November 2026)
 
 - **Automatisch fortsetzen** is a separate, default-enabled and persistently
