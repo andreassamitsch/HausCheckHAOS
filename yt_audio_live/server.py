@@ -1,5 +1,6 @@
 """Home Assistant OS YouTube Music live streaming and queue API."""
 import hashlib
+import importlib.metadata
 import hmac
 import ipaddress
 import json
@@ -62,6 +63,87 @@ class AudioSourceUnavailable(RuntimeError):
     """YouTube audio source could not be resolved."""
 
 
+def diagnostic_reason(message):
+    """Return only fixed labels and HTTP codes; never output upstream text."""
+    value = str(message).lower()
+    reasons = []
+    checks = (
+        ("login_required", ("sign in", "log in", "login required", "login_required")),
+        ("bot_challenge", ("not a bot", "confirm you're not", "confirm you’re not", "captcha")),
+        ("cookies_expired_or_invalid", ("cookies are no longer valid", "cookies have expired", "cookie has expired", "invalid cookies", "cookie rotation", "cookies are likely")),
+        ("client_rejected", ("not supported on this client", "client is not supported", "client does not support", "does not support cookies", "not available on this app")),
+        ("no_formats", ("requested format is not available", "no video formats", "no formats", "only images are available")),
+        ("content_unavailable", ("video unavailable", "video is unavailable", "private video", "members-only", "not available in your country", "age-restricted")),
+        ("pot_missing", ("no po token", "po token was not provided", "missing po token", "requires a po token", "required po token")),
+        ("pot_generation_failed", ("failed to generate", "unable to generate", "could not generate", "error generating", "no po token provider", "pot provider failed")),
+        ("js_challenge_failed", ("signature extraction failed", "nsig extraction failed", "n challenge", "signature challenge", "javascript challenge", "no supported javascript runtime", "challenge solving failed")),
+        ("network_timeout", ("timed out", "timeout")),
+        ("connection_refused", ("connection refused", "econnrefused")),
+        ("tls_error", ("certificate verify failed", "ssl error", "tls error")),
+        ("dns_error", ("name resolution", "getaddrinfo", "enotfound")),
+        ("rate_limited", ("too many requests", "rate limit")),
+        ("provider_unreachable", ("unable to connect", "failed to connect", "connection reset", "econnreset")),
+        ("provider_dependency", ("cannot find module", "module not found", "err_module_not_found", "not defined", "not a function")),
+    )
+    for label, patterns in checks:
+        if any(pattern in value for pattern in patterns):
+            reasons.append(label)
+    for code in re.findall(r"\b(?:http(?: error| status)?[ :]+|status(?: code)?[ :=]+)([45][0-9]{2})\b", value):
+        if "http_" + code not in reasons:
+            reasons.append("http_" + code)
+    if not reasons and ("po token" in value or "po_token" in value):
+        reasons.append("pot_related")
+    return ",".join(reasons) or "unclassified"
+
+
+def log_runtime_versions():
+    versions = {}
+    for package in ("yt-dlp", "yt-dlp-ejs", "bgutil-ytdlp-pot-provider", "ytmusicapi"):
+        try:
+            v = importlib.metadata.version(package)
+            versions[package] = v if re.fullmatch(r"[A-Za-z0-9.+_-]{1,60}", v) else "unknown"
+        except importlib.metadata.PackageNotFoundError:
+            versions[package] = "not_installed"
+    for runtime in ("deno", "node"):
+        try:
+            out = subprocess.run([runtime, "--version"], capture_output=True,
+                                 text=True, timeout=5, check=True).stdout.splitlines()
+            match = re.search(r"\b(?:v)?([0-9]+\.[0-9]+\.[0-9]+)\b", out[0] if out else "")
+            versions[runtime] = match.group(1) if match else "unknown"
+        except (OSError, subprocess.SubprocessError):
+            versions[runtime] = "not_available"
+    LOG.info("audio_runtime_versions %s", json.dumps(versions, sort_keys=True))
+
+
+def cookie_diagnostics():
+    result = {"catalog_authenticated": bool(CATALOG.authenticated),
+              "audio_cookie_file": bool(YT_DLP_COOKIE_FILE),
+              "cookie_count": 0, "expired_count": 0, "session_count": 0,
+              "auth_cookie_present": False}
+    if YT_DLP_COOKIE_FILE:
+        try:
+            with open(YT_DLP_COOKIE_FILE, encoding="utf-8") as stream:
+                for line in stream:
+                    if line.startswith("#HttpOnly_"):
+                        line = line[len("#HttpOnly_"):]
+                    if line.startswith("#"):
+                        continue
+                    fields = line.rstrip("\r\n").split("\t")
+                    if len(fields) != 7:
+                        continue
+                    result["cookie_count"] += 1
+                    expiry = int(fields[4])
+                    if expiry == 0:
+                        result["session_count"] += 1
+                    elif expiry <= time.time():
+                        result["expired_count"] += 1
+                    if fields[5] in ("SAPISID", "__Secure-1PAPISID", "__Secure-3PAPISID", "SID") and (expiry == 0 or expiry > time.time()):
+                        result["auth_cookie_present"] = True
+        except (OSError, ValueError):
+            result["cookie_read_error"] = True
+    return result
+
+
 class ExtractionDiagnostics:
     """Safe yt-dlp diagnostics: never log audio URLs, cookies or token values."""
 
@@ -78,11 +160,12 @@ class ExtractionDiagnostics:
         self.debug(message)
 
     def warning(self, message):
-        if "PO Token" in str(message) or "po_token" in str(message):
-            LOG.warning("youtube_pot_warning")
+        reason = diagnostic_reason(message)
+        if reason != "unclassified":
+            LOG.warning("youtube_extraction_warning reason=%s", reason)
 
     def error(self, message):
-        LOG.warning("youtube_extraction_error")
+        LOG.warning("youtube_extraction_error reason=%s", diagnostic_reason(message))
 
 
 
@@ -187,6 +270,7 @@ def resolve_source(vid):
                 continue
             strategies.append((label, None if label == "auto" else [label]))
         last_error = None
+        LOG.info("audio_probe_start video_id=%s cookie_status=%s", vid, json.dumps(cookie_diagnostics(), sort_keys=True))
         for label, clients in strategies:
             options = dict(base)
             if clients is not None:
@@ -229,8 +313,8 @@ def resolve_source(vid):
             except (yt_dlp.utils.DownloadError, RuntimeError, HTTPError,
                     yt_dlp.utils.ExtractorError) as exc:
                 last_error = exc
-                LOG.warning("source_strategy_unavailable video_id=%s strategy=%s type=%s",
-                            vid, label, type(exc).__name__)
+                LOG.warning("source_strategy_unavailable video_id=%s strategy=%s type=%s reason=%s",
+                            vid, label, type(exc).__name__, diagnostic_reason(exc))
         raise AudioSourceUnavailable(
             "Kein abspielbarer YouTube-Audiostream gefunden. "
             "Bei YouTube kann ein PO-Token erforderlich sein."
@@ -297,7 +381,7 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
         args = parse_qs(parsed.query)
         if path == "/health":
-            return self.json_reply(200, {"ok": True, "version": "0.2.39",
+            return self.json_reply(200, {"ok": True, "version": "0.2.40",
                                          "player_client": CLIENT,
                                          "api_auth": True})
         stream = VIDEO_RE.fullmatch(path)
@@ -326,6 +410,13 @@ class Handler(BaseHTTPRequestHandler):
                 result = {"ytmusic_account_connected": CATALOG.authenticated,
                           "audio_browser_session": bool(YT_DLP_COOKIE_FILE),
                           "browser_login_available": True}
+            elif path == "/api/diagnostics":
+                result = cookie_diagnostics()
+                try:
+                    result["playlist_access_verified"] = bool(CATALOG.library_playlists(1))
+                except Exception as exc:
+                    result["playlist_access_verified"] = False
+                    result["catalog_error_reason"] = diagnostic_reason(exc)
             elif path == "/api/search":
                 result = {"results": CATALOG.search(
                     (args.get("q") or [""])[0],
@@ -568,6 +659,8 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    LOG.info("server_started version=0.2.39 player_client=%s player=%s",
+    log_runtime_versions()
+    LOG.info("audio_cookie_status %s", json.dumps(cookie_diagnostics(), sort_keys=True))
+    LOG.info("server_started version=0.2.40 player_client=%s player=%s",
              CLIENT, PLAYER.entity_id)
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever(poll_interval=0.25)
