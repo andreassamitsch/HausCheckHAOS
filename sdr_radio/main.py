@@ -798,8 +798,8 @@ class Handler(BaseHTTPRequestHandler):
                                      "frequency": state["frequency"]})
         if path == "/stream.mp3":
             return self.stream()
-        if path == "/pcm" and not self.public_stream_only:
-            return self.pcm_websocket()
+        if path in ("/pcm", "/pcm-stereo") and not self.public_stream_only:
+            return self.pcm_websocket(stereo=path == "/pcm-stereo")
         if self.public_stream_only:
             return self.reply(404, {"error": "Nicht verfügbar"})
         if path in ("/", "/index.html"):
@@ -959,7 +959,7 @@ class Handler(BaseHTTPRequestHandler):
                 radio.stream_history.append(record)
             print("MP3-Stream beendet: " + json.dumps(record, ensure_ascii=False), flush=True)
 
-    def pcm_websocket(self):
+    def pcm_websocket(self, stereo=False):
         """20ms PCM frames over authenticated HA Ingress, never public LAN port."""
         key = self.headers.get("Sec-WebSocket-Key", "")
         if self.headers.get("Upgrade", "").lower() != "websocket" or not key:
@@ -988,7 +988,11 @@ class Handler(BaseHTTPRequestHandler):
                     data = q.get(timeout=0.5)
                 except queue.Empty:
                     continue
-                # Binary, unmasked server-to-client RFC6455 frame (3840 bytes).
+                if not stereo:
+                    # Keep the old mono endpoint compatible with cached browsers.
+                    samples = struct.unpack("<1920h", data)
+                    data = struct.pack("<960h", *((samples[i]+samples[i+1])//2 for i in range(0,1920,2)))
+                # Binary, unmasked server-to-client RFC6455 frame.
                 header = b"\x82\x7e" + struct.pack("!H", len(data))
                 self.connection.sendall(header + data)
         except (BrokenPipeError, ConnectionResetError, OSError):
