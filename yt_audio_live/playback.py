@@ -15,6 +15,7 @@ LOG = logging.getLogger("yt_audio_live.playback")
 SUPERVISOR_TOKEN = os.environ.get("SUPERVISOR_TOKEN", "")
 HA_API = "http://supervisor/core/api"
 AUTOCONTINUE_FILE = Path("/data/ytmusic-playback-preferences.json")
+SESSION_FILE = Path("/data/ytmusic-last-queue.json")
 
 
 class Playback:
@@ -46,8 +47,59 @@ class Playback:
         self.position_seen = False
         self.position_observed_monotonic = 0.0
         self.position_updated_at = time.time()
+        self._session_signature = None
+        self._deferred_seek = False
+        self._restore_session()
         self._poller = threading.Thread(target=self._poll, name="cast-monitor", daemon=True)
         self._poller.start()
+
+    def _restore_session(self):
+        """Restore metadata only. Never issue a receiver command at startup."""
+        try:
+            data = json.loads(SESSION_FILE.read_text(encoding="utf-8"))
+            if data.get("current"):
+                self.current = self._minimal_track(data["current"])
+            self.queue = deque(self._minimal_track(t) for t in data.get("queue", [])[:200])
+            self.history = deque((self._minimal_track(t) for t in data.get("history", [])[:50]), maxlen=50)
+            self.radio_enabled = data.get("radio_enabled") is True
+            self.shuffle_enabled = data.get("shuffle_enabled") is True
+            if data.get("repeat_mode") in ("off", "all", "one"):
+                self.repeat_mode = data["repeat_mode"]
+            saved_output = data.get("player_entity")
+            if isinstance(saved_output, str) and saved_output.startswith("media_player."):
+                self.entity_id = saved_output
+            self.seen = deque([t["video_id"] for t in self.history] + ([self.current["video_id"]] if self.current else []), maxlen=250)
+            if self.current:
+                duration = self.current.get("duration_seconds") or 86400
+                self._reset_position(max(0, min(int(data.get("position", 0)), duration)))
+                self.last_player_state = "stopped"
+                LOG.info("last_queue_restored upcoming=%d history=%d autoplay=0", len(self.queue), len(self.history))
+        except FileNotFoundError:
+            pass
+        except (OSError, ValueError, TypeError, AttributeError, KeyError, OverflowError) as exc:
+            LOG.warning("last_queue_restore_failed type=%s", type(exc).__name__)
+            self.current = None
+            self.queue.clear()
+            self.history.clear()
+
+    def _persist_session(self, position):
+        """Atomic, private checkpoint; do not write on every polling tick."""
+        data = {"current": self.current, "queue": list(self.queue),
+                "history": list(self.history), "position": int(position),
+                "player_entity": self.entity_id, "radio_enabled": self.radio_enabled,
+                "shuffle_enabled": self.shuffle_enabled, "repeat_mode": self.repeat_mode}
+        signature = json.dumps({**data, "position": int(position) if self.last_player_state == "stopped" else int(position) // 30 * 30}, sort_keys=True)
+        if signature == self._session_signature:
+            return
+        try:
+            tmp = SESSION_FILE.with_suffix(".tmp")
+            with open(tmp, "w", encoding="utf-8") as file:
+                os.chmod(tmp, 0o600)
+                json.dump(data, file, ensure_ascii=False)
+            os.replace(tmp, SESSION_FILE)
+            self._session_signature = signature
+        except OSError as exc:
+            LOG.warning("last_queue_save_failed type=%s", type(exc).__name__)
 
     @staticmethod
     def _load_auto_continue_preference():
@@ -120,6 +172,7 @@ class Playback:
             duration = (self.current or {}).get("duration_seconds")
             if isinstance(duration, (int, float)) and duration > 0:
                 position = min(float(duration), position)
+            self._persist_session(position)
             return {
                 "current": dict(self.current) if self.current else None,
                 "queue": [dict(x) for x in list(self.queue)[:50]],
@@ -197,7 +250,7 @@ class Playback:
         if not isinstance(entity_id, str) or not entity_id.startswith("media_player."):
             raise ValueError("Invalid media_player")
         with self.lock:
-            if self.current is not None and entity_id != self.entity_id:
+            if self.current is not None and self.last_player_state != "stopped" and entity_id != self.entity_id:
                 raise ValueError("Stop current playback before changing output")
             self.entity_id = entity_id
         LOG.info("output_selected entity_id=%s autoplay=0", entity_id)
@@ -228,6 +281,7 @@ class Playback:
             self.generation += 1
             gen = self.generation
             self.queue = deque(rest)
+            self._deferred_seek = False
             self.history.clear()
             self.current = first
             self.seen = deque([first["video_id"]], maxlen=250)
@@ -246,7 +300,8 @@ class Playback:
         except Exception as exc:
             with self.lock:
                 if self.generation == gen:
-                    self.current = None
+                    self.last_player_state = "stopped"
+                    self.playing_seen = False
                     self.last_error = str(exc)[:300]
             raise
         self._prefetch_radio()
@@ -264,6 +319,7 @@ class Playback:
                 self.last_player_state = "starting"
 
     def _reset_position(self, offset=0):
+        self._deferred_seek = False
         self.seek_offset = offset
         self.position = float(offset)
         self.position_seen = False
@@ -271,20 +327,24 @@ class Playback:
         self.position_updated_at = time.time()
 
     def _clear_playback(self, reason="external_stop"):
-        """Stop our queue without issuing another Cast command."""
+        """Disarm auto-next, retain the last queue and playback position."""
         with self.lock:
             had_session = self.current is not None or bool(self.queue)
+            if self.current and self.last_player_state == "playing" and self.playing_seen:
+                self.position += max(0.0, time.monotonic() - self.position_observed_monotonic)
+            duration = (self.current or {}).get("duration_seconds")
+            if isinstance(duration, int) and duration > 0:
+                self.position = min(float(duration), self.position)
             self.generation += 1
-            self.current = None
-            self.queue.clear()
-            self.history.clear()
-            self.radio_enabled = False
+            self._deferred_seek = False
             self.playing_seen = False
-            self.last_player_state = "idle"
-            self._reset_position()
+            self.last_player_state = "stopped"
+            self.position_observed_monotonic = time.monotonic()
+            self.position_updated_at = time.time()
+            result = self.status()
         if had_session:
-            LOG.info("queue_stopped reason=%s", reason)
-        return self.status()
+            LOG.info("queue_retained reason=%s upcoming=%d autoplay=0", reason, result["queue_length"])
+        return result
 
     def external_stop(self):
         """An outside media_stop/turn_off must never be treated as natural end."""
@@ -294,6 +354,9 @@ class Playback:
         with self.lock:
             if expected_generation is not None and self.generation != expected_generation:
                 return self.status()
+            if reason == "ended" and self.last_player_state == "stopped":
+                return self.status()
+            self._deferred_seek = False
             previous = self.current
             old_generation = self.generation
             if reason=="ended" and previous and self.repeat_mode=="one":
@@ -391,7 +454,8 @@ class Playback:
                       first["video_id"], reason, type(exc).__name__)
             with self.lock:
                 if self.generation == gen:
-                    self.current = None
+                    self.last_player_state = "stopped"
+                    self.playing_seen = False
                     self.last_error = str(exc)[:300]
             raise
         self._prefetch_radio()
@@ -474,7 +538,7 @@ class Playback:
 
     def stop(self):
         with self.lock:
-            active = self.current is not None
+            active = self.current is not None and self.last_player_state != "stopped"
         result = self._clear_playback("api_stop")
         if active:
             self._service("media_stop")
@@ -496,6 +560,10 @@ class Playback:
                 raise ValueError("Song duration is unavailable")
             if position < 0 or position >= duration:
                 raise ValueError("Seek position outside song duration")
+            if self.last_player_state in ("stopped", "paused"):
+                self._reset_position(position)
+                self._deferred_seek = self.last_player_state == "paused"
+                return self.status()
             self.generation += 1
             generation = self.generation
             self.playing_seen = False
@@ -507,7 +575,7 @@ class Playback:
 
     def pause(self):
         with self.lock:
-            if not self.current:
+            if not self.current or self.last_player_state == "stopped":
                 raise ValueError("No active song to pause")
         self._service("media_pause")
         return self.status()
@@ -516,7 +584,31 @@ class Playback:
         with self.lock:
             if not self.current:
                 raise ValueError("No active song to resume")
-        self._service("media_play")
+            reopen = self.last_player_state == "stopped" or self._deferred_seek
+            if reopen:
+                track = self.current
+                offset = int(self.position)
+                duration = track.get("duration_seconds")
+                if isinstance(duration, int) and offset >= duration - 1:
+                    offset = 0
+                self._deferred_seek = False
+                self.generation += 1
+                generation = self.generation
+                self.playing_seen = False
+                self.last_player_state = "starting"
+                self.started_at = time.monotonic()
+                self._reset_position(offset)
+        if reopen:
+            try:
+                self._play(track, generation, start_at=offset)
+            except Exception:
+                with self.lock:
+                    if generation == self.generation:
+                        self.last_player_state = "stopped"
+                        self.playing_seen = False
+                raise
+        else:
+            self._service("media_play")
         return self.status()
 
     def set_radio(self, enabled=True, seed=None):
@@ -546,7 +638,7 @@ class Playback:
 
     def _prefetch_radio(self, seed=None):
         with self.lock:
-            if not self.radio_enabled or not self.current or self.radio_prefetching:
+            if not self.radio_enabled or not self.current or self.radio_prefetching or self.last_player_state == "stopped":
                 return
             if len(self.queue) >= 6:
                 return
@@ -583,7 +675,7 @@ class Playback:
         while True:
             time.sleep(2.5)
             with self.lock:
-                if not self.current:
+                if not self.current or self.last_player_state == "stopped":
                     continue
                 generation = self.generation
             try:
@@ -603,8 +695,10 @@ class Playback:
                 previous_state = self.last_player_state
                 expected = self.current["video_id"]
                 content_id = str(attrs.get("media_content_id") or "")
+                if previous_state == "starting" and not self.playing_seen and state in ("playing", "paused") and content_id and "/stream/" + expected + ".mp3" not in content_id and now - self.started_at < 25:
+                    continue
                 # If Cast switches to another app/media, never take over its audio.
-                if state == "playing" and self.playing_seen and content_id and (
+                if state == "playing" and content_id and (
                     "/stream/" + expected + ".mp3" not in content_id
                 ):
                     action = "source_changed"
@@ -619,9 +713,12 @@ class Playback:
                     and state in ("idle", "off", "unknown")
                     and now - self.started_at < 25
                 )
+                if action == "source_changed":
+                    self._clear_playback(action)
+                    continue
                 self.last_player_state = "starting" if awaiting_first_audio else state
                 raw_position = attrs.get("media_position")
-                if state in ("playing", "paused"):
+                if state in ("playing", "paused") and not (state == "paused" and self._deferred_seek):
                     # Advance our own clock even when Cast does not expose
                     # a position, or repeatedly sends a stale zero. Pause
                     # freezes the clock; seeking resets the offset first.
