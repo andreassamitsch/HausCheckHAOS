@@ -22,7 +22,7 @@ COPY --from=token-provider-build /opt/bgutil/server /opt/bgutil/server
 
 WORKDIR /app
 COPY server.py music_catalog.py playback.py auth_ui.py mobile_preview.py yt_mqtt.py login_browser.py run.sh /app/
-COPY test_playback_session.py /app/
-RUN python -m unittest -q test_playback_session && chmod +x /app/run.sh
+COPY test_playback_session.py audio_level.py test_audio_level.py /app/
+RUN python -m unittest -q test_playback_session test_audio_level && chmod +x /app/run.sh
 EXPOSE 8765 8766
 CMD ["/app/run.sh"]
