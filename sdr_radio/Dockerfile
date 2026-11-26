@@ -19,8 +19,8 @@ ENV PATH="/opt/sdr-venv/bin:$PATH"
 COPY --from=redsea-builder /src/redsea/build/redsea /usr/local/bin/redsea
 WORKDIR /app
 COPY main.py radio_metadata.py sdr_scan.py rds_state.py rtr_catalog.py mqtt_bridge.py index.html /app/
-COPY stereo_decoder.py test_stereo_decoder.py /app/
-RUN python3 -m unittest -q test_stereo_decoder && python3 -m py_compile main.py
+COPY stereo_decoder.py test_stereo_decoder.py test_live_stream.py /app/
+RUN python3 -m unittest -q test_stereo_decoder test_live_stream && python3 -m py_compile main.py
 COPY run.sh /run.sh
 RUN chmod 755 /run.sh
 CMD ["/run.sh"]

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.4 – 2026-11-26
+- HTTP/1.1 Chunked als Standard für Live-MP3; HTTP/1.0/Close als Kompatibilitätsprofil. Stereo bleibt bei 160 kbit/s, ICY-Bitrate korrigiert.
+- Beide Startwege nutzen dieselbe explizite LIVE-Kennzeichnung und sitzungsbezogene Stream-Überwachung.
+- MQTT meldet Wiedergabe nur bei passenden, frischen Stream-Daten; getrennte Diagnose für Abbruch und Wiederverbindung.
+- Samsung-Cast: höchstens drei Wiederverbindungen pro zehn Minuten, nur nach tatsächlichem Transportabbruch und weiterhin gleicher aktiver Cast-Session/Quelle. Manueller Stopp, andere Eingänge und YouTube Music sperren Wiederverbindung.
+- Regressionstests für Chunk-Framing, Status und Stop-/Quellenwechsel-Guards.
+
+## 0.5.3 – Stereo
+- Stereo-MP3 mit 160 kbit/s und Audiopegelregelung.
+
 ## 0.5.2 – 2026-11-22
 - Google-Cast-Wiedergabe deklariert MP3-Radio als `audio/mpeg` und ausdrücklich `stream_type=LIVE` statt als endlichen Musik-Titel.
 - MP3-HTTP-Stream verwendet weiterhin bewusst *keinen* Content-Length-Header und trägt die Radio-Bitrate als ICY-Header.

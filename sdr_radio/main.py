@@ -8,6 +8,7 @@ import json
 import base64
 import hashlib
 import socket
+import secrets
 import struct
 import os
 import queue
@@ -20,7 +21,7 @@ import urllib.request
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, parse_qs
 from radio_metadata import Metadata, stations_search
 from sdr_scan import scan_spectrum, find_next
 from rds_state import RDSState
@@ -57,6 +58,11 @@ AUDIO_TARGET = max(-24., min(-12., float(OPTIONS.get("audio_target_dbfs", -18)))
 AUDIO_MAX_GAIN = max(0., min(20., float(OPTIONS.get("audio_max_gain_db", 15))))
 STREAM_BASE = str(OPTIONS.get("stream_base_url", "http://homeassistant.local:8099")).rstrip("/")
 PRESETS_PATH = DATA / "presets.json"
+MP3_BITRATE = 160
+STREAM_HTTP_PROFILE = str(OPTIONS.get("stream_http_profile", "chunked"))
+SOUNDBAR_CAST = "media_player.ultra_slim_soundbar"
+SOUNDBAR_LOCAL = "media_player.wohnzimmer_ultra_slim_soundbar"
+YT_STATUS = "sensor.youtube_music_live_youtube_music_live"
 
 
 def checked_frequency(value):
@@ -101,6 +107,8 @@ class Receiver:
         self.subscribers = set()
         self.pcm_subscribers = set()
         self.stream_history = deque(maxlen=16)
+        self.stream_clients = {}
+        self.stream_events = deque(maxlen=32)
         self.pcm_queue = queue.Queue(maxsize=8)
         self.errors = deque(maxlen=30)
         self.last_error = ""
@@ -133,6 +141,8 @@ class Receiver:
                 "scan_duration_ms": self.scan_duration_ms,
                 "listeners": len(self.subscribers) + len(self.pcm_subscribers),
                 "recent_streams": list(self.stream_history)[-6:],
+                "stream_http_profile": STREAM_HTTP_PROFILE,
+                "mp3_bitrate": MP3_BITRATE,
                 "pcm_listeners": len(self.pcm_subscribers),
                 "stream_url": STREAM_BASE + "/stream.mp3",
                 "last_error": self.last_error,
@@ -339,6 +349,7 @@ class Receiver:
                 pass
             self._terminate(proc)
         self.subscribers.clear()
+        self.stream_clients.clear()
         self.pcm_subscribers.clear()
         self.total_audio_bytes = 0
         self.last_data_at = None
@@ -356,7 +367,7 @@ class Receiver:
             self._stop_locked()
         ffmpeg = ["ffmpeg", "-hide_banner", "-nostdin", "-loglevel", "error",
                   "-f", "s16le", "-ar", "48000", "-ac", "2", "-i", "pipe:0",
-                  "-c:a", "libmp3lame", "-b:a", "160k",
+                  "-c:a", "libmp3lame", "-b:a", str(MP3_BITRATE) + "k",
                   "-write_xing", "0", "-flush_packets", "1",
                   "-f", "mp3", "pipe:1"]
         self.encoder = subprocess.Popen(ffmpeg, stdin=subprocess.PIPE,
@@ -602,27 +613,45 @@ def ha_request(path, payload=None):
 
 
 class RadioOutput:
-    """Selection and manual output ownership. Never auto-resume a stopped player."""
+    """Explicit session ownership and bounded recovery after transport loss."""
+    START_GRACE = 15
+    DROP_GRACE = 12
+    RETRY_WINDOW = 600
+    RETRY_LIMIT = 3
+
     def __init__(self):
         self.lock = threading.RLock()
         data = load_json(DATA / "output.json", {})
-        output = str(data.get("entity_id") or "media_player.ultra_slim_soundbar")
-        self.selected = output if output.startswith("media_player.") else "media_player.ultra_slim_soundbar"
+        selected = str(data.get("entity_id") or SOUNDBAR_CAST)
+        self.selected = selected if selected.startswith("media_player.") else SOUNDBAR_CAST
         self.active = None
+        self.session = None
         self.last_play_at = 0.0
         self.last_frequency = float(data.get("last_frequency") or 99.7)
+        self.seen = False
+        self.recovering = False
+        self.retries = deque()
+        self.status_reason = ""
 
     def save(self):
         with self.lock:
-            save_json(DATA / "output.json",
-                      {"entity_id": self.selected,
-                       "last_frequency": self.last_frequency})
+            save_json(DATA / "output.json", {"entity_id": self.selected,
+                      "last_frequency": self.last_frequency})
+
+    def _disarm(self, reason):
+        self.active = None
+        self.session = None
+        self.seen = False
+        self.recovering = False
+        self.status_reason = reason
 
     def select(self, entity):
         entity = str(entity or "")
         if not entity.startswith("media_player.") or len(entity) > 140:
             raise ValueError("Ungültiges Ausgabegerät.")
         with self.lock:
+            if entity != self.selected:
+                self._disarm("Ausgabegerät gewechselt")
             self.selected = entity
             self.save()
 
@@ -636,70 +665,141 @@ class RadioOutput:
 
     def snapshot(self):
         with self.lock:
-            return {"selected_output": self.selected,
-                    "active_output": self.active,
+            return {"selected_output": self.selected, "active_output": self.active,
                     "last_frequency": self.last_frequency}
 
-    def output_state(self):
-        selected = self.selected
-        try:
-            player = ha_request("states/" + selected)
-            state = str(player.get("state", "unknown"))
-            volume = player.get("attributes", {}).get("volume_level")
-            media_id = str(player.get("attributes", {}).get("media_content_id") or "")
-        except (RuntimeError, KeyError, ValueError):
-            state, volume, media_id = "unavailable", None, ""
-        # A physical stop is final. There is no watchdog/resume playback.
-        with self.lock:
-            playing = state in ("playing", "buffering")
-            if self.active == selected and state in ("idle", "off", "paused", "unavailable"):
-                # Give a slow speaker time to wake after an explicit user Play.
-                # Once running, an external Stop stays stopped (never auto-play).
-                if time.monotonic() - self.last_play_at > 12:
-                    self.active = None
-            active = self.active == selected and playing
-        return {"output_state": state, "output_volume": volume,
-                "output_playing": active,
-                "output_media_id": media_id}
+    @staticmethod
+    def _url(session):
+        return STREAM_BASE + "/stream.mp3?session=" + session
 
-    def play(self, target):
-        if target:
-            self.select(target)
-        with self.lock:
-            selected = self.selected
-            previous = self.active
-            preferred_frequency = self.last_frequency
-        state = radio.status()
-        if not state["running"]:
-            radio.tune(preferred_frequency)
-            metadata.set_frequency(preferred_frequency)
-        if previous and previous != selected:
-            try:
-                ha_request("services/media_player/media_stop", {"entity_id": previous})
-            except RuntimeError:
-                pass
-        # ONLY a human-triggered "play" command calls this service.
+    def _send_play(self, entity):
+        token = secrets.token_hex(16)
         ha_request("services/media_player/play_media", {
-            "entity_id": selected,
-            "media_content_id": STREAM_BASE + "/stream.mp3",
-            # Google Cast must treat endless FM audio as LIVE rather than
-            # a finite buffered music track. No automatic replay is added.
+            "entity_id": entity, "media_content_id": self._url(token),
             "media_content_type": "audio/mpeg",
             "extra": {"stream_type": "LIVE"}})
+        self.session = token
+        self.active = entity
+        self.last_play_at = time.monotonic()
+        self.seen = False
+
+    def _stream(self, now):
+        with radio.lock:
+            clients = [x for x in radio.stream_clients.values()
+                       if x["session"] == self.session]
+            fresh = any(x["last_write"] is not None and
+                        now - x["last_write"] < 6 for x in clients)
+            event = next((x for x in reversed(radio.stream_events)
+                          if x["session"] == self.session), None)
+            return fresh, bool(clients), event
+
+    def _safe_source(self):
+        if self.selected != SOUNDBAR_CAST:
+            return False
+        try:
+            local = ha_request("states/" + SOUNDBAR_LOCAL)
+            source = str(local.get("attributes", {}).get("source", "")).lower()
+            if local.get("state") in ("off", "standby", "unknown", "unavailable") or source not in ("wifi_google", "wi-fi", "wifi"):
+                return False
+            yt = ha_request("states/" + YT_STATUS).get("attributes", {})
+            if yt.get("selected_output") == self.selected and yt.get("player_state") in ("playing", "starting", "buffering", "paused"):
+                return False
+            return True
+        except (RuntimeError, ValueError, KeyError):
+            return False
+
+    def output_state(self):
         with self.lock:
-            self.active = selected
-            self.last_play_at = time.monotonic()
+            selected = self.selected
+            try:
+                player = ha_request("states/" + selected)
+                state = str(player.get("state", "unknown"))
+                attrs = player.get("attributes", {})
+                volume = attrs.get("volume_level")
+                media_id = str(attrs.get("media_content_id") or "")
+            except (RuntimeError, KeyError, ValueError):
+                state, volume, media_id = "unavailable", None, ""
+            now = time.monotonic()
+            playing = False
+            fresh = False
+            if self.active == selected and self.session:
+                age = now - self.last_play_at
+                same = media_id == self._url(self.session)
+                fresh, connected, event = self._stream(now)
+                if fresh and same and state in ("playing", "buffering"):
+                    self.seen = True
+                    self.recovering = False
+                    self.status_reason = ""
+                    playing = True
+                elif self.seen or age >= self.START_GRACE:
+                    if state not in ("playing", "buffering") or not same:
+                        self._disarm("Wiedergabe beendet oder Quelle gewechselt")
+                    elif not radio.status()["running"]:
+                        self._disarm("UKW-Empfang beendet")
+                    elif connected:
+                        self.status_reason = "Stream liefert keine aktuellen Daten"
+                    else:
+                        self.status_reason = "Stream getrennt"
+                        failed = event and event["reason"].startswith((
+                            "BrokenPipeError", "ConnectionResetError", "TimeoutError", "OSError"))
+                        ready = failed and now - event["at"] >= self.DROP_GRACE
+                        if self.recovering and not event and age >= self.START_GRACE:
+                            ready = True
+                        while self.retries and now - self.retries[0] >= self.RETRY_WINDOW:
+                            self.retries.popleft()
+                        if ready:
+                            if len(self.retries) >= self.RETRY_LIMIT or not self._safe_source():
+                                self._disarm("Wiederverbindung beendet (Quelle oder Limit)")
+                            else:
+                                try:
+                                    check = ha_request("states/" + selected)
+                                    if (check.get("state") != "playing" or
+                                        check.get("attributes", {}).get("media_content_id") != media_id):
+                                        self._disarm("Quelle gewechselt")
+                                    else:
+                                        self.retries.append(now)
+                                        self.recovering = True
+                                        self._send_play(selected)
+                                        self.status_reason = "Stream wird neu verbunden"
+                                        print("FM-Wiederverbindung " + str(len(self.retries)), flush=True)
+                                except RuntimeError as exc:
+                                    self._disarm("Wiederverbindung fehlgeschlagen: " + str(exc)[:120])
+                        elif not failed and not self.recovering:
+                            self._disarm("Keine aktive Stream-Verbindung")
+            return {"output_state": state, "output_volume": volume,
+                    "output_playing": playing, "output_media_id": media_id,
+                    "output_stream_connected": fresh and playing,
+                    "output_recovering": self.recovering,
+                    "output_status_reason": self.status_reason,
+                    "output_retry_count": len(self.retries)}
+
+    def play(self, target):
+        with self.lock:
+            previous = self.active
+            if target:
+                self.select(target)
+            selected = self.selected
+            self._disarm("")
+            self.retries.clear()
+            state = radio.status()
+            if not state["running"]:
+                radio.tune(self.last_frequency)
+                metadata.set_frequency(self.last_frequency)
+            if previous and previous != selected:
+                try:
+                    ha_request("services/media_player/media_stop", {"entity_id": previous})
+                except RuntimeError:
+                    pass
+            self._send_play(selected)
 
     def stop(self, target=None):
         with self.lock:
             entity = target or self.selected
-            active = self.active
-        if not str(entity).startswith("media_player."):
-            raise ValueError("Ungültiges Ausgabegerät.")
-        ha_request("services/media_player/media_stop", {"entity_id": entity})
-        with self.lock:
-            if entity == active:
-                self.active = None
+            if not str(entity).startswith("media_player."):
+                raise ValueError("Ungültiges Ausgabegerät.")
+            if entity == self.active:
+                self._disarm("Manuell gestoppt")
+            ha_request("services/media_player/media_stop", {"entity_id": entity})
 
 
 output = RadioOutput()
@@ -707,8 +807,8 @@ output = RadioOutput()
 
 def mqtt_radio_state():
     result = view_status()
-    result.update(output.snapshot())
     result.update(output.output_state())
+    result.update(output.snapshot())
     # Enrich saved favorites with available station logos, without uploading media.
     for favorite in result.get("presets", []):
         if not isinstance(favorite, dict):
@@ -811,7 +911,10 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
         elif path == "/api/status":
-            self.reply(200, view_status())
+            result = view_status()
+            result.update(output.output_state())
+            result.update(output.snapshot())
+            self.reply(200, result)
         elif path == "/api/players":
             try:
                 devices = ha_request("states")
@@ -873,6 +976,9 @@ class Handler(BaseHTTPRequestHandler):
                 metadata.clear(freq)
                 out = view_status()
             elif path == "/api/stop":
+                with output.lock:
+                    if output.active:
+                        output.stop(output.active)
                 radio.stop()
                 metadata.set_frequency(None)
                 out = view_status()
@@ -889,12 +995,11 @@ class Handler(BaseHTTPRequestHandler):
                         raise ValueError("Radioempfang zuerst starten.")
                     if urlsplit(STREAM_BASE).scheme not in ("http", "https"):
                         raise ValueError("stream_base_url muss eine HTTP(S)-Adresse sein.")
-                    out = ha_request("services/media_player/play_media", {
-                        "entity_id": entity_id, "media_content_id":
-                        STREAM_BASE + "/stream.mp3", "media_content_type": "music"})
+                    output.play(entity_id)
+                    out = output.snapshot()
                 else:
-                    out = ha_request("services/media_player/media_stop",
-                                     {"entity_id": entity_id})
+                    output.stop(entity_id)
+                    out = output.snapshot()
             self.reply(200, {"ok": True, "result": out})
         except (ValueError, RuntimeError, subprocess.SubprocessError) as exc:
             self.reply(400, {"error": str(exc)})
@@ -902,17 +1007,18 @@ class Handler(BaseHTTPRequestHandler):
             pass
 
     def stream(self):
-        """Plain, indefinite MP3 HTTP stream for native Google Cast LIVE playback.
-
-        No Content-Length and no chunked framing: a live stream has no known
-        endpoint. Capture completed client sessions for diagnosing dropouts.
-        """
+        """HTTP/1.1 chunked LIVE MP3, with close-delimited compatibility mode."""
+        session = parse_qs(urlsplit(self.path).query).get("session", [""])[0][:64]
+        chunked = STREAM_HTTP_PROFILE == "chunked" and self.request_version == "HTTP/1.1"
+        self.protocol_version = "HTTP/1.1" if chunked else "HTTP/1.0"
+        self.close_connection = True
         with radio.lock:
             if not radio._running_locked():
                 return self.reply(503, {"error": radio.last_error or "Empfang nicht aktiv"})
             q = queue.Queue(maxsize=6)
             generation = radio.session_gen
             radio.subscribers.add(q)
+            radio.stream_clients[q] = {"session": session, "last_write": None}
         started = time.monotonic()
         sent_bytes = 0
         reason = "encoder/stopped"
@@ -926,8 +1032,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Pragma", "no-cache")
             self.send_header("Connection", "close")
             self.send_header("icy-name", "SDR UKW Radio")
-            self.send_header("icy-br", "96")
-            # Intentionally NO Content-Length (indefinite live stream).
+            self.send_header("icy-br", str(MP3_BITRATE))
+            if chunked:
+                self.send_header("Transfer-Encoding", "chunked")
+            # Neither profile has a Content-Length: this is indefinite live audio.
             self.end_headers()
             while True:
                 with radio.lock:
@@ -935,12 +1043,23 @@ class Handler(BaseHTTPRequestHandler):
                         break
                 try:
                     data = q.get(timeout=0.5)
-                    self.wfile.write(data)
+                    if not data:
+                        continue
+                    if chunked:
+                        self.wfile.write(("%X\r\n" % len(data)).encode("ascii") + data + b"\r\n")
+                    else:
+                        self.wfile.write(data)
                     self.wfile.flush()
                     sent_bytes += len(data)
+                    with radio.lock:
+                        if q in radio.stream_clients:
+                            radio.stream_clients[q]["last_write"] = time.monotonic()
                 except queue.Empty:
                     continue
             reason = "tuner/encoder stopped"
+            if chunked:
+                self.wfile.write(b"0\r\n\r\n")
+                self.wfile.flush()
         except (BrokenPipeError, ConnectionResetError) as exc:
             reason = type(exc).__name__
         except (OSError, TimeoutError) as exc:
@@ -953,9 +1072,12 @@ class Handler(BaseHTTPRequestHandler):
                 "seconds": elapsed,
                 "bytes": sent_bytes,
                 "reason": reason,
+                "http_profile": "chunked" if chunked else "close",
             }
             with radio.lock:
                 radio.subscribers.discard(q)
+                radio.stream_clients.pop(q, None)
+                radio.stream_events.append({"session": session, "at": time.monotonic(), "reason": reason})
                 radio.stream_history.append(record)
             print("MP3-Stream beendet: " + json.dumps(record, ensure_ascii=False), flush=True)
 
