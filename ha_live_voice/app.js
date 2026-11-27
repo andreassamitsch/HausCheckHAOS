@@ -22,19 +22,13 @@ function mergeText(current,delta,final=false){
 // A dedicated dashboard URL requests a single automatic start. The normal app URL stays manual.
 function wantsAutoStart(path){return typeof path==='string'&&/^\/app\/01c80471_ha_live_voice\/live\/?$/.test(path);}
 function transportReady(peer,channel){return peer?.connectionState==='connected'&&channel?.readyState==='open';}
-// A failed initial play() is not proof that the browser needs another click.
-function outputState(nativePlaying,contextRunning,connected,elapsed){
-  if(nativePlaying)return 'native';
-  if(contextRunning&&connected)return 'graph';
-  return connected&&elapsed>=3000?'blocked':'retry';
-}
-if(typeof module!=='undefined'&&module.exports){module.exports={Activity,mergeText,wantsAutoStart,transportReady,outputState};}
+if(typeof module!=='undefined'&&module.exports){module.exports={Activity,mergeText,wantsAutoStart,transportReady};}
 else {
 const $=id=>document.getElementById(id);
 let csrf,pc,dc,stream,session,timer,pingTimer,loginTimer,idle=10;
 let busy=false,starting=false,generation=0,turn='',lastUser='',signedIn=false,ended=false;
 let seen=new Set(),activity=new Activity(),messages=[],ctx,localAnalyser,remoteAnalyser,localSource,remoteSource;
-let outputEl=null,outputStream=null,outputRoute='',outputTimer=null,outputStartedAt=0,outputAttempt=0,outputPending=false,outputUnmute=null;
+let dashboardOutput=null,outputTimer=null,remoteAudioStream=null,outputAttempt=0;
 let captureNode=null,captureSource=null,captureDestination=null,buffering=false,captureTimer=null;
 let closing=false,localHot=0,autoLaunch=false,autoConsumed=false,haveStatus=false,ready=false,readyMs=0,readyTimer=null,setupAt=0,stopPending=null,playBlocked=false;
 const APP_PATH='/app/01c80471_ha_live_voice', HOME_PATH='/family-dashboard/home';
@@ -62,84 +56,46 @@ function launchFromRoute(e){
 window.addEventListener('message',launchFromRoute);
 window.addEventListener('visibilitychange',maybeAutoStart);
 if(window.parent!==window)window.parent.postMessage({type:'home-assistant/subscribe-properties'},location.origin);
-function outputElement(){
-  // The trusted dashboard click occurred in the top-level HA document.
-  // Use that document's media element when same-origin; retain local playback
-  // for normal app access or clients that cannot reach the parent.
-  if(autoLaunch&&window.parent!==window){
-    try{
-      const p=window.parent;
-      if(p.location.origin===location.origin&&p.document.body&&p.navigator.userActivation?.hasBeenActive){
-        const el=p.document.createElement('audio');
-        el.autoplay=true;el.playsInline=true;el.hidden=true;el.dataset.haLiveVoice='1';
-        p.document.body.appendChild(el);return el;
-      }
-    }catch(_){}
-  }
-  return $('audio');
+function claimDashboardOutput(){
+  try{return window.parent!==window?window.parent.__haLiveVoicePlaybackV1?.claim()||null:null;}catch(_){return null;}
 }
-function markOutputPlaying(gen,attempt){
-  if(gen!==generation||attempt!==outputAttempt||outputRoute==='graph')return;
-  outputRoute='native';playBlocked=false;controls();
-  clearTimeout(outputTimer);outputTimer=null;
+function releaseDashboardOutput(){
+  clearTimeout(outputTimer);outputTimer=null;outputAttempt++;
+  dashboardOutput?.close();dashboardOutput=null;remoteAudioStream=null;
 }
-function tryNative(gen){
-  if(gen!==generation||!outputEl||outputRoute==='graph'||outputPending)return;
-  const el=outputEl,attempt=++outputAttempt;
-  outputPending=true;
-  try{
-    Promise.resolve(el.play()).then(()=>{
+function playNative(gen,manual=false){
+  if(gen!==generation||!remoteAudioStream)return;
+  const el=$('audio'),attempt=++outputAttempt;
+  el.srcObject=remoteAudioStream;
+  el.play().then(()=>{
+    if(gen!==generation||attempt!==outputAttempt)return;
+    clearTimeout(outputTimer);playBlocked=false;controls();
+  }).catch(()=>{
+    if(gen!==generation||attempt!==outputAttempt)return;
+    if(manual){playBlocked=true;controls();return;}
+    // Track may not yet be flowing. Retry once before showing the fallback.
+    clearTimeout(outputTimer);outputTimer=setTimeout(()=>{
       if(gen!==generation||attempt!==outputAttempt)return;
-      outputPending=false;markOutputPlaying(gen,attempt);
-    }).catch(()=>{
-      if(gen!==generation||attempt!==outputAttempt)return;
-      outputPending=false;
-    });
-  }catch(_){outputPending=false;}
+      el.play().then(()=>{if(gen===generation&&attempt===outputAttempt){playBlocked=false;controls();}}).catch(()=>{if(gen===generation&&attempt===outputAttempt){playBlocked=true;controls();}});
+    },400);
+  });
 }
-function checkOutput(gen){
-  if(gen!==generation||!outputEl||outputRoute==='graph')return;
-  clearTimeout(outputTimer);outputTimer=null;
-  const connected=ready&&!!pc&&transportReady(pc,dc);
-  const state=outputState(outputRoute==='native'||(!outputEl.paused&&outputEl.readyState>=2),ctx?.state==='running'&&!!remoteSource,connected,performance.now()-outputStartedAt);
-  if(state==='native'){
-    outputRoute='native';playBlocked=false;controls();return;
+async function playRemote(remote,gen){
+  remoteAudioStream=remote;
+  const lease=dashboardOutput;
+  if(lease){
+    let ok=false;
+    try{ok=await lease.play(remote);}catch(_){}
+    if(gen!==generation||remoteAudioStream!==remote){lease.close();return;}
+    if(ok){playBlocked=false;controls();return;}
+    lease.close();if(dashboardOutput===lease)dashboardOutput=null;
   }
-  if(state==='graph'){
-    try{
-      // The input worklet already has a running context. Route ONLY the
-      // incoming remote audio to its output, never the microphone.
-      remoteSource.connect(ctx.destination);
-      outputRoute='graph';outputAttempt++;outputPending=false;
-      outputEl.pause();outputEl.srcObject=null;
-      playBlocked=false;controls();return;
-    }catch(_){}
-  }
-  if(ctx?.state==='suspended')ctx.resume().catch(()=>{});
-  tryNative(gen);
-  playBlocked=state==='blocked';controls();
-  outputTimer=setTimeout(()=>checkOutput(gen),playBlocked?1000:350);
-}
-function attachOutput(remote,gen){
-  releaseOutput();
-  outputStream=remote;outputEl=outputElement();outputRoute='';outputStartedAt=performance.now();
-  outputEl.onplaying=()=>markOutputPlaying(gen,outputAttempt);
-  outputEl.srcObject=remote;
-  outputUnmute=()=>{if(gen===generation){tryNative(gen);checkOutput(gen);}};
-  remote.getAudioTracks().forEach(t=>t.addEventListener('unmute',outputUnmute));
-  tryNative(gen);
-  outputTimer=setTimeout(()=>checkOutput(gen),350);
-}
-function releaseOutput(){
-  clearTimeout(outputTimer);outputTimer=null;outputAttempt++;outputPending=false;
-  if(outputStream&&outputUnmute)outputStream.getAudioTracks().forEach(t=>t.removeEventListener('unmute',outputUnmute));
-  if(outputRoute==='graph'&&remoteSource&&ctx){try{remoteSource.disconnect(ctx.destination);}catch(_){}}
-  if(outputEl){outputEl.onplaying=null;outputEl.pause();outputEl.srcObject=null;if(outputEl!==$('audio'))outputEl.remove();}
-  outputEl=outputStream=outputUnmute=null;outputRoute='';playBlocked=false;
+  playNative(gen);
 }
 function unlockAudio(){
   if(ctx?.state==='suspended')ctx.resume().catch(()=>{});
-  tryNative(generation);checkOutput(generation);
+  if(dashboardOutput){dashboardOutput.close();dashboardOutput=null;}
+  playNative(generation,true);
 }
 function readyTone(){
   if(!ctx||ctx.state!=='running')return;
@@ -305,7 +261,7 @@ async function stop(reason='Gespräch beendet.'){
   clearInterval(timer);clearInterval(pingTimer);timer=pingTimer=null;
   if(dc)dc.close();dc=null;if(pc)pc.close();pc=null;
   if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;
-  releaseOutput();releaseBuffer();$('audio').srcObject=null;localSource?.disconnect();remoteSource?.disconnect();localSource=remoteSource=localAnalyser=remoteAnalyser=null;
+  releaseDashboardOutput();releaseBuffer();$('audio').srcObject=null;localSource?.disconnect();remoteSource?.disconnect();localSource=remoteSource=localAnalyser=remoteAnalyser=null;
   if(ctx){ctx.close().catch(()=>{});ctx=null;}controls();status(reason);$('hint').textContent='Mikrofon aus';
   if(id){try{await api('stop',{id},true);}catch(e){status('Mikrofon aus. Serverende nicht bestätigt.');}}
 }
@@ -318,7 +274,7 @@ async function finish(reason){
 }
 async function startSession(){
   if(starting||session||closing)return;
-  starting=true;ended=false;ready=false;playBlocked=false;setupAt=performance.now();const gen=++generation;controls();clearMessages();$('usage').textContent='';$('hint').textContent='';$('settings').hidden=true;$('settings-toggle').setAttribute('aria-expanded','false');
+  starting=true;ended=false;ready=false;playBlocked=false;setupAt=performance.now();const gen=++generation;dashboardOutput=claimDashboardOutput();controls();clearMessages();$('usage').textContent='';$('hint').textContent='';$('settings').hidden=true;$('settings-toggle').setAttribute('aria-expanded','false');
   status('Mikrofon wird geöffnet …','work');
   try{
     if(!navigator.mediaDevices?.getUserMedia)throw new Error('HTTPS und Mikrofonfreigabe erforderlich.');
@@ -345,12 +301,11 @@ async function startSession(){
       $('hint').textContent='Verbunden in '+(readyMs/1000).toFixed(1).replace('.',',')+' s';
       $('connection-time').textContent='Verbindungsaufbau: '+(readyMs/1000).toFixed(1).replace('.',',')+' s';
       if(!captureNode)readyTone();
-      if(outputEl){outputStartedAt=performance.now();checkOutput(gen);}
       const id=session;
       timer=setInterval(tick,250);
       pingTimer=setInterval(()=>{if(!busy&&session===id)api('ping',{id}).catch(()=>stop('Verbindung unterbrochen.'));},5000);
     }
-    peer.ontrack=e=>{if(gen!==generation||e.track.kind!=='audio')return;const remote=e.streams[0]||new MediaStream([e.track]);meter(remote,'assistant');attachOutput(remote,gen);};
+    peer.ontrack=e=>{if(gen!==generation||e.track.kind!=='audio')return;const remote=e.streams[0]||new MediaStream([e.track]);meter(remote,'assistant');playRemote(remote,gen);};
     channel.onopen=markReady;
     peer.onconnectionstatechange=()=>{if(gen!==generation)return;if(['failed','closed'].includes(peer.connectionState))stop('Live-Verbindung beendet.');else markReady();};
     await peer.setLocalDescription(await peer.createOffer());if(gen!==generation)return;
@@ -369,6 +324,6 @@ $('unlock-audio').onclick=unlockAudio;
 $('interrupt').onclick=async()=>{if(!session||!turn)return;try{await api('interrupt',{id:session,turn});turn='';activity.speech('assistant',false);controls();status('Unterbrochen · ich höre zu','listen');}catch(e){note(e.message);}};
 $('stop').onclick=()=>finish('Gespräch beendet.');
 $('close').onclick=()=>finish('Gespräch beendet.');
-window.addEventListener('pagehide',()=>{generation++;clearInterval(timer);clearInterval(pingTimer);clearTimeout(readyTimer);releaseOutput();releaseBuffer();if(stream)stream.getTracks().forEach(t=>t.stop());if(pc)pc.close();if(session)api('stop',{id:session},true).catch(()=>{});});
+window.addEventListener('pagehide',()=>{generation++;clearInterval(timer);clearInterval(pingTimer);clearTimeout(readyTimer);releaseDashboardOutput();releaseBuffer();if(stream)stream.getTracks().forEach(t=>t.stop());if(pc)pc.close();if(session)api('stop',{id:session},true).catch(()=>{});});
 refresh().catch(e=>status(e.message));
 }

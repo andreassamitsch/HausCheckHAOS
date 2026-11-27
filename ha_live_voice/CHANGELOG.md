@@ -1,3 +1,8 @@
+## 0.1.6 (recovery)
+- Restore the 0.1.4 capture, buffering and server behavior (known to work after manually enabling audio).
+- Replace 0.1.5 playback changes with a narrow dashboard gesture bridge; initialize output AudioContext during native shortcut tap, use it for remote audio when available.
+- Keep native playback and manual audio fallback for unsupported clients. No dashboard card replacement, no change to microphone permissions.
+
 ## 0.1.5 (experimental)
 - Prefer playback in the same-origin dashboard document after its launch gesture when available.
 - Retry initial media playback on track unmute and connection readiness, clear obsolete blocked notices on success.
