@@ -60,7 +60,7 @@ def child_env():
             "CODEX_HOME": str(HOME), "LANG": "C.UTF-8", "TERM": "dumb"}
 
 def spawn(args, **kw):
-    user = pwd.getpwnam("voice")
+    user = pwd.getpwnam("ha_voice")
     return subprocess.Popen(["codex", *args], env=child_env(), cwd="/tmp",
                             user=user.pw_uid, group=user.pw_gid, extra_groups=[], **kw)
 
@@ -318,7 +318,7 @@ def main():
     OPTIONS = json.loads(pathlib.Path("/data/options.json").read_text())
     TOKEN = os.environ["SUPERVISOR_TOKEN"]
     HOME.mkdir(mode=0o700, exist_ok=True)
-    user = pwd.getpwnam("voice")
+    user = pwd.getpwnam("ha_voice")
     os.chown(HOME, user.pw_uid, user.pw_gid)
     HOME.chmod(0o700)
     threading.Thread(target=expire, daemon=True).start()
