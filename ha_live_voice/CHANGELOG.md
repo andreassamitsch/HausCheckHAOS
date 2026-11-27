@@ -1,3 +1,9 @@
+## 0.1.7 (recovery)
+- Disable experimental startup buffering and use the original direct microphone WebRTC track, enabled only when the connection is ready.
+- Remove the buffer state from the idle timer and UI so a lost worklet event cannot leave the conversation stuck.
+- Retain the warm broker and dashboard playback preparation; no changes to login, voice, or dashboard navigation.
+- First-utterance buffering is disabled pending actual device testing.
+
 ## 0.1.6 (recovery)
 - Restore the 0.1.4 capture, buffering and server behavior (known to work after manually enabling audio).
 - Replace 0.1.5 playback changes with a narrow dashboard gesture bridge; initialize output AudioContext during native shortcut tap, use it for remote audio when available.

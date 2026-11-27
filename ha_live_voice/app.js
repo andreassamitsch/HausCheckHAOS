@@ -29,7 +29,6 @@ let csrf,pc,dc,stream,session,timer,pingTimer,loginTimer,idle=10;
 let busy=false,starting=false,generation=0,turn='',lastUser='',signedIn=false,ended=false;
 let seen=new Set(),activity=new Activity(),messages=[],ctx,localAnalyser,remoteAnalyser,localSource,remoteSource;
 let dashboardOutput=null,outputTimer=null,remoteAudioStream=null,outputAttempt=0;
-let captureNode=null,captureSource=null,captureDestination=null,buffering=false,captureTimer=null;
 let closing=false,localHot=0,autoLaunch=false,autoConsumed=false,haveStatus=false,ready=false,readyMs=0,readyTimer=null,setupAt=0,stopPending=null,playBlocked=false;
 const APP_PATH='/app/01c80471_ha_live_voice', HOME_PATH='/family-dashboard/home';
 function parentPath(){try{return window.parent.location.pathname;}catch(_){return '';}}
@@ -197,49 +196,11 @@ function meter(sourceStream,role){
   }catch(_){}
 }
 function rms(a){if(!a)return 0;const b=new Float32Array(a.fftSize);a.getFloatTimeDomainData(b);let q=0;for(const x of b)q+=x*x;return Math.sqrt(q/b.length);}
-async function prepareBuffer(mic,gen,moduleReady){
-  const audio=ctx;
-  if(!audio||!audio.audioWorklet||typeof AudioWorkletNode==='undefined')return null;
-  try{
-    await Promise.race([Promise.all([moduleReady,audio.resume()]),new Promise((_,reject)=>setTimeout(()=>reject(new Error('Audio worklet not ready')),700))]);
-    if(gen!==generation||audio!==ctx||audio.state!=='running')return null;
-    const source=audio.createMediaStreamSource(mic);
-    const node=new AudioWorkletNode(audio,'first-voice-buffer',{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[1],channelCount:1,channelCountMode:'explicit'});
-    const dest=audio.createMediaStreamDestination();
-    captureSource=source;captureNode=node;captureDestination=dest;buffering=true;
-    node.port.onmessage=e=>{
-      if(gen!==generation||node!==captureNode)return;
-      if(e.data==='capturing'&&!ready){
-        status('Jetzt sprechen · Aufnahme läuft','listen');
-        $('hint').textContent='Verbindung wird im Hintergrund aufgebaut';
-      }else if(e.data==='live'){
-        buffering=false;clearTimeout(captureTimer);captureTimer=null;activity.touch();
-      }else if(e.data==='overflow'){
-        stop('Verbindungsaufbau zu langsam. Bitte erneut versuchen.');
-      }
-    };
-    node.onprocessorerror=()=>{if(gen===generation)stop('Audioaufnahme fehlgeschlagen. Bitte erneut versuchen.');};
-    source.connect(node);node.connect(dest);
-    captureTimer=setTimeout(()=>{if(gen===generation&&!ready)stop('Verbindungsaufbau zu langsam. Bitte erneut versuchen.');},12000);
-    return dest.stream;
-  }catch(_){
-    releaseBuffer();
-    return null;
-  }
-}
-function releaseBuffer(){
-  clearTimeout(captureTimer);captureTimer=null;buffering=false;
-  if(captureNode){captureNode.port.onmessage=null;captureNode.onprocessorerror=null;try{captureNode.disconnect();}catch(_){}}
-  if(captureSource)try{captureSource.disconnect();}catch(_){}
-  if(captureDestination)captureDestination.stream.getTracks().forEach(t=>t.stop());
-  captureNode=captureSource=captureDestination=null;
-}
 function tick(){
   if(!session||!ready)return;const now=Date.now();
   const remote=rms(remoteAnalyser)>.008;
   const local=rms(localAnalyser)>.035&&!remote;
   localHot=local?localHot+1:0;
-  if(buffering)activity.touch(now);
   if(remote)activity.output(now);
   if(localHot>=2)activity.touch(now);
   const localSpeaking=activity.user||localHot>=2;
@@ -247,21 +208,20 @@ function tick(){
   if(busy)status('Hausassistent arbeitet …','work');
   else if(localSpeaking)status('Ich höre dich','user');
   else if(remoteSpeaking||turn)status('Hausassistent spricht','speak');
-  else if(buffering)status('Erster Befehl wird übertragen …','work');
   else if(now<activity.waitUntil)status('Antwort wird vorbereitet …','work');
   else status('Jetzt sprechen · Ich höre zu','listen');
-  const remaining=activity.remaining(now,idle,buffering||busy||localSpeaking||remoteSpeaking||!!turn);
+  const remaining=activity.remaining(now,idle,busy||localSpeaking||remoteSpeaking||!!turn);
   $('hint').textContent=(playBlocked?'Ton bitte freigeben · ':'')+(remaining===null?'':'Automatisches Ende in '+remaining+' s');
   // A stale assistant turn ID must not keep the microphone open forever.
   if(turn&&now-activity.last>120000){turn='';controls();}
-  if(activity.canEnd(now,idle,buffering||busy||localSpeaking||remoteSpeaking||!!turn))finish('Gespräch automatisch beendet.');
+  if(activity.canEnd(now,idle,busy||localSpeaking||remoteSpeaking||!!turn))finish('Gespräch automatisch beendet.');
 }
 async function stop(reason='Gespräch beendet.'){
   generation++;const id=session;session=null;starting=false;ended=true;turn='';busy=false;ready=false;playBlocked=false;clearTimeout(readyTimer);readyTimer=null;
   clearInterval(timer);clearInterval(pingTimer);timer=pingTimer=null;
   if(dc)dc.close();dc=null;if(pc)pc.close();pc=null;
   if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;
-  releaseDashboardOutput();releaseBuffer();$('audio').srcObject=null;localSource?.disconnect();remoteSource?.disconnect();localSource=remoteSource=localAnalyser=remoteAnalyser=null;
+  releaseDashboardOutput();$('audio').srcObject=null;localSource?.disconnect();remoteSource?.disconnect();localSource=remoteSource=localAnalyser=remoteAnalyser=null;
   if(ctx){ctx.close().catch(()=>{});ctx=null;}controls();status(reason);$('hint').textContent='Mikrofon aus';
   if(id){try{await api('stop',{id},true);}catch(e){status('Mikrofon aus. Serverende nicht bestätigt.');}}
 }
@@ -279,15 +239,10 @@ async function startSession(){
   try{
     if(!navigator.mediaDevices?.getUserMedia)throw new Error('HTTPS und Mikrofonfreigabe erforderlich.');
     try{const Audio=window.AudioContext||window.webkitAudioContext;if(Audio){ctx=new Audio();ctx.resume().catch(()=>{});}}catch(_){}
-    const moduleReady=ctx?.audioWorklet?ctx.audioWorklet.addModule('capture-worklet.js').catch(()=>false):Promise.resolve(false);
     const mic=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
     if(gen!==generation){mic.getTracks().forEach(t=>t.stop());return;}
-    stream=mic;meter(mic,'user');
-    const buffered=await prepareBuffer(mic,gen,moduleReady);
-    if(gen!==generation){mic.getTracks().forEach(t=>t.stop());return;}
-    const outgoing=buffered||stream;
-    if(!buffered){for(const track of stream.getAudioTracks())track.enabled=false;status('Verbindung wird aufgebaut …','work');$('hint').textContent='Bitte auf das Startsignal warten';}
-    const peer=new RTCPeerConnection();pc=peer;outgoing.getTracks().forEach(t=>peer.addTrack(t,outgoing));
+    stream=mic;for(const track of stream.getAudioTracks())track.enabled=false;meter(mic,'user');
+    const peer=new RTCPeerConnection();pc=peer;stream.getTracks().forEach(t=>peer.addTrack(t,stream));
     const channel=peer.createDataChannel('oai-events');dc=channel;
     seen=new Set();lastUser='';turn='';busy=false;localHot=0;activity=new Activity();
     let remoteSet=false;
@@ -295,12 +250,11 @@ async function startSession(){
       if(gen!==generation||!remoteSet||!session||ready||!transportReady(peer,channel))return;
       clearTimeout(readyTimer);readyTimer=null;
       ready=true;starting=false;readyMs=performance.now()-setupAt;
-      clearTimeout(captureTimer);captureTimer=null;
-      if(captureNode)captureNode.port.postMessage('ready');else for(const track of stream.getAudioTracks())track.enabled=true;
+      for(const track of stream.getAudioTracks())track.enabled=true;
       activity=new Activity();controls();status('Jetzt sprechen · Ich höre zu','listen');
       $('hint').textContent='Verbunden in '+(readyMs/1000).toFixed(1).replace('.',',')+' s';
       $('connection-time').textContent='Verbindungsaufbau: '+(readyMs/1000).toFixed(1).replace('.',',')+' s';
-      if(!captureNode)readyTone();
+      readyTone();
       const id=session;
       timer=setInterval(tick,250);
       pingTimer=setInterval(()=>{if(!busy&&session===id)api('ping',{id}).catch(()=>stop('Verbindung unterbrochen.'));},5000);
@@ -309,7 +263,8 @@ async function startSession(){
     channel.onopen=markReady;
     peer.onconnectionstatechange=()=>{if(gen!==generation)return;if(['failed','closed'].includes(peer.connectionState))stop('Live-Verbindung beendet.');else markReady();};
     await peer.setLocalDescription(await peer.createOffer());if(gen!==generation)return;
-    if(!buffering)status('Live-Sitzung wird aufgebaut …','work');
+    status('Live-Sitzung wird aufgebaut …','work');
+    $('hint').textContent='Bitte auf „Jetzt sprechen“ warten';
     const r=await api('start',{offer:peer.localDescription.sdp,voice:$('voice').value});
     if(gen!==generation){await api('stop',{id:r.id},true).catch(()=>{});return;}
     session=r.id;channel.onmessage=e=>{try{event(JSON.parse(e.data),channel,r.id).catch(()=>{});}catch(_){}};
@@ -324,6 +279,6 @@ $('unlock-audio').onclick=unlockAudio;
 $('interrupt').onclick=async()=>{if(!session||!turn)return;try{await api('interrupt',{id:session,turn});turn='';activity.speech('assistant',false);controls();status('Unterbrochen · ich höre zu','listen');}catch(e){note(e.message);}};
 $('stop').onclick=()=>finish('Gespräch beendet.');
 $('close').onclick=()=>finish('Gespräch beendet.');
-window.addEventListener('pagehide',()=>{generation++;clearInterval(timer);clearInterval(pingTimer);clearTimeout(readyTimer);releaseDashboardOutput();releaseBuffer();if(stream)stream.getTracks().forEach(t=>t.stop());if(pc)pc.close();if(session)api('stop',{id:session},true).catch(()=>{});});
+window.addEventListener('pagehide',()=>{generation++;clearInterval(timer);clearInterval(pingTimer);clearTimeout(readyTimer);releaseDashboardOutput();if(stream)stream.getTracks().forEach(t=>t.stop());if(pc)pc.close();if(session)api('stop',{id:session},true).catch(()=>{});});
 refresh().catch(e=>status(e.message));
 }

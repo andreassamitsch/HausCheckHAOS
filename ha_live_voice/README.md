@@ -20,3 +20,6 @@ Upstream: https://github.com/Synero/hermes-live-voice, technische Referenz docs/
 
 ### First-command audio (0.1.4)
 Only after an explicit conversation launch, supported browsers buffer microphone audio in memory while connecting. A short quiet boundary switches the stream back to live. With sustained noise/speech, replay temporarily accelerates by up to 35% after six seconds to catch up instead of keeping a permanent delay (pitch may change during that fallback). A startup delay longer than 12 seconds aborts rather than truncating a command. Browser audio worklet/autoplay restrictions may require waiting for connection readiness. A local initialized Codex process is prepared without a realtime session; actual latency and usage need a real-device test.
+
+### Recovery 0.1.7
+The experimental first-command audio buffer is disabled. Wait for the green ready indicator before speaking. Audio is transmitted via the original direct WebRTC microphone track.
