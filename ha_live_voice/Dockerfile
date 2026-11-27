@@ -1,0 +1,8 @@
+FROM node:22-bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-websocket ca-certificates && rm -rf /var/lib/apt/lists/* \
+ && npm install -g @openai/codex@0.154.0 \
+ && useradd --system --user-group --home-dir /data/codex --shell /usr/sbin/nologin ha_voice
+WORKDIR /app
+COPY main.py index.html app.js test_main.py ./
+RUN python3 -m unittest -v test_main && python3 -m py_compile main.py && node --check app.js
+CMD ["python3","-u","main.py"]

@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HA Live Voice</title><style>
+:root{color-scheme:light dark;font:16px system-ui}body{max-width:680px;margin:24px auto;padding:0 18px}button,select{font:inherit;padding:12px;margin:4px;border-radius:12px}#start{background:#067d70;color:white;border:0;padding:20px}#status{min-height:3em}#log{white-space:pre-wrap;overflow-wrap:anywhere;max-height:35vh;overflow:auto}code{font-size:1.5em}button:disabled{opacity:.5}
+</style></head><body><h1>HA Live Voice</h1><p>Experimentell · ChatGPT-Abo · vorhandener Home-Assistant-Agent</p>
+<p id="status" role="status">Verbindung prüfen …</p>
+<button id="login">ChatGPT anmelden</button><p id="device" hidden>Öffne <a href="https://auth.openai.com/codex/device" target="_blank" rel="noopener noreferrer">die Anmeldung</a> und gib den Code <code id="code"></code> ein.</p>
+<label>Stimme <select id="voice"><option>cove</option><option>juniper</option><option>maple</option><option>spruce</option><option>ember</option><option>vale</option><option>breeze</option><option>arbor</option><option>sol</option></select></label>
+<p><button id="start" disabled>🎙 Gespräch starten</button><button id="interrupt" disabled>Unterbrechen</button><button id="stop" disabled>Beenden</button></p>
+<p id="usage"></p><audio id="audio" autoplay></audio><div id="log" aria-live="polite"></div><script src="app.js"></script></body></html>
