@@ -115,7 +115,7 @@ class Broker:
         self.events = collections.deque(maxlen=2000)
         threading.Thread(target=self.read, daemon=True).start()
         try:
-            self.call("initialize", {"clientInfo": {"name": "ha-live-voice", "version": "0.1.1"},
+            self.call("initialize", {"clientInfo": {"name": "ha-live-voice", "version": "0.1.2"},
                                      "capabilities": {"experimentalApi": True}})
         except Exception:
             self.close()

@@ -1,3 +1,9 @@
+## 0.1.2 (experimental)
+- Voice-only responsive dialogue with speaker-labelled transcript bubbles, status and separate settings.
+- Ten-second default idle timeout, protected during speech, remote audio playback and agent requests.
+- Close returns to Family Dashboard; ended conversation remains readable until closing or restarting.
+- Unit tests for idle and transcript handling.
+
 ## 0.1.1 (experimental)
 - Add Sonna (German) as selectable/default voice; retain previous voices.
 - Pin Codex CLI 0.172.0, whose published V3 voice list includes Sonna.

@@ -3,6 +3,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 python3
  && npm install -g @openai/codex@0.172.0 \
  && useradd --system --user-group --home-dir /data/codex --shell /usr/sbin/nologin ha_voice
 WORKDIR /app
-COPY main.py index.html app.js test_main.py ./
-RUN python3 -m unittest -v test_main && python3 -m py_compile main.py && node --check app.js
+COPY main.py index.html app.js test_main.py test_app.js ./
+RUN python3 -m unittest -v test_main && python3 -m py_compile main.py && node --check app.js && node --test test_app.js
 CMD ["python3","-u","main.py"]
