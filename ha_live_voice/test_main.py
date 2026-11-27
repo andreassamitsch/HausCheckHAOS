@@ -1,7 +1,11 @@
 import unittest
-from main import payload_for, unpack_response, child_env, is_admin_record
+from main import payload_for, unpack_response, child_env, is_admin_record, VOICES
 
 class Tests(unittest.TestCase):
+    def test_sonna_available(self):
+        self.assertIn('sonna', VOICES)
+        self.assertIn('cove', VOICES)
+
     def test_agent_and_context(self):
         self.assertEqual(payload_for(" Hallo ", "conversation.openai_conversation", "abc"),
                          {"text":"Hallo","language":"de","agent_id":"conversation.openai_conversation","conversation_id":"abc"})

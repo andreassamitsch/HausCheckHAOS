@@ -16,7 +16,7 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
-VOICES = frozenset("cove juniper maple spruce ember vale breeze arbor sol".split())
+VOICES = frozenset("cove juniper maple spruce ember vale breeze arbor sol sonna".split())
 PERSONA = ("Du bist die Live-Stimme des Hausassistenten. Sprich natürliches, zügiges Deutsch "
            "und antworte kurz. Grüße und Smalltalk beantwortest du selbst. Delegiere sämtliche "
            "Haussteuerung, aktuelle Hausdaten und komplexe Aufgaben an den vorhandenen Agenten. "
@@ -115,7 +115,7 @@ class Broker:
         self.events = collections.deque(maxlen=2000)
         threading.Thread(target=self.read, daemon=True).start()
         try:
-            self.call("initialize", {"clientInfo": {"name": "ha-live-voice", "version": "0.1.0"},
+            self.call("initialize", {"clientInfo": {"name": "ha-live-voice", "version": "0.1.1"},
                                      "capabilities": {"experimentalApi": True}})
         except Exception:
             self.close()
