@@ -17,3 +17,6 @@ Die App sendet Aufgaben an /api/conversation/process und nutzt die zurückgegebe
 0.1.0 ist ein nicht freigegebener Prototyp. Noch nicht mit realem HAOS, ChatGPT-Konto, Browser/Ingress oder Codex-WebRTC geprüft. Kein automatischer kostenpflichtiger Fallback. Keine Garantie, dass das Abonnement die experimentelle Schnittstelle unterstützt oder dass keine Planlimits erreicht werden. Keine Umgehung von Kontingenten. Manuelles Unterbrechen implementiert; automatisches Barge-in hängt vom Realtime-Protokoll ab und ist zu verifizieren. Audiozeit wird angezeigt, sofern vom Dienst geliefert. Keine verlässliche Restkontingent-Anzeige.
 
 Upstream: https://github.com/Synero/hermes-live-voice, technische Referenz docs/live-voice-recipe.md, Codex CLI 0.172.0. MIT-Lizenz und Copyright siehe LICENSE/NOTICE.md.
+
+### First-command audio (0.1.4)
+Only after an explicit conversation launch, supported browsers buffer microphone audio in memory while connecting. A short quiet boundary switches the stream back to live, without discarding voiced blocks. A startup delay longer than 12 seconds aborts rather than truncating a command. Browser audio worklet/autoplay restrictions may require waiting for connection readiness. A local initialized Codex process is prepared without a realtime session; actual latency and usage need a real-device test.

@@ -1,3 +1,10 @@
+## 0.1.4 (experimental)
+- Keep an initialized local Codex broker ready without opening a realtime session; recycle it after each call.
+- Cache login status briefly to reduce startup overhead.
+- Buffer only first-utterance startup audio locally (12 s max), replay at natural speed, return to live at a verified quiet boundary. No disk audio cache.
+- Fall back to the existing wait-for-ready behavior if browser audio processing is unavailable.
+- Add capture ordering, silence transition, overflow and continuous speech tests.
+
 ## 0.1.3 (experimental)
 - Dedicated dashboard launch route automatically starts a conversation after status and login checks.
 - Microphone transmission and idle countdown start only when WebRTC and data channel are ready.

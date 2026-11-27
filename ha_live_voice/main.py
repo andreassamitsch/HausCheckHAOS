@@ -34,6 +34,9 @@ ACTIVE = None
 LOGIN = None
 LOGIN_CODE = None
 RPC = None
+WARM = None
+WARM_WAKE = threading.Event()
+SIGNED_CACHE = (0.0, False)
 
 def payload_for(text, agent, conversation=None):
     if not isinstance(text, str) or not text.strip() or len(text) > 4000:
@@ -94,14 +97,22 @@ def spawn(args, **kw):
                             user=user.pw_uid, group=user.pw_gid, extra_groups=[], **kw)
 
 def signed_in():
+    global SIGNED_CACHE
+    checked, value = SIGNED_CACHE
+    now = time.monotonic()
+    if checked and now - checked < (30 if value else 5):
+        return value
     p = spawn(["login", "status"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     try:
         out, _ = p.communicate(timeout=12)
     except subprocess.TimeoutExpired:
         p.kill()
         p.communicate()
+        SIGNED_CACHE = (time.monotonic(), False)
         return False
-    return p.returncode == 0 and "chatgpt" in out.lower()
+    value = p.returncode == 0 and "chatgpt" in out.lower()
+    SIGNED_CACHE = (time.monotonic(), value)
+    return value
 
 class Broker:
     def __init__(self):
@@ -115,7 +126,7 @@ class Broker:
         self.events = collections.deque(maxlen=2000)
         threading.Thread(target=self.read, daemon=True).start()
         try:
-            self.call("initialize", {"clientInfo": {"name": "ha-live-voice", "version": "0.1.3"},
+            self.call("initialize", {"clientInfo": {"name": "ha-live-voice", "version": "0.1.4"},
                                      "capabilities": {"experimentalApi": True}})
         except Exception:
             self.close()
@@ -192,11 +203,45 @@ class Broker:
                 self.proc.kill()
                 self.proc.wait()
 
+def drop_warm():
+    global WARM
+    if WARM is not None:
+        WARM.close()
+        WARM = None
+
+def take_broker():
+    global WARM
+    broker, WARM = WARM, None
+    if broker is not None:
+        if broker.proc.poll() is None:
+            return broker
+        broker.close()
+    return Broker()
+
+def maintain_warm():
+    # Only initialize the local process, never start a voice thread or media session here.
+    global WARM
+    while True:
+        try:
+            with LOCK:
+                if ACTIVE is None and (LOGIN is None or LOGIN.poll() is not None):
+                    if not signed_in():
+                        drop_warm()
+                    elif WARM is None or WARM.proc.poll() is not None:
+                        drop_warm()
+                        WARM = Broker()
+                        print("Codex voice broker ready (no realtime session)", flush=True)
+        except Exception as exc:
+            print("Broker preparation failed:", type(exc).__name__, flush=True)
+        WARM_WAKE.wait(3)
+        WARM_WAKE.clear()
+
 def stop():
     global ACTIVE, RPC
     if RPC is not None:
         RPC.close()
     ACTIVE = RPC = None
+    WARM_WAKE.set()
 
 def expire():
     while True:
@@ -206,13 +251,16 @@ def expire():
                 stop()
 
 def read_login(proc):
-    global LOGIN_CODE
+    global LOGIN_CODE, SIGNED_CACHE
     for line in proc.stdout:
         match = re.search(r"\b[A-Z0-9]{4,5}-[A-Z0-9]{4,5}\b", re.sub(r"\x1b\[[0-9;]*m", "", line))
         if match:
             LOGIN_CODE = match.group()
     proc.wait()
-    LOGIN_CODE = None
+    with LOCK:
+        LOGIN_CODE = None
+        SIGNED_CACHE = (0.0, False)
+    WARM_WAKE.set()
 
 def delegate(text, conversation):
     data = payload_for(text, OPTIONS["agent_id"], conversation)
@@ -254,6 +302,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.respond(200, pathlib.Path("index.html").read_bytes(), "text/html; charset=utf-8")
         if path == "/app.js":
             return self.respond(200, pathlib.Path("app.js").read_bytes(), "text/javascript; charset=utf-8")
+        if path == "/capture-worklet.js":
+            return self.respond(200, pathlib.Path("capture-worklet.js").read_bytes(), "text/javascript; charset=utf-8")
         if path == "/api/status":
             with LOCK:
                 key = secrets.token_urlsafe(32)
@@ -266,7 +316,7 @@ class Handler(BaseHTTPRequestHandler):
         return self.respond(404, {"error": "Nicht gefunden"})
 
     def do_POST(self):
-        global ACTIVE, RPC, LOGIN, LOGIN_CODE
+        global ACTIVE, RPC, LOGIN, LOGIN_CODE, SIGNED_CACHE
         user = self.user()
         key = self.headers.get("X-Voice-CSRF", "")
         grant = CSRF.get(key)
@@ -284,6 +334,8 @@ class Handler(BaseHTTPRequestHandler):
                         raise ValueError("Zuerst Gespräch beenden")
                     if LOGIN is None or LOGIN.poll() is not None:
                         LOGIN_CODE = None
+                        SIGNED_CACHE = (0.0, False)
+                        drop_warm()
                         LOGIN = spawn(["login", "--device-auth"], stdout=subprocess.PIPE,
                                       stderr=subprocess.STDOUT, text=True, bufsize=1)
                         threading.Thread(target=read_login, args=(LOGIN,), daemon=True).start()
@@ -298,7 +350,7 @@ class Handler(BaseHTTPRequestHandler):
                     if not isinstance(offer, str) or not offer.startswith("v=0") or voice not in VOICES:
                         raise ValueError("Ungültiger WebRTC-Offer oder Stimme")
                     try:
-                        RPC = Broker()
+                        RPC = take_broker()
                         tid, answer = RPC.start(offer, voice)
                         ACTIVE = {"id": secrets.token_urlsafe(24), "user": user, "thread": tid,
                                   "seen": time.monotonic(), "conversation": None, "requests": {}}
@@ -352,6 +404,7 @@ def main():
     os.chown(HOME, user.pw_uid, user.pw_gid)
     HOME.chmod(0o700)
     threading.Thread(target=expire, daemon=True).start()
+    threading.Thread(target=maintain_warm, daemon=True).start()
     ThreadingHTTPServer(("0.0.0.0", 8099), Handler).serve_forever()
 
 if __name__ == "__main__":
