@@ -2,17 +2,17 @@
 'use strict';
 class FirstAudioBuffer {
   constructor(rate,maxSeconds=12){
-    this.rate=rate;this.max=Math.floor(rate*maxSeconds);this.q=[];this.head=0;this.samples=0;this.voiced=0;this.quietIn=0;this.quietOut=0;this.mode='capture';this.overflow=false;this.started=false;
+    this.rate=rate;this.max=Math.floor(rate*maxSeconds);this.q=[];this.head=0;this.samples=0;this.voiced=0;this.quietIn=0;this.quietOut=0;this.mode='capture';this.overflow=false;this.started=false;this.drainedSamples=0;this.offset=0;this.fraction=0;
   }
   quiet(block){let energy=0,peak=0;for(let i=0;i<block.length;i++){const x=block[i];energy+=x*x;peak=Math.max(peak,Math.abs(x));}return Math.sqrt(energy/block.length)<.004&&peak<.018;}
   push(input,q){
     const block={data:new Float32Array(input),quiet:q};this.q.push(block);this.samples+=input.length;if(!q)this.voiced++;
   }
   pop(){
-    const b=this.q[this.head++];if(!b)return null;this.samples-=b.data.length;if(!b.quiet)this.voiced--;
+    const b=this.q[this.head++];if(!b)return null;this.samples-=b.data.length-this.offset;this.offset=0;this.fraction=0;if(!b.quiet)this.voiced--;
     if(this.head>256&&this.head*2>=this.q.length){this.q=this.q.slice(this.head);this.head=0;}return b;
   }
-  clear(){this.q=[];this.head=0;this.samples=0;this.voiced=0;}
+  clear(){this.q=[];this.head=0;this.samples=0;this.voiced=0;this.offset=0;this.fraction=0;}
   ready(){
     if(this.mode!=='capture'||this.overflow)return;
     // Remove only verified leading silence, keeping 120 ms before the first sound.
@@ -20,6 +20,28 @@ class FirstAudioBuffer {
     let leading=0;for(let i=this.head;i<this.q.length&&this.q[i].quiet;i++)leading+=this.q[i].data.length;
     while(leading>this.rate*.12&&this.q[this.head]?.quiet&&leading-this.q[this.head].data.length>=this.rate*.12){leading-=this.pop().data.length;}
     this.mode='drain';
+  }
+  advance(n){
+    // Consume samples without allocating or discarding an entire voiced chunk.
+    while(n>0&&this.samples>0){
+      const b=this.q[this.head],left=b.data.length-this.offset,k=Math.min(n,left);
+      this.offset+=k;this.samples-=k;n-=k;
+      if(this.offset===b.data.length){if(!b.quiet)this.voiced--;this.head++;this.offset=0;
+        if(this.head>256&&this.head*2>=this.q.length){this.q=this.q.slice(this.head);this.head=0;}}
+    }
+  }
+  accelerated(out){
+    // Only a fallback for continuous noise/speech that prevents a quiet-boundary
+    // catch-up. A modest resample plays the queue faster, then returns to 1x.
+    for(let i=0;i<out.length;i++){
+      if(this.samples===0){this.clear();this.mode='live';break;}
+      const b=this.q[this.head],x=b.data[this.offset];
+      const next=this.offset+1<b.data.length?b.data[this.offset+1]:(this.q[this.head+1]?.data[0]??x);
+      out[i]=x+(next-x)*this.fraction;
+      this.fraction+=1.35;
+      const n=Math.floor(this.fraction);this.fraction-=n;this.advance(n);
+    }
+    if(this.samples===0){this.clear();this.mode='live';}
   }
   process(input,out){
     out.fill(0);
@@ -38,6 +60,13 @@ class FirstAudioBuffer {
       this.clear();this.mode='live';out.set(input.subarray(0,out.length));return;
     }
     this.push(input,quiet);
+    this.drainedSamples+=out.length;
+    // At most six seconds of normal-speed replay before catch-up starts.
+    // Once backlog is shorter than one block, finish at the natural rate.
+    if(this.drainedSamples>=this.rate*6||this.offset!==0){
+      if(this.samples<=out.length){this.accelerated(out);return;}
+      this.accelerated(out);return;
+    }
     const b=this.pop();
     if(b){out.set(b.data.subarray(0,out.length));this.quietOut=b.quiet?this.quietOut+b.data.length:0;}
   }
