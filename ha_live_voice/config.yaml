@@ -1,0 +1,25 @@
+name: HA Live Voice
+description: Experimentelle Live-Sprachoberfläche für einen vorhandenen Assist-Agenten
+version: "0.1.0"
+slug: ha_live_voice
+url: https://github.com/andreassamitsch/HausCheckHAOS/tree/main/ha_live_voice
+arch:
+  - amd64
+stage: experimental
+startup: application
+boot: manual
+init: false
+ingress: true
+ingress_port: 8099
+panel_icon: mdi:microphone-message
+panel_title: HA Live Voice
+panel_admin: true
+homeassistant_api: true
+options:
+  agent_id: conversation.openai_conversation
+  voice: cove
+  idle_seconds: 45
+schema:
+  agent_id: str
+  voice: list(cove|juniper|maple|spruce|ember|vale|breeze|arbor|sol)
+  idle_seconds: int(15,180)

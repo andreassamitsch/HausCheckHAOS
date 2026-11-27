@@ -1,0 +1,28 @@
+name: HA Live Voice CI
+on:
+  push:
+    paths:
+      - 'ha_live_voice/**'
+      - '.github/workflows/ha-live-voice-ci.yml'
+  pull_request:
+    paths:
+      - 'ha_live_voice/**'
+      - '.github/workflows/ha-live-voice-ci.yml'
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ha_live_voice
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python -m unittest -v test_main
+      - run: python -m py_compile main.py
+      - run: node --check app.js
+      - run: docker build -t ha-live-voice:test .
