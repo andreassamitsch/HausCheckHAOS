@@ -1,5 +1,5 @@
 import unittest
-from main import payload_for, unpack_response, child_env
+from main import payload_for, unpack_response, child_env, is_admin_record
 
 class Tests(unittest.TestCase):
     def test_agent_and_context(self):
@@ -17,6 +17,13 @@ class Tests(unittest.TestCase):
     def test_empty_response(self):
         with self.assertRaises(ValueError):
             unpack_response({})
+    def test_admin_record(self):
+        admin = {"id":"a","is_active":True,"group_ids":["system-admin"]}
+        self.assertTrue(is_admin_record(admin,"a"))
+        self.assertFalse(is_admin_record(admin,"b"))
+        self.assertFalse(is_admin_record(dict(admin,is_active=False),"a"))
+        self.assertFalse(is_admin_record(dict(admin,group_ids=["system-users"]),"a"))
+
     def test_child_env_no_credentials(self):
         for key in ["SUPERVISOR_TOKEN","OPENAI_API_KEY","CODEX_API_KEY"]:
             self.assertNotIn(key,child_env())

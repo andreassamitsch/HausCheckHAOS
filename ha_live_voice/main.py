@@ -54,6 +54,35 @@ def unpack_response(data):
             "continue_conversation": bool(data.get("continue_conversation")),
             "response_type": response.get("response_type")}
 
+def is_admin_record(user, user_id):
+    return (user.get("id") == user_id and user.get("is_active") is True
+            and not user.get("system_generated")
+            and (user.get("is_owner") is True or "system-admin" in (user.get("group_ids") or [])))
+
+
+def ingress_admin(user_id):
+    # The Core API token is privileged: never expose it to browsers or non-admin users.
+    # Check the actual Ingress user's current group membership, fail closed.
+    import websocket
+    ws = None
+    try:
+        ws = websocket.create_connection("ws://supervisor/core/websocket", timeout=5)
+        if json.loads(ws.recv()).get("type") != "auth_required":
+            return False
+        ws.send(json.dumps({"type": "auth", "access_token": TOKEN}))
+        if json.loads(ws.recv()).get("type") != "auth_ok":
+            return False
+        ws.send(json.dumps({"id": 1, "type": "config/auth/list"}))
+        result = json.loads(ws.recv())
+        return result.get("success") is True and any(
+            is_admin_record(user, user_id) for user in result.get("result", []))
+    except Exception:
+        return False
+    finally:
+        if ws is not None:
+            ws.close()
+
+
 def child_env():
     # Do not inherit Supervisor token, API keys or arbitrary provider settings.
     return {"PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": str(HOME),
@@ -213,7 +242,8 @@ class Handler(BaseHTTPRequestHandler):
     def user(self):
         if self.client_address[0] != ALLOWED_PEER:
             return None
-        return self.headers.get("X-Ingress-User-Id")
+        user = self.headers.get("X-Remote-User-Id")
+        return user if user and ingress_admin(user) else None
 
     def do_GET(self):
         user = self.user()

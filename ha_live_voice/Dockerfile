@@ -1,5 +1,5 @@
 FROM node:22-bookworm-slim
-RUN apt-get update && apt-get install -y --no-install-recommends python3 ca-certificates && rm -rf /var/lib/apt/lists/* \
+RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-websocket ca-certificates && rm -rf /var/lib/apt/lists/* \
  && npm install -g @openai/codex@0.154.0 \
  && useradd --system --user-group --home-dir /data/codex --shell /usr/sbin/nologin ha_voice
 WORKDIR /app
