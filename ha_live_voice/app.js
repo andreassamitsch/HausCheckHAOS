@@ -19,20 +19,60 @@ function mergeText(current,delta,final=false){
   if(final){const t=delta.trim();if(!current||t.length>=current.trim().length)return t;return current;}
   return current+delta;
 }
-if(typeof module!=='undefined'&&module.exports){module.exports={Activity,mergeText};}
+// A dedicated dashboard URL requests a single automatic start. The normal app URL stays manual.
+function wantsAutoStart(path){return typeof path==='string'&&/^\/app\/01c80471_ha_live_voice\/live\/?$/.test(path);}
+function transportReady(peer,channel){return peer?.connectionState==='connected'&&channel?.readyState==='open';}
+if(typeof module!=='undefined'&&module.exports){module.exports={Activity,mergeText,wantsAutoStart,transportReady};}
 else {
 const $=id=>document.getElementById(id);
 let csrf,pc,dc,stream,session,timer,pingTimer,loginTimer,idle=10;
 let busy=false,starting=false,generation=0,turn='',lastUser='',signedIn=false,ended=false;
 let seen=new Set(),activity=new Activity(),messages=[],ctx,localAnalyser,remoteAnalyser,localSource,remoteSource;
-let closing=false,localHot=0;
+let closing=false,localHot=0,autoLaunch=false,autoConsumed=false,haveStatus=false,ready=false,readyMs=0,readyTimer=null,setupAt=0,stopPending=null,playBlocked=false;
+const APP_PATH='/app/01c80471_ha_live_voice', HOME_PATH='/family-dashboard/home';
+function parentPath(){try{return window.parent.location.pathname;}catch(_){return '';}}
+autoLaunch=wantsAutoStart(parentPath());
+function navigate(path,replace=false){
+  if(window.parent!==window){
+    try{window.parent.postMessage({type:'home-assistant/navigate',path,options:{replace}},location.origin);}
+    catch(_){location.assign(path);}
+  }else if(replace)location.replace(path);else location.assign(path);
+}
+function maybeAutoStart(){
+  if(!autoLaunch||autoConsumed||!haveStatus||!signedIn||starting||session||closing||document.hidden)return;
+  autoConsumed=true;
+  // Consume the launch URL so refreshing the app does not reopen the microphone.
+  navigate(APP_PATH,true);
+  startSession();
+}
+function launchFromRoute(e){
+  if(e.source!==window.parent||e.origin!==location.origin||e.data?.type!=='home-assistant/properties')return;
+  const path=e.data.route?.path;
+  if(path==='/live'||path==='/live/'||wantsAutoStart(path))autoLaunch=true;
+  maybeAutoStart();
+}
+window.addEventListener('message',launchFromRoute);
+window.addEventListener('visibilitychange',maybeAutoStart);
+if(window.parent!==window)window.parent.postMessage({type:'home-assistant/subscribe-properties'},location.origin);
+function unlockAudio(){
+  if(ctx?.state==='suspended')ctx.resume().catch(()=>{});
+  if($('audio').srcObject)$('audio').play().then(()=>{playBlocked=false;controls();}).catch(()=>{playBlocked=true;controls();});
+}
+function readyTone(){
+  if(!ctx||ctx.state!=='running')return;
+  try{
+    const o=ctx.createOscillator(),g=ctx.createGain(),t=ctx.currentTime;
+    o.frequency.value=740;g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.035,t+.015);g.gain.exponentialRampToValueAtTime(.0001,t+.16);
+    o.connect(g);g.connect(ctx.destination);o.start(t);o.stop(t+.18);
+  }catch(_){}
+}
 function status(text,mode='ready'){ $('status').textContent=text; $('wave').dataset.mode=mode; }
 function controls(){
-  const active=!!session||starting;
+  const active=!!session||starting||!!stopPending;
   $('start').hidden=active;$('start').disabled=!signedIn||active;
   $('stop').hidden=!active;$('stop').disabled=!active;
   $('interrupt').hidden=!session||!turn;$('interrupt').disabled=!session||!turn;
-  $('voice').disabled=active;$('login').hidden=signedIn;
+  $('voice').disabled=active;$('login').hidden=signedIn;$('unlock-audio').hidden=!playBlocked;
 }
 function voiceLabel(){const v=$('voice').value;$('voice-label').textContent='Live Voice · '+v.charAt(0).toUpperCase()+v.slice(1);}
 function clearMessages(){messages=[];$('log').replaceChildren();const e=document.createElement('div');e.id='empty';e.className='empty';const title=document.createElement('strong');title.textContent='Wie kann ich dir helfen?';e.append(title,'Dein Gespräch erscheint hier.');$('log').append(e);}
@@ -59,13 +99,14 @@ async function api(path,body,keepalive=false){
   const res=await fetch('api/'+path,opts);const data=await res.json();if(!res.ok)throw new Error(data.error||'Anfrage fehlgeschlagen');return data;
 }
 async function refresh(){
-  const s=await api('status');csrf=s.csrf;idle=s.idle_seconds;signedIn=s.signed_in;
+  const s=await api('status');csrf=s.csrf;idle=s.idle_seconds;signedIn=s.signed_in;haveStatus=true;
   if(!starting&&!session){$('voice').value=s.voice;voiceLabel();}
   $('device').hidden=!s.login_code;$('code').textContent=s.login_code||'';
   if(!signedIn){$('settings').hidden=false;$('settings-toggle').setAttribute('aria-expanded','true');}
   controls();
   if(!session&&!starting&&!ended)status(signedIn?'Bereit zum Gespräch':'Bitte mit ChatGPT anmelden');
   if(s.signed_in){clearInterval(loginTimer);loginTimer=null;}
+  maybeAutoStart();
 }
 $('settings-toggle').onclick=()=>{$('settings').hidden=!$('settings').hidden;$('settings-toggle').setAttribute('aria-expanded',String(!$('settings').hidden));};
 $('voice').onchange=voiceLabel;
@@ -118,7 +159,7 @@ function meter(sourceStream,role){
 }
 function rms(a){if(!a)return 0;const b=new Float32Array(a.fftSize);a.getFloatTimeDomainData(b);let q=0;for(const x of b)q+=x*x;return Math.sqrt(q/b.length);}
 function tick(){
-  if(!session)return;const now=Date.now();
+  if(!session||!ready)return;const now=Date.now();
   const remote=rms(remoteAnalyser)>.008;
   const local=rms(localAnalyser)>.035&&!remote;
   localHot=local?localHot+1:0;
@@ -130,15 +171,15 @@ function tick(){
   else if(localSpeaking)status('Ich höre dich','user');
   else if(remoteSpeaking||turn)status('Hausassistent spricht','speak');
   else if(now<activity.waitUntil)status('Antwort wird vorbereitet …','work');
-  else status('Ich höre zu','listen');
+  else status('Jetzt sprechen · Ich höre zu','listen');
   const remaining=activity.remaining(now,idle,busy||localSpeaking||remoteSpeaking||!!turn);
-  $('hint').textContent=remaining===null?'':'Automatisches Ende in '+remaining+' s';
+  $('hint').textContent=(playBlocked?'Ton bitte freigeben · ':'')+(remaining===null?'':'Automatisches Ende in '+remaining+' s');
   // A stale assistant turn ID must not keep the microphone open forever.
   if(turn&&now-activity.last>120000){turn='';controls();}
-  if(activity.canEnd(now,idle,busy||localSpeaking||remoteSpeaking||!!turn))stop('Gespräch automatisch beendet.');
+  if(activity.canEnd(now,idle,busy||localSpeaking||remoteSpeaking||!!turn))finish('Gespräch automatisch beendet.');
 }
 async function stop(reason='Gespräch beendet.'){
-  generation++;const id=session;session=null;starting=false;ended=true;turn='';busy=false;
+  generation++;const id=session;session=null;starting=false;ended=true;turn='';busy=false;ready=false;playBlocked=false;clearTimeout(readyTimer);readyTimer=null;
   clearInterval(timer);clearInterval(pingTimer);timer=pingTimer=null;
   if(dc)dc.close();dc=null;if(pc)pc.close();pc=null;
   if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;
@@ -146,21 +187,43 @@ async function stop(reason='Gespräch beendet.'){
   if(ctx){ctx.close().catch(()=>{});ctx=null;}controls();status(reason);$('hint').textContent='Mikrofon aus';
   if(id){try{await api('stop',{id},true);}catch(e){status('Mikrofon aus. Serverende nicht bestätigt.');}}
 }
-$('start').onclick=async()=>{
+async function finish(reason){
+  if(closing)return;closing=true;
+  // stop() turns off capture and playback synchronously before awaiting the server.
+  const done=stop(reason);stopPending=done;controls();
+  await Promise.race([done,new Promise(resolve=>setTimeout(resolve,1500))]);
+  navigate(HOME_PATH,true);
+}
+async function startSession(){
   if(starting||session||closing)return;
-  starting=true;ended=false;const gen=++generation;controls();clearMessages();$('usage').textContent='';$('hint').textContent='';$('settings').hidden=true;$('settings-toggle').setAttribute('aria-expanded','false');
+  starting=true;ended=false;ready=false;playBlocked=false;setupAt=performance.now();const gen=++generation;controls();clearMessages();$('usage').textContent='';$('hint').textContent='';$('settings').hidden=true;$('settings-toggle').setAttribute('aria-expanded','false');
   status('Mikrofon wird geöffnet …','work');
   try{
     if(!navigator.mediaDevices?.getUserMedia)throw new Error('HTTPS und Mikrofonfreigabe erforderlich.');
     try{const Audio=window.AudioContext||window.webkitAudioContext;if(Audio){ctx=new Audio();ctx.resume().catch(()=>{});}}catch(_){}
     const mic=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
     if(gen!==generation){mic.getTracks().forEach(t=>t.stop());return;}
-    stream=mic;meter(mic,'user');
+    stream=mic;for(const track of stream.getAudioTracks())track.enabled=false;meter(mic,'user');
     const peer=new RTCPeerConnection();pc=peer;stream.getTracks().forEach(t=>peer.addTrack(t,stream));
     const channel=peer.createDataChannel('oai-events');dc=channel;
     seen=new Set();lastUser='';turn='';busy=false;localHot=0;activity=new Activity();
-    peer.ontrack=e=>{const remote=e.streams[0]||new MediaStream([e.track]);$('audio').srcObject=remote;meter(remote,'assistant');$('audio').play().catch(()=>status('Bitte Audio-Wiedergabe erlauben.'));};
-    peer.onconnectionstatechange=()=>{if(gen===generation&&['failed','closed'].includes(peer.connectionState))stop('Live-Verbindung beendet.');};
+    let remoteSet=false;
+    function markReady(){
+      if(gen!==generation||!remoteSet||!session||ready||!transportReady(peer,channel))return;
+      clearTimeout(readyTimer);readyTimer=null;
+      ready=true;starting=false;readyMs=performance.now()-setupAt;
+      for(const track of stream.getAudioTracks())track.enabled=true;
+      activity=new Activity();controls();status('Jetzt sprechen · Ich höre zu','listen');
+      $('hint').textContent='Verbunden in '+(readyMs/1000).toFixed(1).replace('.',',')+' s';
+      $('connection-time').textContent='Verbindungsaufbau: '+(readyMs/1000).toFixed(1).replace('.',',')+' s';
+      readyTone();
+      const id=session;
+      timer=setInterval(tick,250);
+      pingTimer=setInterval(()=>{if(!busy&&session===id)api('ping',{id}).catch(()=>stop('Verbindung unterbrochen.'));},5000);
+    }
+    peer.ontrack=e=>{if(gen!==generation)return;const remote=e.streams[0]||new MediaStream([e.track]);$('audio').srcObject=remote;meter(remote,'assistant');$('audio').play().catch(()=>{if(gen===generation){playBlocked=true;controls();}});};
+    channel.onopen=markReady;
+    peer.onconnectionstatechange=()=>{if(gen!==generation)return;if(['failed','closed'].includes(peer.connectionState))stop('Live-Verbindung beendet.');else markReady();};
     await peer.setLocalDescription(await peer.createOffer());if(gen!==generation)return;
     status('Live-Sitzung wird aufgebaut …','work');
     const r=await api('start',{offer:peer.localDescription.sdp,voice:$('voice').value});
@@ -168,14 +231,15 @@ $('start').onclick=async()=>{
     session=r.id;channel.onmessage=e=>{try{event(JSON.parse(e.data),channel,r.id).catch(()=>{});}catch(_){}};
     await peer.setRemoteDescription({type:'answer',sdp:r.answer});
     if(gen!==generation)return;
-    starting=false;activity.touch();controls();status('Ich höre zu','listen');
-    timer=setInterval(tick,250);
-    pingTimer=setInterval(()=>{if(!busy&&session===r.id)api('ping',{id:r.id}).catch(()=>stop('Verbindung unterbrochen.'));},5000);
+    remoteSet=true;markReady();
+    if(!ready)readyTimer=setTimeout(()=>{if(gen===generation&&!ready)stop('Verbindung nicht bereit. Bitte erneut versuchen.');},20000);
   }catch(e){if(gen===generation){await stop();status(e.message);}}
-};
+}
+$('start').onclick=startSession;
+$('unlock-audio').onclick=unlockAudio;
 $('interrupt').onclick=async()=>{if(!session||!turn)return;try{await api('interrupt',{id:session,turn});turn='';activity.speech('assistant',false);controls();status('Unterbrochen · ich höre zu','listen');}catch(e){note(e.message);}};
-$('stop').onclick=()=>stop();
-$('close').onclick=async()=>{closing=true;await stop();if(window.parent!==window)window.parent.postMessage({type:'home-assistant/navigate',path:'/family-dashboard/home'},location.origin);else location.assign('/family-dashboard/home');};
-window.addEventListener('pagehide',()=>{generation++;clearInterval(timer);clearInterval(pingTimer);if(stream)stream.getTracks().forEach(t=>t.stop());if(pc)pc.close();if(session)api('stop',{id:session},true).catch(()=>{});});
+$('stop').onclick=()=>finish('Gespräch beendet.');
+$('close').onclick=()=>finish('Gespräch beendet.');
+window.addEventListener('pagehide',()=>{generation++;clearInterval(timer);clearInterval(pingTimer);clearTimeout(readyTimer);if(stream)stream.getTracks().forEach(t=>t.stop());if(pc)pc.close();if(session)api('stop',{id:session},true).catch(()=>{});});
 refresh().catch(e=>status(e.message));
 }

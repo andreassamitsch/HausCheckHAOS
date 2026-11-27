@@ -1,3 +1,9 @@
+## 0.1.3 (experimental)
+- Dedicated dashboard launch route automatically starts a conversation after status and login checks.
+- Microphone transmission and idle countdown start only when WebRTC and data channel are ready.
+- Clear ready status, setup duration, optional ready tone and browser audio permission fallback.
+- Automatic and manual conversation end return to Family Dashboard after capture stops; errors stay visible.
+
 ## 0.1.2 (experimental)
 - Voice-only responsive dialogue with speaker-labelled transcript bubbles, status and separate settings.
 - Ten-second default idle timeout, protected during speech, remote audio playback and agent requests.
