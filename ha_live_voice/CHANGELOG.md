@@ -1,3 +1,8 @@
+## 0.1.8 (recovery)
+- Restore native HTMLAudioElement playback of the remote WebRTC track; remove the parent AudioContext output path, which could report success without audible sound on Android.
+- Android Companion App: enable Autoplay videos (controls WebView mediaPlaybackRequiresUserGesture) once to allow automatic speech output. The manual fallback is retained for browsers that reject playback.
+- Leave direct microphone, warm broker, Sonna, navigation and idle handling unchanged.
+
 ## 0.1.7 (recovery)
 - Disable experimental startup buffering and use the original direct microphone WebRTC track, enabled only when the connection is ready.
 - Remove the buffer state from the idle timer and UI so a lost worklet event cannot leave the conversation stuck.

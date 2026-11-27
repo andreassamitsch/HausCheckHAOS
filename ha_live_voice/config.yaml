@@ -1,6 +1,6 @@
 name: HA Live Voice
 description: Experimentelle Live-Sprachoberfläche für einen vorhandenen Assist-Agenten
-version: "0.1.7"
+version: "0.1.8"
 slug: ha_live_voice
 url: https://github.com/andreassamitsch/HausCheckHAOS/tree/main/ha_live_voice
 arch:

@@ -28,7 +28,7 @@ const $=id=>document.getElementById(id);
 let csrf,pc,dc,stream,session,timer,pingTimer,loginTimer,idle=10;
 let busy=false,starting=false,generation=0,turn='',lastUser='',signedIn=false,ended=false;
 let seen=new Set(),activity=new Activity(),messages=[],ctx,localAnalyser,remoteAnalyser,localSource,remoteSource;
-let dashboardOutput=null,outputTimer=null,remoteAudioStream=null,outputAttempt=0;
+let outputTimer=null,remoteAudioStream=null,outputAttempt=0;
 let closing=false,localHot=0,autoLaunch=false,autoConsumed=false,haveStatus=false,ready=false,readyMs=0,readyTimer=null,setupAt=0,stopPending=null,playBlocked=false;
 const APP_PATH='/app/01c80471_ha_live_voice', HOME_PATH='/family-dashboard/home';
 function parentPath(){try{return window.parent.location.pathname;}catch(_){return '';}}
@@ -55,12 +55,9 @@ function launchFromRoute(e){
 window.addEventListener('message',launchFromRoute);
 window.addEventListener('visibilitychange',maybeAutoStart);
 if(window.parent!==window)window.parent.postMessage({type:'home-assistant/subscribe-properties'},location.origin);
-function claimDashboardOutput(){
-  try{return window.parent!==window?window.parent.__haLiveVoicePlaybackV1?.claim()||null:null;}catch(_){return null;}
-}
-function releaseDashboardOutput(){
-  clearTimeout(outputTimer);outputTimer=null;outputAttempt++;
-  dashboardOutput?.close();dashboardOutput=null;remoteAudioStream=null;
+function releaseOutput(){
+  clearTimeout(outputTimer);outputTimer=null;outputAttempt++;remoteAudioStream=null;
+  $('audio').pause();$('audio').srcObject=null;
 }
 function playNative(gen,manual=false){
   if(gen!==generation||!remoteAudioStream)return;
@@ -79,21 +76,13 @@ function playNative(gen,manual=false){
     },400);
   });
 }
-async function playRemote(remote,gen){
+function playRemote(remote,gen){
   remoteAudioStream=remote;
-  const lease=dashboardOutput;
-  if(lease){
-    let ok=false;
-    try{ok=await lease.play(remote);}catch(_){}
-    if(gen!==generation||remoteAudioStream!==remote){lease.close();return;}
-    if(ok){playBlocked=false;controls();return;}
-    lease.close();if(dashboardOutput===lease)dashboardOutput=null;
-  }
+  const el=$('audio');el.muted=false;el.volume=1;
   playNative(gen);
 }
 function unlockAudio(){
   if(ctx?.state==='suspended')ctx.resume().catch(()=>{});
-  if(dashboardOutput){dashboardOutput.close();dashboardOutput=null;}
   playNative(generation,true);
 }
 function readyTone(){
@@ -221,7 +210,7 @@ async function stop(reason='Gespräch beendet.'){
   clearInterval(timer);clearInterval(pingTimer);timer=pingTimer=null;
   if(dc)dc.close();dc=null;if(pc)pc.close();pc=null;
   if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;
-  releaseDashboardOutput();$('audio').srcObject=null;localSource?.disconnect();remoteSource?.disconnect();localSource=remoteSource=localAnalyser=remoteAnalyser=null;
+  releaseOutput();$('audio').srcObject=null;localSource?.disconnect();remoteSource?.disconnect();localSource=remoteSource=localAnalyser=remoteAnalyser=null;
   if(ctx){ctx.close().catch(()=>{});ctx=null;}controls();status(reason);$('hint').textContent='Mikrofon aus';
   if(id){try{await api('stop',{id},true);}catch(e){status('Mikrofon aus. Serverende nicht bestätigt.');}}
 }
@@ -234,7 +223,7 @@ async function finish(reason){
 }
 async function startSession(){
   if(starting||session||closing)return;
-  starting=true;ended=false;ready=false;playBlocked=false;setupAt=performance.now();const gen=++generation;dashboardOutput=claimDashboardOutput();controls();clearMessages();$('usage').textContent='';$('hint').textContent='';$('settings').hidden=true;$('settings-toggle').setAttribute('aria-expanded','false');
+  starting=true;ended=false;ready=false;playBlocked=false;setupAt=performance.now();const gen=++generation;controls();clearMessages();$('usage').textContent='';$('hint').textContent='';$('settings').hidden=true;$('settings-toggle').setAttribute('aria-expanded','false');
   status('Mikrofon wird geöffnet …','work');
   try{
     if(!navigator.mediaDevices?.getUserMedia)throw new Error('HTTPS und Mikrofonfreigabe erforderlich.');
@@ -279,6 +268,6 @@ $('unlock-audio').onclick=unlockAudio;
 $('interrupt').onclick=async()=>{if(!session||!turn)return;try{await api('interrupt',{id:session,turn});turn='';activity.speech('assistant',false);controls();status('Unterbrochen · ich höre zu','listen');}catch(e){note(e.message);}};
 $('stop').onclick=()=>finish('Gespräch beendet.');
 $('close').onclick=()=>finish('Gespräch beendet.');
-window.addEventListener('pagehide',()=>{generation++;clearInterval(timer);clearInterval(pingTimer);clearTimeout(readyTimer);releaseDashboardOutput();if(stream)stream.getTracks().forEach(t=>t.stop());if(pc)pc.close();if(session)api('stop',{id:session},true).catch(()=>{});});
+window.addEventListener('pagehide',()=>{generation++;clearInterval(timer);clearInterval(pingTimer);clearTimeout(readyTimer);releaseOutput();if(stream)stream.getTracks().forEach(t=>t.stop());if(pc)pc.close();if(session)api('stop',{id:session},true).catch(()=>{});});
 refresh().catch(e=>status(e.message));
 }
