@@ -1,3 +1,9 @@
+## 0.1.5 (experimental)
+- Prefer playback in the same-origin dashboard document after its launch gesture when available.
+- Retry initial media playback on track unmute and connection readiness, clear obsolete blocked notices on success.
+- Use the existing running Web Audio context for incoming audio if native media playback has not started; keep a manual fallback only for actual browser restrictions.
+- Close and remove the temporary playback element on stop or page exit. No change to capture or subscription authentication.
+
 ## 0.1.4 (experimental)
 - Keep an initialized local Codex broker ready without opening a realtime session; recycle it after each call.
 - Cache login status briefly to reduce startup overhead.
